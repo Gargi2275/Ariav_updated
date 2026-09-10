@@ -1,0 +1,8 @@
+{
+  "name": "Remix Ariav ERP",
+  "description": "Production Gujarat textile \u0026 commercial agency ERP for order booking, sales billing, double-entry ledger, and multi-branch operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

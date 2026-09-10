@@ -1,0 +1,238 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Roboto+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..600,400;0,8..600,600;0,8..600,700;1,8..600,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-display: 'Source Serif 4', 'Lora', Georgia, serif;
+  --font-body: 'IBM Plex Sans', 'Inter', -apple-system, sans-serif;
+  --font-serif: 'Source Serif 4', 'Lora', Georgia, serif;
+  --font-sans: 'IBM Plex Sans', 'Inter', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Roboto Mono', Consolas, monospace;
+}
+
+:root {
+  /* Global Fonts with distinct fallbacks */
+  --font-display: 'Source Serif 4', 'Lora', Georgia, serif;
+  --font-body: 'IBM Plex Sans', 'Inter', -apple-system, sans-serif;
+  --font-serif: 'Source Serif 4', 'Lora', Georgia, serif;
+  --font-sans: 'IBM Plex Sans', 'Inter', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Roboto Mono', Consolas, monospace;
+
+  /* Default: Dark "Ledger Terminal" */
+  --erp-base: #0F141B;
+  --erp-surface: #161D27;
+  --erp-surface-2: #1B2430;
+  --erp-hairline: rgba(232, 230, 222, 0.09);
+  --erp-hairline-strong: rgba(232, 230, 222, 0.18);
+  --erp-gold: #C9A24E;
+  --erp-gold-soft: #E4C878;
+  --erp-positive: #37A883;
+  --erp-negative: #D9635A;
+  --erp-text: #ECE9E1;
+  --erp-muted: #8B94A2;
+  --erp-faint: #5C6472;
+  --erp-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+}
+
+.theme-light {
+  /* Light: "Paper Ledger" */
+  --erp-base: #F6F2E8;
+  --erp-surface: #FFFDF8;
+  --erp-surface-2: #EFE9DA;
+  --erp-hairline: rgba(27, 36, 48, 0.12);
+  --erp-hairline-strong: rgba(27, 36, 48, 0.22);
+  --erp-gold: #B68D37;
+  --erp-gold-soft: #9E7728;
+  --erp-positive: #2A8C6B;
+  --erp-negative: #C84F46;
+  --erp-text: #1B2430;
+  --erp-muted: #646E7E;
+  --erp-faint: #929AA7;
+  --erp-shadow: 0 4px 18px rgba(60, 48, 30, 0.08);
+}
+
+/* Base element typography guarantees */
+html, body {
+  font-family: var(--font-body) !important;
+}
+
+/* Display Typography: Page Titles, Eyebrows, Breadcrumbs */
+h1, h2, h3, h4, h5, h6, 
+.font-display, 
+.font-serif, 
+[data-font="display"],
+.eyebrow-label,
+.module-breadcrumb {
+  font-family: var(--font-display) !important;
+}
+
+/* Body Typography: Nav labels, column headers, buttons, inputs, descriptions */
+.font-body, 
+.font-sans, 
+[data-font="body"],
+nav button span,
+.nav-label,
+table thead th,
+table th,
+input,
+select,
+textarea,
+button,
+.filter-input {
+  font-family: var(--font-body) !important;
+}
+
+/* Monospace: Numeric & Code values */
+.font-mono, 
+[data-font="mono"], 
+.amt,
+[class*="amt"],
+[class*="mono"],
+code, 
+kbd, 
+pre, 
+.mono-figure {
+  font-family: var(--font-mono) !important;
+}
+
+/* Professional Financial ERP Table Headers */
+table thead {
+  background-color: var(--erp-surface-2);
+  border-bottom: 2px solid var(--erp-hairline-strong);
+  position: relative;
+}
+
+table thead th {
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  color: var(--erp-muted) !important;
+  border-right: 1px solid var(--erp-hairline);
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  white-space: nowrap;
+  user-select: none;
+}
+
+table thead th:last-child {
+  border-right: none;
+}
+
+.theme-dark table thead th {
+  color: #A0ACB9 !important;
+  background-color: #19222D;
+}
+
+.theme-light table thead th {
+  color: #4F5A69 !important;
+  background-color: #EAE3D3;
+}
+
+/* Sortable column header interactive states */
+table thead th.sortable-th:hover,
+table thead th[data-sortable="true"]:hover {
+  color: var(--erp-text) !important;
+  background-color: var(--erp-surface) !important;
+}
+
+/* Unified ERP Status / Queue / Metric Badge System */
+.erp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  font-family: var(--font-mono) !important;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 0;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.erp-badge-gold {
+  background-color: rgba(201, 162, 78, 0.1);
+  border-color: rgba(201, 162, 78, 0.35);
+  color: var(--erp-gold);
+}
+
+.erp-badge-jade {
+  background-color: rgba(55, 168, 131, 0.1);
+  border-color: rgba(55, 168, 131, 0.35);
+  color: var(--erp-positive);
+}
+
+.erp-badge-rose {
+  background-color: rgba(217, 99, 90, 0.1);
+  border-color: rgba(217, 99, 90, 0.35);
+  color: var(--erp-negative);
+}
+
+.erp-badge-neutral {
+  background-color: var(--erp-surface-2);
+  border-color: var(--erp-hairline-strong);
+  color: var(--erp-muted);
+}
+
+/* Smooth theme transition without flashing */
+html, body, div, aside, header, nav, main, section, table, tr, td, th, input, select, textarea, button {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Subtle ruled-ledger-line texture for Paper Ledger data panels */
+.theme-light .ledger-ruled-lines,
+.theme-light .data-table-container {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 27px,
+    rgba(27, 36, 48, 0.035) 28px
+  );
+}
+
+.theme-dark .ledger-ruled-lines,
+.theme-dark .data-table-container {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 27px,
+    rgba(232, 230, 222, 0.02) 28px
+  );
+}
+
+/* Custom crisp scrollbars suited for financial terminals */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb {
+  background: rgba(232, 230, 222, 0.15);
+  border-radius: 3px;
+}
+
+.theme-light ::-webkit-scrollbar-thumb {
+  background: rgba(27, 36, 48, 0.18);
+  border-radius: 3px;
+}
+
+/* Subtle print styles for ledger statements */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+}
