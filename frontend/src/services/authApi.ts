@@ -1,7 +1,12 @@
 /**
- * Python Auth API Client Service
- * Connects frontend auth screens to the Python 3 / SQLite backend via /api/auth
+ * Auth API client — Django / MySQL backend (VITE_API_BASE_URL).
  */
+
+const API_BASE = String(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+
+function apiUrl(path: string): string {
+  return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 export interface PythonHealthInfo {
   status: string;
@@ -117,7 +122,7 @@ export const authApi = {
   // Check backend health & python service details
   async getHealth(): Promise<PythonHealthInfo | null> {
     try {
-      const res = await fetch('/api/auth/health');
+      const res = await fetch(apiUrl('/api/auth/health'));
       if (!res.ok) return null;
       return await res.json();
     } catch (e) {
@@ -126,10 +131,39 @@ export const authApi = {
     }
   },
 
+  async getDashboardSummary(): Promise<{
+    success: boolean;
+    metrics?: {
+      turnover: string;
+      debtors: string;
+      creditors: string;
+      banks: string;
+      orders: number;
+      invoices: number;
+      items: number;
+      branches: number;
+    };
+    overdue?: Array<{
+      name: string;
+      city: string;
+      broker: string;
+      opening_balance: string;
+      credit_days: number;
+    }>;
+  } | null> {
+    try {
+      const res = await fetch(apiUrl('/api/dashboard/summary/'));
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
   // Step 1: Admin Credentials Check (Username + Password)
   async checkCredentials(username: string, password: string): Promise<CheckCredentialsResponse> {
     try {
-      const res = await fetch('/api/check-credentials/', {
+      const res = await fetch(apiUrl('/api/check-credentials/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -148,7 +182,7 @@ export const authApi = {
     temp_token?: string;
   }): Promise<VerifyPinResponse> {
     try {
-      const res = await fetch('/api/admin/verify-pin', {
+      const res = await fetch(apiUrl('/api/admin-login/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -167,7 +201,7 @@ export const authApi = {
   // Check Lockout Status & Countdown
   async getPinStatus(username: string = 'admin'): Promise<PinStatusResponse> {
     try {
-      const res = await fetch(`/api/admin/pin-status?username=${encodeURIComponent(username)}`);
+      const res = await fetch(apiUrl(`/api/admin/pin-status?username=${encodeURIComponent(username)}`));
       if (!res.ok) return { locked: false, lockout_remaining_seconds: 0, failed_attempts: 0 };
       return await res.json();
     } catch {
@@ -178,7 +212,7 @@ export const authApi = {
   // Authenticate Admin with PIN (legacy fallback)
   async loginAdmin(pin: string): Promise<AdminLoginResponse> {
     try {
-      const res = await fetch('/api/auth/admin/login', {
+      const res = await fetch(apiUrl('/api/admin-login/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin }),
@@ -203,7 +237,7 @@ export const authApi = {
     terminalIp?: string;
   }): Promise<OperatorRequestResponse> {
     try {
-      const res = await fetch('/api/login/', {
+      const res = await fetch(apiUrl('/api/login/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -223,7 +257,7 @@ export const authApi = {
     terminalIp?: string;
   }): Promise<OperatorRequestResponse> {
     try {
-      const res = await fetch('/api/login/', {
+      const res = await fetch(apiUrl('/api/login/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -244,7 +278,7 @@ export const authApi = {
     error?: string;
   }> {
     try {
-      const res = await fetch(`/api/check-request-status/?request_id=${encodeURIComponent(requestId)}`);
+      const res = await fetch(apiUrl(`/api/check-request-status/?request_id=${encodeURIComponent(requestId)}`));
       return await res.json();
     } catch (e: any) {
       return { success: false, status: 'pending', error: e.message || 'Status poll failed' };
@@ -254,7 +288,7 @@ export const authApi = {
   // Poll operator request status (legacy alias)
   async getOperatorStatus(requestId: string): Promise<OperatorRequestResponse> {
     try {
-      const res = await fetch(`/api/check-request-status/?request_id=${encodeURIComponent(requestId)}`);
+      const res = await fetch(apiUrl(`/api/check-request-status/?request_id=${encodeURIComponent(requestId)}`));
       return await res.json();
     } catch (e: any) {
       return { success: false, error: e.message || 'Status poll failed' };
@@ -264,7 +298,7 @@ export const authApi = {
   // Admin: Get live authorization queue
   async getAdminQueue(): Promise<{ success: boolean; queue: AdminQueueItem[]; error?: string }> {
     try {
-      const res = await fetch('/api/auth/admin/queue');
+      const res = await fetch(apiUrl('/api/auth/admin/queue'));
       return await res.json();
     } catch (e: any) {
       return { success: false, queue: [], error: e.message };
@@ -280,7 +314,7 @@ export const authApi = {
     error?: string;
   }> {
     try {
-      const res = await fetch(`/api/admin/approve/${encodeURIComponent(requestId)}/`, {
+      const res = await fetch(apiUrl(`/api/admin/approve/${encodeURIComponent(requestId)}/`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestId }),
@@ -298,7 +332,7 @@ export const authApi = {
     error?: string;
   }> {
     try {
-      const res = await fetch(`/api/admin/reject/${encodeURIComponent(requestId)}/`, {
+      const res = await fetch(apiUrl(`/api/admin/reject/${encodeURIComponent(requestId)}/`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestId, reason }),
@@ -319,7 +353,7 @@ export const authApi = {
     message?: string;
   }> {
     try {
-      const res = await fetch('/api/auth/operator/verify-otp', {
+      const res = await fetch(apiUrl('/api/verify-otp/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ otpCode }),
@@ -344,7 +378,7 @@ export const authApi = {
     message?: string;
   }> {
     try {
-      const res = await fetch('/api/auth/admin/pin-reset/request', {
+      const res = await fetch(apiUrl('/api/auth/admin/pin-reset/request'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -362,7 +396,7 @@ export const authApi = {
     message?: string;
   }> {
     try {
-      const res = await fetch('/api/auth/admin/pin-reset/confirm', {
+      const res = await fetch(apiUrl('/api/auth/admin/pin-reset/confirm'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ challengeId, code, newPin }),
@@ -376,7 +410,7 @@ export const authApi = {
   // Fetch security audit records from Python SQLite
   async getAuditTrail(): Promise<any[]> {
     try {
-      const res = await fetch('/api/auth/audit-trail');
+      const res = await fetch(apiUrl('/api/auth/audit-trail'));
       const data = await res.json();
       return data.logs || [];
     } catch {
@@ -389,7 +423,7 @@ export const authApi = {
     const token = localStorage.getItem('ariav_auth_token');
     try {
       if (token) {
-        await fetch('/api/auth/logout', {
+        await fetch(apiUrl('/api/auth/logout'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

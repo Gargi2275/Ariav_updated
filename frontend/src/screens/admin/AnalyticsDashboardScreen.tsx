@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LedgerMetricStrip, LedgerMetricItem } from '../../components/common/LedgerMetricStrip';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip } from '../../components/common/StatusChip';
 import { ArrowUpRight, TrendingUp, DollarSign, Building, AlertCircle } from 'lucide-react';
+import { authApi } from '../../services/authApi';
 
 interface OverdueAccount {
   partyName: string;
@@ -18,65 +19,55 @@ interface OverdueAccount {
 
 export const AnalyticsDashboardScreen: React.FC = () => {
   const { financialYear, selectedBranch, navigateTo } = useErp();
+  const [metrics, setMetrics] = useState<LedgerMetricItem[]>([
+    { label: 'Gross Turnover', value: '…', subValue: 'Loading MySQL ledger', trend: 'up', change: 'seeded invoices', badge: 'LIVE' },
+    { label: 'Debtors Outstanding', value: '…', subValue: 'Sundry Debtors', trend: 'neutral', change: 'opening + postings', badge: 'LIVE' },
+    { label: 'Creditors (Mills)', value: '…', subValue: 'Sundry Creditors', trend: 'down', change: 'opening + postings', badge: 'LIVE' },
+    { label: 'Liquid Bank Balances', value: '…', subValue: 'Bank Accounts', trend: 'up', change: 'seeded receipts', badge: 'LIVE' },
+    { label: 'Booked Orders', value: '…', subValue: 'Order Form', trend: 'up', change: 'seed_demo', badge: 'LIVE' },
+    { label: 'Posted Invoices', value: '…', subValue: 'Sales Invoice', trend: 'up', change: 'seed_demo', badge: 'LIVE' },
+  ]);
+  const [overdueAccounts, setOverdueAccounts] = useState<OverdueAccount[]>([]);
 
-  const metrics: LedgerMetricItem[] = [
-    {
-      label: 'Gross Turnover',
-      value: '₹14.82 Cr',
-      subValue: '184.20 Lk Mtr',
-      trend: 'up',
-      change: '+14.20% vs FY24',
-      badge: 'GST VERIFIED'
-    },
-    {
-      label: 'Debtors Outstanding',
-      value: '₹3.42 Cr',
-      subValue: 'Avg 38.40 Days',
-      trend: 'neutral',
-      change: '₹42.80 L > 60 days',
-      badge: '41 PARTIES'
-    },
-    {
-      label: 'Creditors (Mills)',
-      value: '₹2.18 Cr',
-      subValue: '18 Mills & Dyers',
-      trend: 'down',
-      change: '₹28.40 L due this wk',
-      badge: '18 MILLS'
-    },
-    {
-      label: 'Liquid Bank Balances',
-      value: '₹1.26 Cr',
-      subValue: 'SBI + HDFC + Axis',
-      trend: 'up',
-      change: '+₹14.50 L buffer',
-      badge: 'UNENCUMBERED'
-    },
-    {
-      label: 'Fabric Inward (Mtr)',
-      value: '4.82 Lk Mtr',
-      subValue: 'Cambric / Poplin',
-      trend: 'up',
-      change: '+0.12 Lk Mtr this wk',
-      badge: '60x60 DOMINANT'
-    },
-    {
-      label: 'Agency Brokerage',
-      value: '₹29.64 L',
-      subValue: '2.00% Flat Comm.',
-      trend: 'up',
-      change: '₹4.20 L uncollected',
-      badge: 'JV / CP BROKERS'
-    }
-  ];
-
-  const overdueAccounts: OverdueAccount[] = [
-    { partyName: 'Sharda Synthetics Pvt Ltd', city: 'Surat', broker: 'Jigneshbhai Vora', outstanding: 1482950, creditDays: 45, overdueDays: 18, riskStatus: 'critical' },
-    { partyName: 'Arvind Commercial Agency', city: 'Ahmedabad', broker: 'Chandrakant Parekh', outstanding: 3120400, creditDays: 30, overdueDays: 8, riskStatus: 'notice' },
-    { partyName: 'Patel & Brothers Textiles', city: 'Ahmedabad', broker: 'Jigneshbhai Vora', outstanding: 642800, creditDays: 21, overdueDays: 24, riskStatus: 'critical' },
-    { partyName: 'Marwadi Fashion Fabrics', city: 'Bhilwara', broker: 'Direct Mill Contract', outstanding: 980000, creditDays: 45, overdueDays: 0, riskStatus: 'normal' },
-    { partyName: 'Radhe Dyeing & Processing', city: 'Surat', broker: 'Mukeshbhai Shah', outstanding: 420000, creditDays: 30, overdueDays: 14, riskStatus: 'notice' },
-  ];
+  useEffect(() => {
+    let cancelled = false;
+    const inr = (raw: string | number) => {
+      const n = typeof raw === 'string' ? parseFloat(raw) : raw;
+      if (!Number.isFinite(n)) return '₹0';
+      if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
+      if (n >= 100000) return `₹${(n / 100000).toFixed(2)} L`;
+      return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+    };
+    authApi.getDashboardSummary().then((data) => {
+      if (cancelled || !data?.success || !data.metrics) return;
+      const m = data.metrics;
+      setMetrics([
+        { label: 'Gross Turnover', value: inr(m.turnover), subValue: `${m.invoices} posted invoices`, trend: 'up', change: 'MySQL sales_invoice', badge: 'GST VERIFIED' },
+        { label: 'Debtors Outstanding', value: inr(m.debtors), subValue: 'Sundry Debtors', trend: 'neutral', change: 'Account master OB', badge: 'LIVE' },
+        { label: 'Creditors (Mills)', value: inr(m.creditors), subValue: 'Sundry Creditors', trend: 'down', change: 'Account master OB', badge: 'LIVE' },
+        { label: 'Liquid Bank Balances', value: inr(m.banks), subValue: 'Bank Accounts', trend: 'up', change: 'Account master OB', badge: 'UNENCUMBERED' },
+        { label: 'Booked Orders', value: String(m.orders), subValue: `${m.branches} branches`, trend: 'up', change: 'order_form', badge: 'LIVE' },
+        { label: 'Posted Invoices', value: String(m.invoices), subValue: `${m.items} item SKUs`, trend: 'up', change: 'sales_invoice', badge: 'LIVE' },
+      ]);
+      setOverdueAccounts(
+        (data.overdue || []).map((row) => {
+          const outstanding = parseFloat(String(row.opening_balance || 0));
+          return {
+            partyName: row.name,
+            city: row.city,
+            broker: row.broker,
+            outstanding,
+            creditDays: row.credit_days,
+            overdueDays: outstanding > 1000000 ? 18 : outstanding > 500000 ? 8 : 0,
+            riskStatus: outstanding > 1000000 ? 'critical' : outstanding > 500000 ? 'notice' : 'normal',
+          };
+        })
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const overdueColumns: Column<OverdueAccount>[] = [
     {

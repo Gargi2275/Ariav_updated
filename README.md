@@ -1,20 +1,11 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Ariav ERP — two independent services
 
-# Run and deploy your AI Studio app
+This repository is a **Django + MySQL API** and a **React + TypeScript Vite app**. They run separately.
 
-This contains everything you need to run your app locally.
+- Frontend: [frontend/README.md](frontend/README.md)
+- Backend: [backend/README.md](backend/README.md)
 
-View your app in AI Studio: https://ai.studio/apps/c177d253-773f-49fa-8513-9447f9bd2355
+Local URLs after start:
 
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- API: `http://localhost:8000`
+- UI: `http://localhost:5173`
