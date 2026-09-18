@@ -1,0 +1,8 @@
+{
+  "status": 400,
+  "body": {
+    "code": [
+      "Branch code AHM-01 is already in use."
+    ]
+  }
+}

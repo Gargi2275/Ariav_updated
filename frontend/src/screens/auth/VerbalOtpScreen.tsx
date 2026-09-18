@@ -49,7 +49,7 @@ export const VerbalOtpScreen: React.FC = () => {
       const res = await authApi.verifyVerbalOtp(otpCode);
       if (res.success) {
         setIsVerified(true);
-        setUserRole('operator');
+        setUserRole(res.user?.role === 'admin' || res.role === 'admin' ? 'admin' : 'operator');
         addAuditLog('Verbal OTP Successfully Cleared', 'Security Gate', `Operator verified code ${otpCode}`, 'notice');
         showFlash(res.message || 'Verbal OTP validated. Operator session active.', 'positive');
         setTimeout(() => {

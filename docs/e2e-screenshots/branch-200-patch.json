@@ -1,0 +1,14 @@
+{
+  "status": 200,
+  "body": {
+    "id": 5,
+    "code": "VAD-04",
+    "name": "Vadodara Industrial Depot",
+    "city": "Vadodara",
+    "gstin": "24AAACA1234F4Z5",
+    "address": "Makarpura GIDC, Vadodara 390010, Gujarat",
+    "phone": "+91 98250 44110",
+    "is_head_office": false,
+    "is_active": true
+  }
+}

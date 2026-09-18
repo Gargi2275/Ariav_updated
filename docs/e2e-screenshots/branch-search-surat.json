@@ -1,0 +1,16 @@
+{
+  "status": 200,
+  "body": [
+    {
+      "id": 2,
+      "code": "SUR-02",
+      "name": "Surat Ring Road Textile Mkt",
+      "city": "Surat",
+      "gstin": "24AAACA1234F2Z7",
+      "address": "Ring Road Textile Market, Sahara Darwaja, Surat 395002, Gujarat",
+      "phone": "+91 261 232 8841",
+      "is_head_office": false,
+      "is_active": true
+    }
+  ]
+}

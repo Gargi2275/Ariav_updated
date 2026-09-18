@@ -1,64 +1,167 @@
 import React, { useState } from 'react';
 import { useErp } from '../../context/ErpContext';
-import { Search, UploadCloud, Calendar, AlertCircle } from 'lucide-react';
+import { Search, Calendar, AlertCircle } from 'lucide-react';
 
-interface TextInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label: string;
-  error?: string;
-  helper?: string;
-  mono?: boolean;
+export function RequiredMark() {
+  return (
+    <span className="ml-0.5 text-[var(--erp-negative)] font-semibold" aria-hidden="true">
+      *
+    </span>
+  );
 }
 
-export const TextInput: React.FC<TextInputProps> = ({
+export function FormLabel({
+  htmlFor,
+  required = false,
+  children,
+  className = 'text-xs font-normal text-[var(--erp-muted)] font-sans',
+}: {
+  htmlFor?: string;
+  required?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label htmlFor={htmlFor} className={className}>
+      {children}
+      {required ? <RequiredMark /> : null}
+    </label>
+  );
+}
+
+export function RequiredLegend() {
+  return (
+    <p className="text-[11px] font-mono text-[var(--erp-muted)]">
+      <RequiredMark /> Required field
+    </p>
+  );
+}
+
+export const FORM_SECTION_TITLE =
+  'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
+
+export function FormSectionTitle({
+  required = false,
+  children,
+}: {
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <h4 className={FORM_SECTION_TITLE}>
+      {children}
+      {required ? <RequiredMark /> : null}
+    </h4>
+  );
+}
+
+export function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <span className="text-xs font-mono text-[var(--erp-negative)] flex items-center gap-1 mt-0.5">
+      <AlertCircle className="w-3 h-3 shrink-0" />
+      {message}
+    </span>
+  );
+}
+
+export function FormField({
   label,
+  htmlFor,
+  required = false,
   error,
   helper,
-  mono = false,
   className = '',
-  ...props
-}) => {
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  required?: boolean;
+  error?: string;
+  helper?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex flex-col gap-1 text-left ${className}`}>
+      <FormLabel htmlFor={htmlFor} required={required}>{label}</FormLabel>
+      {children}
+      <FieldError message={error} />
+      {helper && !error ? <span className="text-xs text-[var(--erp-muted)] mt-0.5">{helper}</span> : null}
+    </div>
+  );
+}
+
+interface TextInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'required'> {
+  label: string;
+  error?: string;
+  /** Red border only — no helper text. Use with toast.error for API validation. */
+  invalid?: boolean;
+  helper?: string;
+  mono?: boolean;
+  /** Shows a red asterisk on the label. Native HTML5 required is not used. */
+  required?: boolean;
+}
+
+export const TextInput = React.forwardRef<HTMLInputElement, TextInputProps>(function TextInput(
+  {
+    label,
+    error,
+    invalid = false,
+    helper,
+    mono = false,
+    required = false,
+    className = '',
+    id,
+    ...props
+  },
+  ref,
+) {
+  const autoId = React.useId();
+  const inputId = id || autoId;
+  const showErrorText = !!(error && error.trim());
+  const bad = showErrorText || invalid;
   return (
     <div className="flex flex-col gap-1 text-left">
-      <label className="text-xs font-normal text-[var(--erp-muted)] font-sans">
+      <FormLabel htmlFor={inputId} required={required}>
         {label}
-      </label>
+      </FormLabel>
       <input
+        id={inputId}
+        ref={ref}
+        aria-invalid={bad || undefined}
+        aria-required={required || undefined}
         className={`px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] transition-colors rounded-none placeholder:text-[var(--erp-faint)] ${
           mono ? 'font-mono' : 'font-sans'
-        } ${error ? 'border-[var(--erp-negative)] focus:border-[var(--erp-negative)]' : ''} ${className}`}
+        } ${bad ? 'border-[var(--erp-negative)] focus:border-[var(--erp-negative)]' : ''} ${className}`}
         {...props}
       />
-      {error && (
-        <span className="text-xs font-mono text-[var(--erp-negative)] flex items-center gap-1 mt-0.5">
-          <AlertCircle className="w-3 h-3" />
-          {error}
-        </span>
-      )}
-      {helper && !error && (
+      <FieldError message={error} />
+      {helper && !showErrorText && (
         <span className="text-xs text-[var(--erp-muted)] mt-0.5">{helper}</span>
       )}
     </div>
   );
-};
+});
 
-interface AmountInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+interface AmountInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'required'> {
   label: string;
   currencyPrefix?: string;
   error?: string;
+  required?: boolean;
 }
 
 export const AmountInput: React.FC<AmountInputProps> = ({
   label,
   currencyPrefix = '₹',
   error,
+  required = false,
   className = '',
   ...props
 }) => {
   return (
     <div className="flex flex-col gap-1 text-left">
-      <label className="text-xs font-normal text-[var(--erp-muted)] font-sans">
-        {label}
-      </label>
+      <FormLabel required={required}>{label}</FormLabel>
       <div className="relative flex items-center">
         <span className="absolute left-3 text-sm font-mono text-[var(--erp-muted)] select-none">
           {currencyPrefix}
@@ -80,17 +183,16 @@ export const AmountInput: React.FC<AmountInputProps> = ({
   );
 };
 
-interface DateInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+interface DateInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'required'> {
   label: string;
   error?: string;
+  required?: boolean;
 }
 
-export const DateInput: React.FC<DateInputProps> = ({ label, error, className = '', ...props }) => {
+export const DateInput: React.FC<DateInputProps> = ({ label, error, required = false, className = '', ...props }) => {
   return (
     <div className="flex flex-col gap-1 text-left">
-      <label className="text-xs font-normal text-[var(--erp-muted)] font-sans">
-        {label}
-      </label>
+      <FormLabel required={required}>{label}</FormLabel>
       <div className="relative flex items-center">
         <input
           type="date"
@@ -113,13 +215,15 @@ interface PartyPickerProps {
   selectedPartyId?: string;
   onSelect: (partyId: string) => void;
   error?: string;
+  required?: boolean;
 }
 
 export const PartyPicker: React.FC<PartyPickerProps> = ({
   label,
   selectedPartyId,
   onSelect,
-  error
+  error,
+  required = false,
 }) => {
   const { parties } = useErp();
   const [search, setSearch] = useState('');
@@ -135,9 +239,7 @@ export const PartyPicker: React.FC<PartyPickerProps> = ({
 
   return (
     <div className="relative flex flex-col gap-1 text-left">
-      <label className="text-xs font-normal text-[var(--erp-muted)] font-sans">
-        {label}
-      </label>
+      <FormLabel required={required}>{label}</FormLabel>
 
       <div
         onClick={() => setIsOpen(prev => !prev)}
@@ -206,100 +308,6 @@ export const PartyPicker: React.FC<PartyPickerProps> = ({
       )}
 
       {error && <span className="text-xs font-mono text-[var(--erp-negative)] mt-0.5">{error}</span>}
-    </div>
-  );
-};
-
-interface FileDropZoneProps {
-  label: string;
-  hint?: string;
-  acceptedFormats?: string;
-  onFileLoaded?: (fileName: string, fileSize: string) => void;
-  className?: string;
-}
-
-export const FileDropZone: React.FC<FileDropZoneProps> = ({
-  label,
-  hint = 'Drag & drop bulk JSON dataset up to 50MB, or click to browse',
-  acceptedFormats = '.json',
-  onFileLoaded,
-  className = ''
-}) => {
-  const [dragActive, setDragActive] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<{ name: string; size: string } | null>(null);
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
-      setSelectedFile({ name: file.name, size: sizeMb });
-      if (onFileLoaded) onFileLoaded(file.name, sizeMb);
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
-      setSelectedFile({ name: file.name, size: sizeMb });
-      if (onFileLoaded) onFileLoaded(file.name, sizeMb);
-    }
-  };
-
-  return (
-    <div className={`flex flex-col gap-1 text-left ${className}`}>
-      <label className="text-xs font-normal text-[var(--erp-muted)] font-sans">
-        {label}
-      </label>
-      <div
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-        className={`relative border-2 border-dashed p-6 text-center transition-colors rounded-none cursor-pointer ${
-          dragActive
-            ? 'border-[var(--erp-gold)] bg-[var(--erp-gold)]/5'
-            : 'border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] hover:border-[var(--erp-gold)]/60'
-        }`}
-      >
-        <input
-          type="file"
-          accept={acceptedFormats}
-          onChange={handleChange}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        />
-        <div className="flex flex-col items-center justify-center gap-2 pointer-events-none">
-          <UploadCloud className="w-8 h-8 text-[var(--erp-gold)]" />
-          {selectedFile ? (
-            <div>
-              <p className="text-sm font-medium text-[var(--erp-text)]">{selectedFile.name}</p>
-              <p className="text-xs font-mono text-[var(--erp-positive)] mt-0.5">
-                Loaded: {selectedFile.size} • JSON schema verified
-              </p>
-            </div>
-          ) : (
-            <div>
-              <p className="text-sm font-normal text-[var(--erp-text)]">{hint}</p>
-              <p className="text-xs font-mono text-[var(--erp-muted)] mt-1">
-                Accepted: {acceptedFormats} (Standard Textile Order Schema v2.4)
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 };

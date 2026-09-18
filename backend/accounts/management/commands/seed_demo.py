@@ -1,14 +1,23 @@
-from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
-from accounts.models import AuditLog, AuthUser, AuthUserMstLogin, LoginRequest
+from accounts.models import AuditLog, AuthUser, AuthUserMstLogin
 from ledger.models import LedgerLine
-from masters.models import AccountMaster, GroupProduct, ItemMaster, MasterBranch, MstFinYear, Parameter
+from entities.models import Entity
+from masters.models import (
+    AccountMaster,
+    BrokerMaster,
+    ChartAccount,
+    GroupProduct,
+    ItemMaster,
+    MasterBranch,
+    MstFinYear,
+    Parameter,
+    TaxSlab,
+)
 from transactions.models import (
     BankPayment,
     BankReceivedVoucher,
@@ -24,6 +33,23 @@ class Command(BaseCommand):
     help = "Idempotent demo seed for Ariav ERP (local development)."
 
     def handle(self, *args, **options):
+        for code, name in [
+            ("GUJ", "Gujarat"),
+            ("ADT", "Aditi"),
+            ("SRV", "Shriva"),
+        ]:
+            Entity.objects.update_or_create(
+                short_code=code,
+                defaults={
+                    "entity_name": name,
+                    "entity_type": Entity.EntityType.BRANCH,
+                    "parent_entity": None,
+                    "status": Entity.Status.ACTIVE,
+                    "state": "Gujarat",
+                    "country": "India",
+                },
+            )
+
         fy, _ = MstFinYear.objects.update_or_create(
             code="2025-26",
             defaults={
@@ -34,25 +60,115 @@ class Command(BaseCommand):
         )
 
         branches = {}
-        for code, name, city, gstin, ho in [
-            ("AHM-01", "Ahmedabad Narol Central", "Ahmedabad", "24AAACA1234F1Z8", True),
-            ("SUR-02", "Surat Ring Road Textile Mkt", "Surat", "24AAACA1234F2Z7", False),
-            ("RJK-03", "Rajkot Commercial Hub", "Rajkot", "24AAACA1234F3Z6", False),
+        for code, name, city, gstin, address, phone, ho in [
+            (
+                "AHM-01",
+                "Ahmedabad Narol Central",
+                "Ahmedabad",
+                "24AAACA1234F1Z8",
+                "Narol-Vatva Road, Narol GIDC, Ahmedabad 382405, Gujarat",
+                "+91 79 2658 4410",
+                True,
+            ),
+            (
+                "SUR-02",
+                "Surat Ring Road Textile Mkt",
+                "Surat",
+                "24AAACA1234F2Z7",
+                "Ring Road Textile Market, Sahara Darwaja, Surat 395002, Gujarat",
+                "+91 261 232 8841",
+                False,
+            ),
+            (
+                "RJK-03",
+                "Rajkot Commercial Hub",
+                "Rajkot",
+                "24AAACA1234F3Z6",
+                "Race Course Road Commercial Complex, Rajkot 360001, Gujarat",
+                "+91 281 247 1190",
+                False,
+            ),
         ]:
             obj, _ = MasterBranch.objects.update_or_create(
                 code=code,
-                defaults={"name": name, "city": city, "gstin": gstin, "is_head_office": ho, "is_active": True},
+                defaults={
+                    "name": name,
+                    "city": city,
+                    "gstin": gstin,
+                    "address": address,
+                    "phone": phone,
+                    "is_head_office": ho,
+                    "is_active": True,
+                },
             )
             branches[code] = obj
 
         groups = {}
-        for code, name, cat, hsn in [
-            ("GRP-GREY", "Grey Cotton Weaves", "Grey Fabric", "5208"),
-            ("GRP-FIN", "Finished / Processed", "Finished Fabric", "5407"),
-            ("GRP-YRN", "Yarn", "Yarn", "5205"),
+        for code, name, cat, hsn, cons, gsm, rate in [
+            ("GRP-GREY", "Grey Cotton Weaves", "Greige", "5208", "60s x 60s / 92x88", "72 - 125 GSM", "48.50"),
+            ("GRP-FIN", "Finished / Processed", "Finished Fabric", "5407", "Reactive Dye / Mercerised Finish", "75 - 85 GSM", "68.00"),
+            ("GRP-YRN", "Yarn", "Yarn", "5205", "30/1 Ne Ring Spun", "Count 30s-60s", "245.00"),
+            ("GRP-CAMB-60", "Cambric Premium Greige", "Greige", "5208.11", "60s Warp x 60s Weft / 92x88", "72 - 78 GSM", "48.50"),
+            ("GRP-POPL-40", "Poplin Heavy Reed", "Greige", "5208.12", "40s Warp x 40s Weft / 132x72", "115 - 125 GSM", "62.00"),
+            ("GRP-RAYN-140", "Viscose Rayon Plain Weave", "Greige", "5407.82", "30s Rayon x 30s Rayon / 68x64", "135 - 145 GSM", "42.00"),
+            ("GRP-JACQ", "Jacquard & Butta Weaves", "Finished Fabric", "5408", "Electronic Jacquard / Zari Weft", "80 - 140 GSM", "124.00"),
         ]:
             groups[code], _ = GroupProduct.objects.update_or_create(
-                code=code, defaults={"name": name, "category": cat, "hsn_chapter": hsn, "is_active": True}
+                code=code,
+                defaults={
+                    "name": name,
+                    "category": cat,
+                    "hsn_chapter": hsn,
+                    "construction": cons,
+                    "gsm_range": gsm,
+                    "avg_rate": Decimal(rate),
+                    "is_active": True,
+                },
+            )
+
+        slabs = {}
+        for code, name, gst, hsn, notice, rcm in [
+            ("GST-00-EXM", "Raw Cotton Ginned & Agriculture Seeds", "0", "5201, 5202", "Notification 2/2017 - Exempt Goods", False),
+            ("GST-05-TEX", "Textile Fabric & Grey Cotton Goods", "5", "5208, 5209, 5407, 5513", "Notification 1/2017 - Central Tax (Rate)", False),
+            ("GST-12-TEX", "Processed & Finished Man-Made Textiles", "12", "5408, 5801, 6001", "Notification 14/2021 - Integrated Tax", False),
+            ("GST-18-SRV", "Brokerage, Commission & Depot Logistics", "18", "SAC 9961, SAC 9965", "Notification 11/2017 - Services Tax", True),
+            ("GST-28-LUX", "High-Value Metallic & Technical Zari Goods", "28", "5809", "Notification 1/2017 - Sched. IV", False),
+        ]:
+            pct = Decimal(gst)
+            slabs[code], _ = TaxSlab.objects.update_or_create(
+                code=code,
+                defaults={
+                    "name": name,
+                    "gst_percent": pct,
+                    "cgst_percent": pct / 2,
+                    "sgst_percent": pct / 2,
+                    "igst_percent": pct,
+                    "cess_percent": Decimal("0"),
+                    "hsn_coverage": hsn,
+                    "statutory_notification": notice,
+                    "effective_from": "2017-07-01",
+                    "rcm_applicable": rcm,
+                    "is_active": True,
+                },
+            )
+
+        brokers = {}
+        for code, name, firm, rate, pan, mobile, city in [
+            ("BRK-JV09", "Jigneshbhai Vora", "J. Vora Commercial Agency", "2.00", "ABCDE1234F", "+91 98250 18492", "Surat"),
+            ("BRK-CP03", "Chandrakant B. Parekh", "C. Parekh & Sons Yarn Brokers", "1.50", "BCDEF2345G", "+91 98980 44219", "Ahmedabad"),
+            ("BRK-MS14", "Mukeshbhai Shah", "Shah Fabrics Intermediary", "2.00", "CDEFG3456H", "+91 94260 77102", "Rajkot"),
+        ]:
+            brokers[code], _ = BrokerMaster.objects.update_or_create(
+                code=code,
+                defaults={
+                    "name": name,
+                    "firm_name": firm,
+                    "commission_rate": Decimal(rate),
+                    "pan": pan,
+                    "mobile": mobile,
+                    "city": city,
+                    "is_active": True,
+                },
             )
 
         items_spec = [
@@ -78,6 +194,8 @@ class Command(BaseCommand):
                     "packing_unit": unit,
                     "stock_quantity": Decimal(stock),
                     "gst_percent": Decimal("5.00"),
+                    "tax_slab": slabs["GST-05-TEX"],
+                    "mill_origin": "Gujarat Textile Cluster",
                     "is_active": True,
                 },
             )
@@ -92,9 +210,14 @@ class Command(BaseCommand):
             ("CSH-001", "Cash Vault Surat", "Petty Cash", "Cash-in-Hand", "Surat", "Gujarat", "", "", "0", 0, "", "185000", "Dr"),
             ("SAL-001", "Fabric Sales", "Trading Income", "Income", "Surat", "Gujarat", "", "", "0", 0, "", "0", "Cr"),
         ]
+        broker_map = {
+            "Jigneshbhai Vora (JV-09)": brokers["BRK-JV09"],
+            "Chandrakant Parekh (CP-03)": brokers["BRK-CP03"],
+            "Mukeshbhai Shah (MS-14)": brokers["BRK-MS14"],
+        }
         parties = {}
         for code, name, trade, group, city, state, gstin, pan, clim, cdays, broker, obal, btype in parties_spec:
-            parties[code], _ = AccountMaster.objects.update_or_create(
+            obj, _ = AccountMaster.objects.update_or_create(
                 code=code,
                 defaults={
                     "name": name,
@@ -107,24 +230,98 @@ class Command(BaseCommand):
                     "credit_limit": Decimal(clim),
                     "credit_days": cdays,
                     "broker": broker,
+                    "broker_ref": broker_map.get(broker),
                     "opening_balance": Decimal(obal),
                     "balance_type": btype,
                     "is_active": True,
                 },
             )
+            parties[code] = obj
+            if city == "Surat":
+                obj.linked_branches.set([branches["SUR-02"]])
+            elif city == "Ahmedabad":
+                obj.linked_branches.set([branches["AHM-01"]])
+            else:
+                obj.linked_branches.set([branches["RJK-03"]])
 
-        Parameter.objects.update_or_create(
-            category="Transport Zones",
-            code="ZN-SRT-RR",
-            defaults={"name": "Surat Ring Road Textile Hub", "value": "Local Intra-City", "is_active": True},
-        )
+        param_rows = [
+            ("City", "CT-SRT", "Surat", "GJ-24", "Ring Road / Pandesara / Katargam"),
+            ("City", "CT-AMD", "Ahmedabad", "GJ-24", "Narol GIDC / Maskati Market"),
+            ("City", "CT-RJK", "Rajkot", "GJ-24", "Commercial Hub"),
+            ("State", "ST-GJ", "Gujarat", "24", "Home state GST jurisdiction"),
+            ("State", "ST-MH", "Maharashtra", "27", "Interstate IGST supplies"),
+            ("Zone", "ZN-SRT-RR", "Surat Ring Road Textile Hub", "Local Intra-City", "Within 4 Hours (Tempo / Chhakda)"),
+            ("Zone", "ZN-AMD-NRL", "Narol GIDC Processing Corridor", "Ahmedabad Branch", "Next Day Morning Dispatch (260 km)"),
+            ("Zone", "ZN-BHW-OCT", "Bhiwandi Powerloom Terminal", "Maharashtra Inward", "24-36 Hours Interstate Transit"),
+            ("Vehicle", "GJ-05-BX-4912", "Eicher Pro 1049 (Surat Agency Owned)", "3500 kg", "Driver: Babubhai Patel • GPS Live"),
+            ("Vehicle", "GJ-01-CZ-8821", "Tata 407 LPT (Ahmedabad Depot)", "2800 kg", "Contract: Gujarat Logistics Line"),
+            ("Driver", "DRV-BP01", "Babubhai Patel", "GJ-DL-8821", "Surat fleet primary"),
+            ("Driver", "DRV-RK02", "Rakesh Chauhan", "GJ-DL-4410", "Ahmedabad corridor"),
+            ("Rate", "RT-LOCAL", "Local Tempo Delivery", "₹1.10 / mtr", "Intra-city Surat"),
+            ("Rate", "RT-AMD", "Ahmedabad Full Truck", "₹18,500 / trip", "Eicher 3.5T"),
+            ("Grade", "GRD-FRESH-A", "Grade-A Prime Loom State", "100% Invoice Value", "0 defects / 100m, 4-point system score < 12"),
+            ("Grade", "GRD-B-SEL", "Grade-B Select / Job Lot", "92% Invoice Value", "Minor slubs allowed"),
+            ("Shade", "SHD-WHT-01", "Optical White Bleached", "WH-01", "Reactive / optical brightener"),
+            ("Shade", "SHD-NVY-44", "Navy Vat 44", "NV-44", "Vat dyed mill standard"),
+            ("Size", "SZ-58", "58 Inch Loom Width", "58\"", "Cambric / poplin greige"),
+            ("Size", "SZ-44", "44 Inch Process Width", "44\"", "Rayon / jacquard"),
+            ("Commission", "COM-STD-2", "Standard Brokerage", "2.00%", "Surat textile market default"),
+            ("Commission", "COM-YARN-15", "Yarn Brokerage", "1.50%", "Ahmedabad yarn corridor"),
+        ]
+        for cat, code, name, value, notes in param_rows:
+            Parameter.objects.update_or_create(
+                category=cat,
+                code=code,
+                defaults={"name": name, "value": value, "notes": notes, "is_active": True},
+            )
+
+        def upsert_coa(code, name, atype, nature, parent, is_group, bal):
+            obj, _ = ChartAccount.objects.update_or_create(
+                code=code,
+                defaults={
+                    "name": name,
+                    "account_type": atype,
+                    "nature": nature,
+                    "parent": parent,
+                    "is_group": is_group,
+                    "opening_balance": Decimal(str(bal)),
+                    "is_active": True,
+                },
+            )
+            return obj
+
+        assets = upsert_coa("1000", "ASSETS", "Assets", "Debit", None, True, "84200000")
+        ca = upsert_coa("1100", "Current Assets", "Assets", "Debit", assets, True, "62400000")
+        cash = upsert_coa("1110", "Cash & Liquid Bank Balances", "Assets", "Debit", ca, True, "12600000")
+        upsert_coa("1111", "HDFC Bank CA (Surat)", "Assets", "Debit", cash, False, "8420000")
+        upsert_coa("1112", "State Bank of India CA (Narol)", "Assets", "Debit", cash, False, "3840000")
+        upsert_coa("1115", "Petty Cash Till (Surat Head Office)", "Assets", "Debit", cash, False, "340000")
+        debtors = upsert_coa("1120", "Sundry Debtors (Textile Buyers)", "Assets", "Debit", ca, True, "39400000")
+        upsert_coa("1121", "Sharda Synthetics Pvt Ltd (Surat)", "Assets", "Debit", debtors, False, "1482950")
+        upsert_coa("1122", "Patel & Brothers Textiles (Ahmedabad)", "Assets", "Debit", debtors, False, "642800")
+        stock = upsert_coa("1130", "Finished & Grey Fabric Inventory", "Assets", "Debit", ca, True, "6800000")
+        upsert_coa("1131", "Grey Cambric 60x60 Stock Yard", "Assets", "Debit", stock, False, "4120000")
+        upsert_coa("1132", "Rayon Viscose Stock Yard", "Assets", "Debit", stock, False, "2680000")
+        liab = upsert_coa("2000", "LIABILITIES", "Liabilities", "Credit", None, True, "42100000")
+        cl = upsert_coa("2100", "Current Liabilities", "Liabilities", "Credit", liab, True, "28600000")
+        cred = upsert_coa("2110", "Sundry Creditors (Weaving Mills)", "Liabilities", "Credit", cl, True, "18900000")
+        upsert_coa("2111", "Somnath Weaving Mills", "Liabilities", "Credit", cred, False, "2740000")
+        upsert_coa("2112", "Kuber Dyeing & Printing Mills", "Liabilities", "Credit", cred, False, "1894200")
+        income = upsert_coa("3000", "INCOME", "Income", "Credit", None, True, "148200000")
+        upsert_coa("3100", "Fabric Sales", "Income", "Credit", income, False, "128400000")
+        upsert_coa("3200", "Process Job Work Income", "Income", "Credit", income, False, "19800000")
+        expense = upsert_coa("4000", "EXPENSE", "Expense", "Debit", None, True, "112600000")
+        upsert_coa("4100", "Yarn & Greige Purchases", "Expense", "Debit", expense, False, "86400000")
+        upsert_coa("4200", "Freight, Brokerage & Depot Overhead", "Expense", "Debit", expense, False, "26200000")
+        equity = upsert_coa("5000", "EQUITY", "Equity", "Credit", None, True, "42100000")
+        upsert_coa("5100", "Partner Capital Account", "Equity", "Credit", equity, False, "42100000")
 
         admin, created = AuthUser.objects.get_or_create(
             username=settings.DEV_ADMIN_USERNAME,
             defaults={
                 "email": "paresh.patel@ariavagency.com",
                 "role": AuthUser.Role.ADMIN,
-                "display_name": "Paresh Patel (Managing Partner)",
+                "display_name": "Bhargav Akshaya",
                 "is_staff": True,
                 "is_superuser": True,
                 "branch": branches["AHM-01"],
@@ -133,7 +330,7 @@ class Command(BaseCommand):
         admin.set_password(settings.DEV_ADMIN_PASSWORD)
         admin.phone = make_password(str(settings.DEV_ADMIN_PIN))
         admin.role = AuthUser.Role.ADMIN
-        admin.display_name = admin.display_name or "Paresh Patel (Managing Partner)"
+        admin.display_name = "Bhargav Akshaya"
         admin.branch = branches["AHM-01"]
         admin.is_staff = True
         admin.is_active = True
@@ -258,21 +455,6 @@ class Command(BaseCommand):
         self._ledger("2026-09-08", parties["SAL-001"], Decimal("148200"), Decimal("0"), "JV-2025-0291", "Journal", "JV-2025-0291", fy)
         self._ledger("2026-09-08", parties["SOM-092"], Decimal("0"), Decimal("148200"), "JV-2025-0291", "Journal", "JV-2025-0291", fy)
 
-        LoginRequest.objects.update_or_create(
-            request_code="REQ-901",
-            defaults={
-                "user": operator,
-                "username": operator.username,
-                "operator_code": "OP-04",
-                "operator_name": "Bhavin V. Joshi",
-                "branch": branches["SUR-02"].name,
-                "terminal_ip": "192.168.10.42",
-                "action_requested": "Shift Login: Morning Order Entry & Sales Invoicing",
-                "status": LoginRequest.Status.PENDING,
-                "expires_at": timezone.now() + timedelta(minutes=5),
-            },
-        )
-
         AuditLog.objects.get_or_create(
             action="Demo data seeded",
             module="System",
@@ -302,10 +484,19 @@ class Command(BaseCommand):
         from django.apps import apps
 
         for label in [
+            "entities.Entity",
+            "brands.Brand",
+            "categories.Category",
+            "products.Product",
+            "customers.Customer",
             "masters.MasterBranch",
             "masters.ItemMaster",
             "masters.AccountMaster",
             "masters.GroupProduct",
+            "masters.TaxSlab",
+            "masters.BrokerMaster",
+            "masters.ChartAccount",
+            "masters.Parameter",
             "transactions.OrderForm",
             "transactions.SalesInvoice",
             "transactions.BankReceivedVoucher",

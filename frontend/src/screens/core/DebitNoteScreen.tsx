@@ -31,7 +31,7 @@ export const DebitNoteScreen: React.FC = () => {
       'notice'
     );
     showFlash(`Debit Note ${noteNo} posted against Mill Bill ${originalBillNo}`, 'positive');
-    navigateTo(31); // Navigate to Ledger Report
+    navigateTo(44);
   };
 
   return (

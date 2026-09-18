@@ -88,7 +88,7 @@ export const ProfitAndLossScreen: React.FC = () => {
             <span className="w-40 text-right text-[var(--erp-text)]">3,21,40,000.00</span>
           </div>
           <div className="px-4 py-2.5 flex justify-between text-[var(--erp-positive)]">
-            <span className="font-sans">Add: Commercial Agency Commission Inflows</span>
+            <span className="font-sans">Add: Commercial Entity Commission Inflows</span>
             <span className="w-40 text-right">+ 29,64,000.00</span>
           </div>
           <div className="px-4 py-2.5 flex justify-between text-[var(--erp-muted)]">

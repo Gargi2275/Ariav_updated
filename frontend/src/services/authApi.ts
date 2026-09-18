@@ -1,11 +1,22 @@
 /**
- * Auth API client — Django / MySQL backend (VITE_API_BASE_URL).
+ * Auth API client — Django / MySQL backend.
  */
 
-const API_BASE = String(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+import { apiUrl } from './apiBase';
 
-function apiUrl(path: string): string {
-  return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+function persistAuthSession(
+  data: {
+    token?: string;
+    role?: string;
+    user?: { name?: string; role?: string };
+  },
+  fallbackRole: 'admin' | 'operator',
+) {
+  if (data.token) localStorage.setItem('ariav_auth_token', data.token);
+  const raw = data.user?.role || data.role || fallbackRole;
+  const role = raw === 'admin' ? 'admin' : 'operator';
+  localStorage.setItem('ariav_auth_role', role);
+  if (data.user?.name) localStorage.setItem('ariav_auth_name', data.user.name);
 }
 
 export interface PythonHealthInfo {
@@ -34,6 +45,8 @@ export interface AdminLoginResponse {
     email: string;
     role: string;
     branch: string;
+    branch_id?: number | null;
+    branch_code?: string;
   };
   expires_at?: number;
   message?: string;
@@ -189,8 +202,7 @@ export const authApi = {
       });
       const data = await res.json();
       if (res.ok && data.success && data.token) {
-        localStorage.setItem('ariav_auth_token', data.token);
-        localStorage.setItem('ariav_auth_role', 'admin');
+        persistAuthSession(data, 'admin');
       }
       return data;
     } catch (e: any) {
@@ -219,8 +231,7 @@ export const authApi = {
       });
       const data = await res.json();
       if (res.ok && data.success && data.token) {
-        localStorage.setItem('ariav_auth_token', data.token);
-        localStorage.setItem('ariav_auth_role', 'admin');
+        persistAuthSession(data, 'admin');
       }
       return data;
     } catch (e: any) {
@@ -360,8 +371,7 @@ export const authApi = {
       });
       const data = await res.json();
       if (res.ok && data.success && data.token) {
-        localStorage.setItem('ariav_auth_token', data.token);
-        localStorage.setItem('ariav_auth_role', 'operator');
+        persistAuthSession(data, 'operator');
       }
       return data;
     } catch (e: any) {
@@ -418,6 +428,36 @@ export const authApi = {
     }
   },
 
+  async me(): Promise<{
+    success: boolean;
+    role?: 'admin' | 'operator';
+    user?: {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      branch: string;
+      branch_id?: number | null;
+      branch_code?: string;
+    };
+    error?: string;
+  }> {
+    const token = localStorage.getItem('ariav_auth_token');
+    if (!token) return { success: false, error: 'missing' };
+    try {
+      const res = await fetch(apiUrl('/api/auth/me/'), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401 || res.status === 403) {
+        return { success: false, error: 'unauthorized' };
+      }
+      if (!res.ok) return { success: false, error: 'unavailable' };
+      return await res.json();
+    } catch {
+      return { success: false, error: 'unavailable' };
+    }
+  },
+
   // Clear session
   async logout(): Promise<void> {
     const token = localStorage.getItem('ariav_auth_token');
@@ -436,6 +476,9 @@ export const authApi = {
     } finally {
       localStorage.removeItem('ariav_auth_token');
       localStorage.removeItem('ariav_auth_role');
+      localStorage.removeItem('ariav_auth_name');
+      localStorage.removeItem('ariav_selected_entity_id');
+      sessionStorage.removeItem('ariav_current_screen');
     }
   },
 };

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
-import { TextInput, AmountInput, DateInput, PartyPicker, FileDropZone } from '../../components/common/FormControls';
+import { TextInput, AmountInput, DateInput, PartyPicker } from '../../components/common/FormControls';
+import { FileDropZone, formatFileSize } from '../../components/common/FileDropZone';
 import { LedgerMetricStrip, LedgerMetricItem } from '../../components/common/LedgerMetricStrip';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip } from '../../components/common/StatusChip';
@@ -63,6 +64,7 @@ export const OrderFormScreen: React.FC = () => {
   const [validRowsCount, setValidRowsCount] = useState(0);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [importedFilename, setImportedFilename] = useState('');
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
 
   // Sample Orders Register
   const [ordersList, setOrdersList] = useState<OrderRecord[]>([
@@ -194,7 +196,7 @@ export const OrderFormScreen: React.FC = () => {
       badge: 'INDEX'
     },
     {
-      label: 'Agency Brokerage',
+      label: 'Entity Brokerage',
       value: '₹9.64 L',
       subValue: '2.00% Flat Rate',
       trend: 'neutral',
@@ -623,8 +625,13 @@ export const OrderFormScreen: React.FC = () => {
 
             <FileDropZone
               label="Drop 50MB Bulk JSON File"
-              hint="Drag & drop orders dataset (.json) or click to browse up to 50MB"
-              onFileLoaded={(name, size) => handleSimulateBulkImport(name, size)}
+              helper="Drag & drop orders dataset (.json) or click to browse up to 50MB"
+              accept=".json,application/json"
+              file={bulkFile}
+              onChange={next => {
+                setBulkFile(next);
+                if (next) handleSimulateBulkImport(next.name, formatFileSize(next.size));
+              }}
             />
 
             {isProcessing && (

@@ -1,32 +1,185 @@
-from rest_framework.decorators import api_view, permission_classes
+from django.db.models import ProtectedError, Q
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .models import AccountMaster, ItemMaster, MasterBranch, Parameter
-from .serializers import BranchSerializer, ItemSerializer, PartySerializer
+from .permissions import IsAuthenticatedAdminOrReadOnly
+
+from .models import (
+    AccountMaster,
+    BrokerMaster,
+    ChartAccount,
+    GroupProduct,
+    ItemMaster,
+    MasterBranch,
+    Parameter,
+    TaxSlab,
+)
+from .serializers import (
+    BranchSerializer,
+    BrokerSerializer,
+    ChartAccountSerializer,
+    ChartAccountTreeSerializer,
+    GroupProductSerializer,
+    ItemSerializer,
+    ParameterSerializer,
+    PartySerializer,
+    TaxSlabSerializer,
+)
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def branches(request):
-    return Response({"success": True, "results": BranchSerializer(MasterBranch.objects.all(), many=True).data})
+class MastersViewSet(viewsets.ModelViewSet):
+    permission_classes = [AllowAny]
+    pagination_class = None
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            instance.delete()
+        except ProtectedError:
+            return Response(
+                {"detail": "Cannot delete this record because it is used by other documents."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def parties(request):
-    qs = AccountMaster.objects.exclude(group__in=["Income", "Expense", "Capital"])
-    return Response({"success": True, "results": PartySerializer(qs, many=True).data})
+class BranchViewSet(MastersViewSet):
+    queryset = MasterBranch.objects.all().order_by("code")
+    serializer_class = BranchSerializer
+    permission_classes = [IsAuthenticatedAdminOrReadOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get("search")
+        if q:
+            qs = qs.filter(
+                Q(name__icontains=q)
+                | Q(code__icontains=q)
+                | Q(city__icontains=q)
+                | Q(gstin__icontains=q)
+                | Q(address__icontains=q)
+                | Q(phone__icontains=q)
+            )
+        active = self.request.query_params.get("is_active")
+        if active in ("1", "true", "True"):
+            qs = qs.filter(is_active=True)
+        return qs
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def items(request):
-    return Response({"success": True, "results": ItemSerializer(ItemMaster.objects.all(), many=True).data})
+class GroupProductViewSet(MastersViewSet):
+    queryset = GroupProduct.objects.all().order_by("code")
+    serializer_class = GroupProductSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        category = self.request.query_params.get("category")
+        q = self.request.query_params.get("search")
+        if category and category.lower() != "all":
+            qs = qs.filter(category__iexact=category)
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(code__icontains=q) | Q(construction__icontains=q))
+        return qs
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def parameters(request):
-    rows = list(Parameter.objects.values("category", "code", "name", "value", "is_active"))
-    return Response({"success": True, "results": rows})
+class ItemViewSet(MastersViewSet):
+    queryset = ItemMaster.objects.select_related("group", "tax_slab").all().order_by("sku")
+    serializer_class = ItemSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        category = self.request.query_params.get("category")
+        q = self.request.query_params.get("search")
+        if category and category.lower() != "all":
+            qs = qs.filter(category__iexact=category)
+        if q:
+            qs = qs.filter(Q(sku__icontains=q) | Q(description__icontains=q) | Q(hsn__icontains=q) | Q(construction__icontains=q))
+        return qs
+
+
+class PartyViewSet(MastersViewSet):
+    queryset = (
+        AccountMaster.objects.select_related("broker_ref")
+        .prefetch_related("linked_branches")
+        .all()
+        .order_by("code")
+    )
+    serializer_class = PartySerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        group = self.request.query_params.get("group")
+        q = self.request.query_params.get("search")
+        parties_only = self.request.query_params.get("parties")
+        if parties_only in ("1", "true", "yes"):
+            qs = qs.exclude(group__in=["Income", "Expense", "Capital"])
+        if group and group.lower() != "all":
+            qs = qs.filter(group__iexact=group)
+        if q:
+            qs = qs.filter(
+                Q(name__icontains=q) | Q(code__icontains=q) | Q(gstin__icontains=q) | Q(broker__icontains=q) | Q(city__icontains=q)
+            )
+        return qs
+
+
+class ParameterViewSet(MastersViewSet):
+    queryset = Parameter.objects.all().order_by("category", "code")
+    serializer_class = ParameterSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        category = self.request.query_params.get("category")
+        q = self.request.query_params.get("search")
+        if category and category.lower() != "all":
+            qs = qs.filter(category__iexact=category)
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(code__icontains=q) | Q(value__icontains=q) | Q(notes__icontains=q))
+        return qs
+
+
+class TaxSlabViewSet(MastersViewSet):
+    queryset = TaxSlab.objects.all().order_by("gst_percent", "code")
+    serializer_class = TaxSlabSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get("search")
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(code__icontains=q) | Q(hsn_coverage__icontains=q))
+        return qs
+
+
+class BrokerViewSet(MastersViewSet):
+    queryset = BrokerMaster.objects.prefetch_related("parties").all().order_by("code")
+    serializer_class = BrokerSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get("search")
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(code__icontains=q) | Q(city__icontains=q) | Q(firm_name__icontains=q))
+        return qs
+
+
+class ChartAccountViewSet(MastersViewSet):
+    queryset = ChartAccount.objects.select_related("parent").all().order_by("code")
+    serializer_class = ChartAccountSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get("search")
+        nature = self.request.query_params.get("nature")
+        account_type = self.request.query_params.get("account_type")
+        if nature and nature.lower() != "all":
+            qs = qs.filter(nature__iexact=nature)
+        if account_type and account_type.lower() != "all":
+            qs = qs.filter(account_type__iexact=account_type)
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(code__icontains=q))
+        return qs
+
+    @action(detail=False, methods=["get"])
+    def tree(self, request):
+        roots = ChartAccount.objects.filter(parent__isnull=True).order_by("code")
+        return Response(ChartAccountTreeSerializer(roots, many=True).data)

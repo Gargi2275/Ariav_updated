@@ -5,9 +5,10 @@ import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip } from '../../components/common/StatusChip';
 import { OperatorApprovalRequest } from '../../types/erp';
 import { Radio, Check, X, ShieldAlert, Sparkles } from 'lucide-react';
+import { MasterLoading } from '../masters/MasterStatus';
 
 export const ApprovalQueueScreen: React.FC = () => {
-  const { approvalQueue, approveRequest, rejectRequest, selectedBranch } = useErp();
+  const { approvalQueue, approvalQueueLoaded, approveRequest, rejectRequest, selectedBranch } = useErp();
   const [revealedOtp, setRevealedOtp] = useState<{ id: string; otp: string; operator: string } | null>(null);
 
   const handleApprove = async (req: OperatorApprovalRequest) => {
@@ -166,12 +167,16 @@ export const ApprovalQueueScreen: React.FC = () => {
       )}
 
       {/* Sharp-Cornered Queue Table */}
-      <DataTable
-        columns={columns}
-        data={approvalQueue}
-        keyExtractor={r => r.id}
-        emptyMessage="No pending operator approval tickets in queue."
-      />
+      {approvalQueueLoaded ? (
+        <DataTable
+          columns={columns}
+          data={approvalQueue}
+          keyExtractor={r => r.id}
+          emptyMessage="No pending operator approval tickets in queue."
+        />
+      ) : (
+        <MasterLoading label="Loading approval queue…" rows={5} />
+      )}
 
       {/* Bottom Notes */}
       <div className="p-3 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] flex items-center justify-between text-xs text-[var(--erp-muted)] font-mono">

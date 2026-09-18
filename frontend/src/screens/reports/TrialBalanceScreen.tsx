@@ -153,7 +153,7 @@ export const TrialBalanceScreen: React.FC = () => {
     },
     {
       code: '3200',
-      accountName: 'Agency Brokerage Commission',
+      accountName: 'Entity Brokerage Commission',
       category: 'Revenue',
       openingDr: 0,
       openingCr: 0,
@@ -175,7 +175,7 @@ export const TrialBalanceScreen: React.FC = () => {
     },
     {
       code: '4200',
-      accountName: 'Commission & Sub-Agency Disbursed',
+      accountName: 'Commission & Sub-Entity Disbursed',
       category: 'Expense',
       openingDr: 0,
       openingCr: 0,

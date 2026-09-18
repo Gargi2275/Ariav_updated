@@ -1,0 +1,8 @@
+{
+  "status": 400,
+  "body": {
+    "gstin": [
+      "GSTIN must be 15 characters (e.g. 24AABCS8891P1ZV)."
+    ]
+  }
+}

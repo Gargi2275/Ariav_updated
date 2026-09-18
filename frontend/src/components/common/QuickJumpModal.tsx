@@ -36,7 +36,7 @@ export const QuickJumpModal: React.FC = () => {
             autoFocus
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search all 30 screens by name, category, or number (1-30)..."
+            placeholder={`Search all ${ERP_SCREENS.length} screens by name, category, or number…`}
             className="w-full bg-transparent text-sm text-[var(--erp-text)] focus:outline-none placeholder:text-[var(--erp-faint)] font-sans"
           />
           {search && (
@@ -69,7 +69,7 @@ export const QuickJumpModal: React.FC = () => {
             </button>
           ))}
           <span className="ml-auto text-[11px] text-[var(--erp-muted)] font-mono">
-            {filteredScreens.length} of 30 Screens
+            {filteredScreens.length} of {ERP_SCREENS.length} Screens
           </span>
         </div>
 
@@ -134,7 +134,7 @@ export const QuickJumpModal: React.FC = () => {
         {/* Footer info */}
         <div className="p-2.5 border-t border-[var(--erp-hairline)] bg-[var(--erp-surface)] flex items-center justify-between text-[11px] font-mono text-[var(--erp-muted)]">
           <span>Tip: Press [Esc] to exit • Click any module to inspect screen</span>
-          <span>Ariav Gujarat Agency ERP v4.2</span>
+          <span>Ariav Gujarat Entity ERP v4.2</span>
         </div>
       </div>
     </div>

@@ -25,6 +25,18 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "accounts",
+    "entities",
+    "brands",
+    "categories",
+    "products",
+    "customers",
+    "purchase_orders",
+    "dispatches",
+    "invoices",
+    "payments",
+    "notifications",
+    "dashboards",
+    "reports",
     "masters",
     "transactions",
     "ledger",
@@ -90,14 +102,35 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    origin.strip()
+    for origin in os.environ.get(
+        "DJANGO_CORS_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:5174,http://127.0.0.1:5174,"
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
 ]
+# Vite --host serves the app on the LAN (e.g. http://192.168.1.20:5173).
+# Port is left open because Vite increments it when 5173 is already taken.
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http://(localhost|127\.0\.0\.1):\d+$",
+]
+if DEBUG:
+    CORS_ALLOWED_ORIGIN_REGEXES.append(
+        r"^http://("
+        r"192\.168\.\d{1,3}\.\d{1,3}|"
+        r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+        r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
+        r"):\d+$"
+    )
+    ALLOWED_HOSTS = ["*"]
 CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = list(CORS_ALLOWED_ORIGINS)
 
 CACHES = {
     "default": {
@@ -133,3 +166,6 @@ DEV_ADMIN_PASSWORD = os.environ.get("DEV_ADMIN_PASSWORD", "admin123")
 DEV_ADMIN_PIN = os.environ.get("DEV_ADMIN_PIN", "2468")
 DEV_OPERATOR_USERNAME = os.environ.get("DEV_OPERATOR_USERNAME", "bhavin.operator")
 DEV_OPERATOR_PASSWORD = os.environ.get("DEV_OPERATOR_PASSWORD", "operator123")
+
+# Invoice reminder lead time for `python manage.py generate_reminders`.
+NOTIFICATION_UPCOMING_DUE_DAYS = int(os.environ.get("NOTIFICATION_UPCOMING_DUE_DAYS", "3"))

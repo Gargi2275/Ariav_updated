@@ -143,7 +143,7 @@ export const AuditLogScreen: React.FC = () => {
             className="w-full px-3 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)]"
           >
             <option value="all">All Personnel</option>
-            <option value="Paresh Patel">Paresh Patel (Admin)</option>
+            <option value="Bhargav Akshaya">Bhargav Akshaya (Admin)</option>
             <option value="Bhavin V. Joshi">Bhavin Joshi (OP-04)</option>
             <option value="Dharmesh K. Panchal">Dharmesh Panchal (OP-07)</option>
             <option value="System Cron">System Automated</option>

@@ -1,4 +1,4 @@
-import { Branch, PartyAccount, TextileItem, AuditLogEntry, OperatorApprovalRequest } from '../types/erp';
+import { Branch, PartyAccount, TextileItem, AuditLogEntry } from '../types/erp';
 
 export const INITIAL_BRANCHES: Branch[] = [
   { id: 'BR-AHM', name: 'Ahmedabad Narol Central', code: 'AHM-01', city: 'Ahmedabad', gstin: '24AAACA1234F1Z8', isHeadOffice: true },
@@ -197,49 +197,11 @@ export const INITIAL_ITEMS: TextileItem[] = [
   }
 ];
 
-export const INITIAL_APPROVAL_REQUESTS: OperatorApprovalRequest[] = [
-  {
-    id: 'REQ-901',
-    operatorName: 'Bhavin V. Joshi',
-    operatorCode: 'OP-04',
-    branch: 'Surat Ring Road Textile Mkt',
-    terminalIp: '192.168.10.42',
-    actionRequested: 'Delete Draft Sales Invoice #INV-2025-0842 (Overlimit)',
-    timestamp: '11:42:18 AM',
-    status: 'pending',
-    verbalOtp: '849-210',
-    expiresInSeconds: 245
-  },
-  {
-    id: 'REQ-902',
-    operatorName: 'Dharmesh K. Panchal',
-    operatorCode: 'OP-07',
-    branch: 'Ahmedabad Narol Central',
-    terminalIp: '192.168.1.18',
-    actionRequested: 'Manual Credit Note CN-2025-014 exceeding ₹50,000 threshold',
-    timestamp: '11:39:05 AM',
-    status: 'pending',
-    verbalOtp: '612-498',
-    expiresInSeconds: 180
-  },
-  {
-    id: 'REQ-898',
-    operatorName: 'Rameshwar Solanki',
-    operatorCode: 'OP-02',
-    branch: 'Rajkot Commercial Hub',
-    terminalIp: '192.168.20.10',
-    actionRequested: 'Backdated Journal Entry JV-2025-091 to March 2025',
-    timestamp: '10:55:12 AM',
-    status: 'approved',
-    verbalOtp: '315-772'
-  }
-];
-
 export const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [
   {
     id: 'AUD-8910',
     timestamp: '2026-09-08 11:41:20',
-    user: 'Paresh Patel (Admin)',
+    user: 'Bhargav Akshaya (Admin)',
     role: 'Managing Partner',
     action: 'Approved verbal OTP for Operator #OP-02',
     module: 'Security Gate',
@@ -283,7 +245,7 @@ export const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [
   {
     id: 'AUD-8906',
     timestamp: '2026-09-08 10:15:33',
-    user: 'Paresh Patel (Admin)',
+    user: 'Bhargav Akshaya (Admin)',
     role: 'Managing Partner',
     action: 'Modified Credit Limit for Sharda Synthetics',
     module: 'Account Master',

@@ -1,296 +1,186 @@
-import React, { useState } from 'react';
-import { useErp } from '../../context/ErpContext';
+import React, { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip } from '../../components/common/StatusChip';
 import { TextInput } from '../../components/common/FormControls';
-import { UserCheck, Plus, Edit2, X } from 'lucide-react';
+import { MasterError, MasterLoading, emptyTableProps } from './MasterStatus';
+import { MasterBroker, mastersApi, num } from '../../services/mastersApi';
+import { notifyApiError, notifySuccess } from '../../services/notify';
+import { Plus, Edit2, X, Trash2 } from 'lucide-react';
+import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 
-interface BrokerRecord {
-  id: string;
-  name: string;
-  firmName: string;
-  commissionRate: number;
-  pan: string;
-  mobile: string;
-  city: string;
-  linkedPartiesCount: number;
-  linkedParties: string[];
-  ytdTurnoverBrokered: number;
-  ytdBrokerageAccrued: number;
-  status: 'active' | 'suspended';
-}
+const emptyBroker = (): Partial<MasterBroker> => ({
+  code: '',
+  name: '',
+  firm_name: '',
+  commission_rate: 2,
+  pan: '',
+  mobile: '',
+  city: 'Surat',
+  is_active: true,
+});
 
 export const BrokerMasterScreen: React.FC = () => {
-  const { showFlash, addAuditLog } = useErp();
-
-  const [brokers, setBrokers] = useState<BrokerRecord[]>([
-    {
-      id: 'BRK-JV09',
-      name: 'Jigneshbhai Vora',
-      firmName: 'J. Vora Commercial Agency',
-      commissionRate: 2.0,
-      pan: 'ABCDE1234F',
-      mobile: '+91 98250 18492',
-      city: 'Surat',
-      linkedPartiesCount: 14,
-      linkedParties: ['Sharda Synthetics', 'Patel & Brothers', 'Radhe Dyeing'],
-      ytdTurnoverBrokered: 71200000,
-      ytdBrokerageAccrued: 1424000,
-      status: 'active'
-    },
-    {
-      id: 'BRK-CP03',
-      name: 'Chandrakant B. Parekh',
-      firmName: 'C. Parekh & Sons Yarn Brokers',
-      commissionRate: 1.5,
-      pan: 'BCDEF2345G',
-      mobile: '+91 98980 44219',
-      city: 'Ahmedabad',
-      linkedPartiesCount: 9,
-      linkedParties: ['Arvind Commercial Agency', 'Marwadi Fashion'],
-      ytdTurnoverBrokered: 48900000,
-      ytdBrokerageAccrued: 733500,
-      status: 'active'
-    },
-    {
-      id: 'BRK-MS14',
-      name: 'Mukeshbhai Shah',
-      firmName: 'Shah Fabrics Intermediary',
-      commissionRate: 2.0,
-      pan: 'CDEFG3456H',
-      mobile: '+91 94260 77102',
-      city: 'Rajkot',
-      linkedPartiesCount: 6,
-      linkedParties: ['Saurashtra Weaving Coop'],
-      ytdTurnoverBrokered: 28100000,
-      ytdBrokerageAccrued: 562000,
-      status: 'active'
-    }
-  ]);
-
+  const [rows, setRows] = useState<MasterBroker[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingBroker, setEditingBroker] = useState<Partial<BrokerRecord> | null>(null);
+  const [form, setForm] = useState<Partial<MasterBroker>>(emptyBroker());
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<MasterBroker | null>(null);
 
-  const handleOpenCreate = () => {
-    setEditingBroker({
-      id: `BRK-N${Math.floor(10 + Math.random() * 80)}`,
-      name: '',
-      firmName: '',
-      commissionRate: 2.0,
-      pan: '',
-      mobile: '+91 ',
-      city: 'Surat',
-      linkedPartiesCount: 0,
-      linkedParties: [],
-      ytdTurnoverBrokered: 0,
-      ytdBrokerageAccrued: 0,
-      status: 'active'
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingBroker || !editingBroker.name) return;
-
-    const exists = brokers.some(b => b.id === editingBroker.id);
-    if (exists) {
-      setBrokers(prev => prev.map(b => (b.id === editingBroker.id ? (editingBroker as BrokerRecord) : b)));
-      addAuditLog('Updated Broker Master', 'Masters & Accounts', `Updated broker ${editingBroker.name}`, 'notice');
-      showFlash(`Broker ${editingBroker.name} updated`, 'positive');
-    } else {
-      setBrokers(prev => [editingBroker as BrokerRecord, ...prev]);
-      addAuditLog('Registered New Broker Master', 'Masters & Accounts', `Registered broker ${editingBroker.name}`, 'info');
-      showFlash(`Broker ${editingBroker.name} registered`, 'positive');
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setRows(await mastersApi.brokers.list<MasterBroker>());
+    } catch (e) {
+      const parsed = notifyApiError(e, 'Could not load brokers.');
+      setError(parsed.message);
+    } finally {
+      setLoading(false);
     }
-    setIsModalOpen(false);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const filtered = rows.filter(b => {
+    const q = search.toLowerCase();
+    return !q || b.name.toLowerCase().includes(q) || b.code.toLowerCase().includes(q) || b.city.toLowerCase().includes(q);
+  });
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const payload = { ...form, commission_rate: num(form.commission_rate), is_active: form.is_active !== false };
+      if (form.id) await mastersApi.brokers.update(form.id, payload);
+      else await mastersApi.brokers.create(payload);
+      notifySuccess(`Broker '${form.name}' saved.`);
+      setIsModalOpen(false);
+      await load();
+    } catch (err) {
+      notifyApiError(err);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const columns: Column<BrokerRecord>[] = [
-    {
-      header: 'Code',
-      accessorKey: 'id',
-      mono: true,
-      width: '90px',
-      render: r => <span className="font-mono text-[var(--erp-gold)]">{r.id}</span>
-    },
+  const columns: Column<MasterBroker>[] = [
+    { header: 'Code', accessorKey: 'code', mono: true, width: '90px', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.code}</span> },
     {
       header: 'Broker Name & Firm',
       accessorKey: 'name',
       render: r => (
         <div>
-          <span className="font-medium text-[var(--erp-text)]">{r.name}</span>
-          <span className="text-[11px] font-mono text-[var(--erp-muted)] block">
-            {r.firmName} • {r.city} • {r.mobile}
-          </span>
+          <span className="font-medium">{r.name}</span>
+          <span className="text-[11px] font-mono text-[var(--erp-muted)] block">{r.firm_name} • {r.city} • {r.mobile}</span>
         </div>
-      )
+      ),
     },
-    {
-      header: 'Rate %',
-      accessorKey: 'commissionRate',
-      align: 'center',
-      mono: true,
-      width: '80px',
-      render: r => <span className="font-bold text-[var(--erp-gold)]">{r.commissionRate}%</span>
-    },
+    { header: 'Rate %', accessorKey: 'commission_rate', align: 'center', mono: true, width: '80px', render: r => <span className="font-bold text-[var(--erp-gold)]">{num(r.commission_rate)}%</span> },
     {
       header: 'Linked Parties',
       render: r => (
         <div>
-          <span className="font-mono text-xs text-[var(--erp-text)] font-semibold block">
-            {r.linkedPartiesCount} Accounts
-          </span>
-          <span className="text-[11px] text-[var(--erp-muted)] truncate block max-w-xs">
-            {r.linkedParties.join(', ')}
-          </span>
+          <span className="font-mono text-xs font-semibold block">{r.linked_parties_count} Accounts</span>
+          <span className="text-[11px] text-[var(--erp-muted)] truncate block max-w-xs">{(r.linked_parties || []).join(', ') || '—'}</span>
         </div>
-      )
+      ),
     },
+    { header: 'PAN', accessorKey: 'pan', mono: true },
+    { header: 'Status', accessorKey: 'is_active', align: 'center', width: '90px', render: r => <StatusChip status={r.is_active ? 'active' : 'inactive'} label={r.is_active ? 'ACTIVE' : 'SUSPENDED'} /> },
     {
-      header: 'Brokered Turnover',
-      accessorKey: 'ytdTurnoverBrokered',
+      header: 'Actions',
       align: 'right',
-      mono: true,
-      render: r => <span>₹{(r.ytdTurnoverBrokered / 100000).toFixed(1)} L</span>
-    },
-    {
-      header: 'Accrued Brokerage',
-      accessorKey: 'ytdBrokerageAccrued',
-      align: 'right',
-      mono: true,
-      render: r => <span className="text-[var(--erp-gold)] font-semibold">₹{(r.ytdBrokerageAccrued / 1000).toFixed(0)} K</span>
-    },
-    {
-      header: 'Status',
-      accessorKey: 'status',
-      align: 'center',
-      width: '90px',
-      render: r => <StatusChip status={r.status === 'active' ? 'cleared' : 'rejected'} label={r.status.toUpperCase()} />
-    },
-    {
-      header: 'Edit',
-      align: 'right',
-      width: '70px',
       render: r => (
-        <button
-          onClick={() => {
-            setEditingBroker({ ...r });
-            setIsModalOpen(true);
-          }}
-          className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)]"
-        >
-          <Edit2 className="w-3.5 h-3.5" />
-        </button>
-      )
-    }
+        <div className="flex justify-end gap-1">
+          <button className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)]" onClick={() => { setForm(r); setIsModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /></button>
+          <button className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)]" onClick={() => setPendingDelete(r)}><Trash2 className="w-3.5 h-3.5" /></button>
+        </div>
+      ),
+    },
   ];
 
   return (
     <div className="p-6 flex flex-col gap-6 text-left">
-      {/* Unified Page Header */}
       <PageHeader
         moduleNumber="28"
         section="Masters"
-        title="Broker & Intermediary Master"
-        subtitle="Brokerage percentage configurations, turnover tracking and client party linkages across textile markets."
+        title="Broker Master"
+        subtitle="Commission Rate, Active Status & Linked Accounts"
         actions={
-          <button
-            onClick={handleOpenCreate}
-            className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-mono text-xs font-semibold hover:bg-[var(--erp-gold-soft)] transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
+          <button onClick={() => { setForm(emptyBroker()); setIsModalOpen(true); }} className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-mono text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
             <Plus className="w-3.5 h-3.5" /> Register New Broker
           </button>
         }
       />
+      {error && <MasterError message={error} onRetry={load} />}
+      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search broker, code or city..." className="w-full sm:w-96 px-3 py-1.5 text-xs font-mono bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none" />
+      {loading ? (
+        <MasterLoading label="Loading brokers…" />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={filtered}
+          keyExtractor={r => r.id}
+          {...emptyTableProps(
+            rows.length,
+            filtered.length,
+            'No brokers registered yet.',
+            'No brokers match this search.',
+            'Register first broker',
+            () => { setForm(emptyBroker()); setIsModalOpen(true); },
+          )}
+        />
+      )}
 
-      <DataTable
-        columns={columns}
-        data={brokers}
-        keyExtractor={r => r.id}
-      />
-
-      {isModalOpen && editingBroker && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-xl bg-[var(--erp-surface)] border border-[var(--erp-gold)] shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-150 text-left">
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--erp-hairline)]">
-              <div>
-                <span className="font-mono text-xs text-[var(--erp-gold)]">{editingBroker.id}</span>
-                <h3 className="font-serif text-lg font-bold text-[var(--erp-text)]">
-                  Broker Commission Account
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-1.5 text-[var(--erp-muted)] hover:text-[var(--erp-text)] border border-[var(--erp-hairline)]"
-              >
-                <X className="w-4 h-4" />
-              </button>
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <form onSubmit={save} className="w-full max-w-xl bg-[var(--erp-surface)] border border-[var(--erp-gold)] p-6 space-y-4">
+            <div className="flex justify-between border-b border-[var(--erp-hairline)] pb-3">
+              <h3 className="font-serif text-lg font-bold">Broker Commission Account</h3>
+              <button type="button" onClick={() => setIsModalOpen(false)}><X className="w-4 h-4" /></button>
             </div>
-
-            <form onSubmit={handleSave} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <TextInput
-                  label="Broker Full Name"
-                  value={editingBroker.name || ''}
-                  onChange={e => setEditingBroker({ ...editingBroker, name: e.target.value })}
-                  required
-                />
-                <TextInput
-                  label="Firm / Agency Name"
-                  value={editingBroker.firmName || ''}
-                  onChange={e => setEditingBroker({ ...editingBroker, firmName: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <TextInput
-                  label="Standard Comm. Rate %"
-                  mono
-                  value={editingBroker.commissionRate?.toString() || '2.0'}
-                  onChange={e => setEditingBroker({ ...editingBroker, commissionRate: parseFloat(e.target.value) || 0 })}
-                />
-                <TextInput
-                  label="Income Tax PAN"
-                  mono
-                  value={editingBroker.pan || ''}
-                  onChange={e => setEditingBroker({ ...editingBroker, pan: e.target.value.toUpperCase() })}
-                />
-                <TextInput
-                  label="Operating City"
-                  value={editingBroker.city || 'Surat'}
-                  onChange={e => setEditingBroker({ ...editingBroker, city: e.target.value })}
-                />
-              </div>
-
-              <TextInput
-                label="Primary Contact Mobile"
-                mono
-                value={editingBroker.mobile || ''}
-                onChange={e => setEditingBroker({ ...editingBroker, mobile: e.target.value })}
-              />
-
-              <div className="pt-4 border-t border-[var(--erp-hairline)] flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-[var(--erp-hairline)] text-xs font-mono text-[var(--erp-muted)] hover:text-[var(--erp-text)]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-mono font-semibold hover:bg-[var(--erp-gold-soft)]"
-                >
-                  Save Broker Master
-                </button>
-              </div>
-            </form>
-          </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <TextInput label="Broker Code" mono required value={form.code || ''} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} />
+              <TextInput label="Broker Full Name" required value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <TextInput label="Firm Name" value={form.firm_name || ''} onChange={e => setForm({ ...form, firm_name: e.target.value })} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <TextInput label="Commission Rate %" mono value={String(form.commission_rate ?? 2)} onChange={e => setForm({ ...form, commission_rate: e.target.value })} />
+              <TextInput label="PAN" mono value={form.pan || ''} onChange={e => setForm({ ...form, pan: e.target.value.toUpperCase() })} />
+              <TextInput label="City" value={form.city || ''} onChange={e => setForm({ ...form, city: e.target.value })} />
+            </div>
+            <TextInput label="Mobile" mono value={form.mobile || ''} onChange={e => setForm({ ...form, mobile: e.target.value })} />
+            <label className="flex items-center gap-2 text-xs font-mono">
+              <input type="checkbox" checked={form.is_active !== false} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> Active
+            </label>
+            <div className="flex justify-end gap-3 pt-4 border-t border-[var(--erp-hairline)]">
+              <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border border-[var(--erp-hairline)] text-xs font-mono">Cancel</button>
+              <button type="submit" disabled={saving} className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">{saving ? 'Saving…' : 'Save Broker Master'}</button>
+            </div>
+          </form>
         </div>
       )}
+      <ConfirmDialog
+        open={!!pendingDelete}
+        entityType="broker"
+        entityLabel={pendingDelete ? `${pendingDelete.name} (${pendingDelete.code})` : ''}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={async () => {
+          if (!pendingDelete) return;
+          try {
+            await mastersApi.brokers.remove(pendingDelete.id);
+            notifySuccess('Broker deleted.');
+            setPendingDelete(null);
+            await load();
+          } catch (err) {
+            notifyApiError(err);
+          }
+        }}
+      />
     </div>
   );
 };

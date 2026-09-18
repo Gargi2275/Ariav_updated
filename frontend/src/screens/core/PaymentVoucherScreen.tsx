@@ -194,7 +194,7 @@ export const PaymentVoucherScreen: React.FC = () => {
 
               <div className="p-3 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] flex flex-col justify-between">
                 <span className="text-[var(--erp-muted)]">TDS PAYABLE LEDGER</span>
-                <span className="text-xs text-[var(--erp-text)]">TDS Payable A/c (Agency Books)</span>
+                <span className="text-xs text-[var(--erp-text)]">TDS Payable A/c (Entity Books)</span>
               </div>
             </div>
           )}

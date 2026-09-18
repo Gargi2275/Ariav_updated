@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useErp } from '../../context/ErpContext';
-import { useTheme } from '../../context/ThemeContext';
+import { ALL_ENTITIES, ALL_ENTITIES_ID } from '../../types/erp';
+import { NotificationBell } from './NotificationBell';
+import { IconCountBadge } from './IconCountBadge';
+import { ThemeToggle } from './ThemeToggle';
 import { 
   Building2, 
   Calendar, 
   Clock, 
-  Sun, 
-  Moon, 
   Command, 
   ShieldCheck, 
   UserCheck, 
-  Bell,
+  ClipboardCheck,
   SlidersHorizontal,
   ChevronDown,
   X
@@ -20,18 +21,17 @@ export const TopBar: React.FC = () => {
   const { 
     branches, 
     selectedBranch, 
-    setSelectedBranch, 
+    setSelectedEntityId, 
     financialYear, 
     setFinancialYear,
     userRole,
-    setUserRole,
+    sessionUserName,
     approvalQueue,
     liveClock,
     setQuickJumpOpen,
     navigateTo
   } = useErp();
 
-  const { theme, toggleTheme } = useTheme();
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
   const contextRef = useRef<HTMLDivElement>(null);
 
@@ -58,17 +58,8 @@ export const TopBar: React.FC = () => {
         boxShadow: '0 1px 0 var(--erp-hairline)'
       }}
     >
-      {/* Left: Global System Terminal Identity (Never wraps or breaks) */}
+      {/* Left: mobile/tablet branch context */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs font-mono whitespace-nowrap">
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--erp-positive)] shrink-0 animate-pulse" />
-          <span className="font-semibold text-[var(--erp-text)] tracking-wider">
-            BHARAT <span className="hidden sm:inline">TEXTILE </span>ERP
-          </span>
-          <span className="text-[var(--erp-hairline-strong)] hidden 2xl:inline">|</span>
-          <span className="text-[var(--erp-muted)] hidden 2xl:inline">TERMINAL ONLINE</span>
-        </div>
-
         {/* Mobile/Tablet Compact Branch Indicator & Context Trigger (< lg) */}
         <div className="relative lg:hidden" ref={contextRef}>
           <button
@@ -78,7 +69,7 @@ export const TopBar: React.FC = () => {
           >
             <Building2 className="w-3.5 h-3.5 text-[var(--erp-gold)] shrink-0" />
             <span className="max-w-[90px] sm:max-w-[130px] truncate">
-              {selectedBranch.city}
+              {selectedBranch.name}
             </span>
             <ChevronDown className="w-3 h-3 text-[var(--erp-muted)] shrink-0" />
           </button>
@@ -101,24 +92,30 @@ export const TopBar: React.FC = () => {
               {/* Branch Selector in Dropdown */}
               <div className="mb-3">
                 <label className="block font-mono text-[10px] text-[var(--erp-muted)] mb-1">
-                  OPERATING HUB / BRANCH
+                  ENTITY
                 </label>
                 <div className="relative">
                   <Building2 className="w-3.5 h-3.5 text-[var(--erp-gold)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <select
-                    value={selectedBranch.id}
+                    value={selectedBranch.id || ALL_ENTITIES_ID}
                     onChange={e => {
-                      const b = branches.find(br => br.id === e.target.value);
-                      if (b) {
-                        setSelectedBranch(b);
-                        setMobileContextOpen(false);
+                      const value = e.target.value;
+                      if (value === ALL_ENTITIES_ID) {
+                        setSelectedEntityId(ALL_ENTITIES_ID);
+                      } else {
+                        const n = Number(value);
+                        if (Number.isFinite(n)) setSelectedEntityId(n);
                       }
+                      setMobileContextOpen(false);
                     }}
                     className="w-full pl-8 pr-3 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none"
                   >
+                    <option value={ALL_ENTITIES_ID} className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">
+                      {ALL_ENTITIES.name}
+                    </option>
                     {branches.map(b => (
-                      <option key={b.id} value={b.id} className="bg-[var(--erp-surface)] text-[var(--erp-text)]">
-                        {b.name} ({b.city})
+                      <option key={b.id} value={b.id} className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">
+                        {b.code} · {b.name}
                       </option>
                     ))}
                   </select>
@@ -138,7 +135,7 @@ export const TopBar: React.FC = () => {
                       setFinancialYear(e.target.value);
                       setMobileContextOpen(false);
                     }}
-                    className="w-full pl-8 pr-3 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none"
+                    className="w-full pl-9 pr-7 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none"
                   >
                     <option value="2025-26" className="bg-[var(--erp-surface)] text-[var(--erp-text)]">FY 2025-26 (Current)</option>
                     <option value="2024-25" className="bg-[var(--erp-surface)] text-[var(--erp-text)]">FY 2024-25</option>
@@ -166,17 +163,25 @@ export const TopBar: React.FC = () => {
         <div className="relative hidden lg:flex items-center">
           <Building2 className="w-3.5 h-3.5 stroke-[1.75] text-[var(--erp-gold)] absolute left-2.5 pointer-events-none" />
           <select
-            value={selectedBranch.id}
+            value={selectedBranch.id || ALL_ENTITIES_ID}
             onChange={e => {
-              const b = branches.find(br => br.id === e.target.value);
-              if (b) setSelectedBranch(b);
+              const value = e.target.value;
+              if (value === ALL_ENTITIES_ID) {
+                setSelectedEntityId(ALL_ENTITIES_ID);
+                return;
+              }
+              const n = Number(value);
+              if (Number.isFinite(n)) setSelectedEntityId(n);
             }}
-            className="pl-7 pr-3 py-1 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] rounded-none cursor-pointer max-w-[150px] xl:max-w-[210px] 2xl:max-w-[260px] truncate"
-            title={selectedBranch.name}
+            className="pl-7 pr-6 py-1 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] rounded-none cursor-pointer min-w-[200px] max-w-[280px] xl:max-w-[360px] 2xl:max-w-[420px]"
+            title={selectedBranch.id === ALL_ENTITIES_ID ? ALL_ENTITIES.name : `${selectedBranch.code} · ${selectedBranch.name}`}
           >
+            <option value={ALL_ENTITIES_ID} className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">
+              {ALL_ENTITIES.name}
+            </option>
             {branches.map(b => (
               <option key={b.id} value={b.id} className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">
-                {b.name} ({b.city})
+                {b.code} · {b.name}
               </option>
             ))}
           </select>
@@ -188,7 +193,7 @@ export const TopBar: React.FC = () => {
           <select
             value={financialYear}
             onChange={e => setFinancialYear(e.target.value)}
-            className="pl-7 pr-3 py-1 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] rounded-none cursor-pointer w-[115px]"
+            className="pl-9 pr-7 py-1 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] rounded-none cursor-pointer min-w-[152px]"
           >
             <option value="2025-26" className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">FY 2025-26</option>
             <option value="2024-25" className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">FY 2024-25</option>
@@ -202,99 +207,55 @@ export const TopBar: React.FC = () => {
           <span className="tracking-tight text-[var(--erp-text)] font-mono">{liveClock}</span>
         </div>
 
-        {/* Theme Toggle - Full dual capsule on 2xl+, compact icon button on smaller viewports */}
-        <div className="hidden 2xl:flex">
-          <button
-            onClick={toggleTheme}
-            className="flex items-center p-0.5 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-gold)] transition-all cursor-pointer select-none rounded-none"
-            title={`Active Theme: ${theme === 'dark' ? 'Ledger Terminal' : 'Paper Ledger'}. Click to toggle.`}
-            aria-label="Toggle ERP Theme"
-          >
-            <div className="flex items-center text-[11px] font-mono whitespace-nowrap">
-              <span
-                className={`px-2 py-1 flex items-center gap-1.5 transition-all ${
-                  theme === 'dark'
-                    ? 'bg-[var(--erp-base)] text-[var(--erp-gold)] font-bold shadow-xs'
-                    : 'text-[var(--erp-muted)] hover:text-[var(--erp-text)]'
-                }`}
-              >
-                <Moon className="w-3.5 h-3.5 stroke-[1.75] text-[var(--erp-gold)]" />
-                <span>Terminal</span>
-              </span>
-              <span
-                className={`px-2 py-1 flex items-center gap-1.5 transition-all ${
-                  theme === 'light'
-                    ? 'bg-[var(--erp-surface)] text-[var(--erp-gold)] font-bold shadow-xs'
-                    : 'text-[var(--erp-muted)] hover:text-[var(--erp-text)]'
-                }`}
-              >
-                <Sun className="w-3.5 h-3.5 stroke-[1.75] text-[var(--erp-gold)]" />
-                <span>Paper Ledger</span>
-              </span>
-            </div>
-          </button>
-        </div>
+        <ThemeToggle />
 
-        {/* Compact Theme Toggle (< 2xl) */}
-        <button
-          onClick={toggleTheme}
-          className="2xl:hidden p-1.5 px-2 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-gold)] text-[var(--erp-text)] transition-colors cursor-pointer flex items-center gap-1"
-          title={`Switch to ${theme === 'dark' ? 'Paper Ledger' : 'Terminal Dark'} theme`}
-          aria-label="Toggle Theme"
-        >
-          {theme === 'dark' ? (
-            <Sun className="w-3.5 h-3.5 text-[var(--erp-gold)]" />
-          ) : (
-            <Moon className="w-3.5 h-3.5 text-[var(--erp-muted)]" />
-          )}
-        </button>
+        {/* Notifications — in-app reminders (unread badge) */}
+        <NotificationBell />
 
-        {/* Pending Approvals Shortcut */}
+        {/* Pending operator login approvals (Live Approval Queue) */}
         <button
+          type="button"
           onClick={() => navigateTo(5)}
-          title="Open Live Approval Queue"
-          className="relative px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-gold)] transition-colors flex items-center gap-1.5 font-mono cursor-pointer whitespace-nowrap"
+          title={`Pending approvals (${pendingApprovalsCount})`}
+          aria-label={`Pending operator login approvals, ${pendingApprovalsCount} waiting`}
+          className="relative h-8 w-8 inline-flex items-center justify-center bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-negative)] transition-colors cursor-pointer"
         >
-          <Bell className="w-3.5 h-3.5 stroke-[1.75] text-[var(--erp-gold)] shrink-0" />
-          <span className="erp-badge erp-badge-gold text-[10px] px-1.5 py-0">
-            <span className="hidden sm:inline">QUEUE </span>{pendingApprovalsCount}
-          </span>
+          <ClipboardCheck className="w-3.5 h-3.5 stroke-[1.75] text-[var(--erp-negative)] shrink-0" />
+          <IconCountBadge count={pendingApprovalsCount} tone="rose" />
         </button>
 
         {/* Quick Screen Switcher (Cmd+K) */}
         <button
+          type="button"
           onClick={() => setQuickJumpOpen(true)}
-          className="px-2 sm:px-2.5 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-gold)] transition-colors flex items-center gap-1.5 text-xs text-[var(--erp-muted)] hover:text-[var(--erp-text)] whitespace-nowrap cursor-pointer"
-          title="Quick Jump / Search 35 ERP Modules (Cmd+K)"
+          className="h-8 w-8 inline-flex items-center justify-center bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-gold)] transition-colors text-[var(--erp-muted)] hover:text-[var(--erp-text)] cursor-pointer"
+          title="Modules (⌘K)"
+          aria-label="Open modules (Command K)"
         >
-          <Command className="w-3.5 h-3.5 text-[var(--erp-gold)] shrink-0" />
-          <span className="font-mono text-xs hidden md:inline">Modules</span>
-          <kbd className="px-1 font-mono text-[10px] border border-[var(--erp-hairline)] bg-[var(--erp-surface)] hidden sm:inline">
-            ⌘K
-          </kbd>
+          <Command className="w-3.5 h-3.5 text-[var(--erp-gold)]" />
         </button>
 
-        {/* Role & User Avatar Toggle */}
+        {/* Session role badge — read-only; role comes from /api/auth/me/ */}
         <div
-          onClick={() => setUserRole(userRole === 'admin' ? 'operator' : 'admin')}
-          className="flex items-center gap-2 pl-1.5 sm:pl-2 border-l border-[var(--erp-hairline)] cursor-pointer select-none group shrink-0"
-          title="Click to toggle between Admin and Operator role"
+          className="flex items-center gap-2 pl-1.5 sm:pl-2 border-l border-[var(--erp-hairline)] select-none shrink-0"
+          title={userRole === 'admin' ? 'Admin session' : 'Operator session'}
+          aria-label={userRole === 'admin' ? 'Admin' : 'Operator'}
         >
           <div className="w-7 h-7 rounded-none bg-[var(--erp-gold)]/20 border border-[var(--erp-gold)] flex items-center justify-center font-mono text-xs font-semibold text-[var(--erp-gold)] shrink-0">
             {userRole === 'admin' ? 'AD' : 'OP'}
           </div>
           <div className="hidden lg:flex flex-col text-left whitespace-nowrap">
-            <span className="text-xs font-medium text-[var(--erp-text)] leading-tight group-hover:text-[var(--erp-gold)] transition-colors">
-              {userRole === 'admin' ? 'Paresh Patel' : 'Bhavin Joshi'}
+            <span className="text-xs font-medium text-[var(--erp-text)] leading-tight">
+              {sessionUserName || (userRole === 'admin' ? 'Admin' : 'Operator')}
             </span>
             <span className="text-[10px] font-mono text-[var(--erp-muted)] leading-tight flex items-center gap-1">
               {userRole === 'admin' ? (
                 <>
-                  <ShieldCheck className="w-3 h-3 text-[var(--erp-positive)]" /> Admin (PIN)
+                  <ShieldCheck className="w-3 h-3 text-[var(--erp-positive)]" /> Admin
                 </>
               ) : (
                 <>
-                  <UserCheck className="w-3 h-3 text-[var(--erp-gold)]" /> Operator (OTP)
+                  <UserCheck className="w-3 h-3 text-[var(--erp-gold)]" /> Operator
                 </>
               )}
             </span>

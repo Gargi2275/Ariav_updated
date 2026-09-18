@@ -6,24 +6,16 @@ import {
   Lock, 
   Unlock,
   ArrowRight, 
-  Server, 
   Loader2, 
   Eye, 
   EyeOff, 
   Sun, 
   Moon, 
   CheckCircle2, 
-  KeyRound, 
-  Radio, 
-  Sparkles,
-  Building2,
-  Shield,
   User,
   HelpCircle,
-  Fingerprint,
   AlertTriangle,
   Clock,
-  RotateCcw,
   X,
   AlertCircle,
   ArrowLeft
@@ -43,13 +35,13 @@ export const LoginScreen: React.FC = () => {
   });
 
   // Screen 1: Unified Credentials Form
-  const [username, setUsername] = useState('paresh.admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [credentialError, setCredentialError] = useState('');
   const [isValidatingCredentials, setIsValidatingCredentials] = useState(false);
   const [tempToken, setTempToken] = useState<string>('');
-  const [verifiedIdentity, setVerifiedIdentity] = useState<string>('paresh.admin');
+  const [verifiedIdentity, setVerifiedIdentity] = useState<string>('');
 
   // Screen 2: 6-Digit Master PIN (Admin only)
   const [pinDigits, setPinDigits] = useState<string[]>(['', '', '', '', '', '']);
@@ -57,7 +49,6 @@ export const LoginScreen: React.FC = () => {
   const [pinError, setPinError] = useState('');
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [justFilled, setJustFilled] = useState(false);
 
   // Active Pending Request Info for State 2
   const targetReqId = pendingLoginRequest?.id || approvalQueue.find(r => r.status === 'pending')?.id || '';
@@ -253,31 +244,7 @@ export const LoginScreen: React.FC = () => {
         setCredentialError(res.error || 'Invalid username or password.');
       }
     } catch {
-      // Fallback bridge for demo resilience
-      if (username.toLowerCase().includes('operator') || username.toLowerCase().includes('bhavin') || username.toLowerCase().includes('staff')) {
-        const localReq = await requestOperatorApproval(`Staff Session Login for ${username}`);
-        setPendingLoginRequest({
-          id: localReq.id,
-          operatorName: 'Bhavin V. Joshi',
-          operatorCode: 'OP-04',
-          branch: 'Surat Ring Road Textile Mkt',
-          adminName: 'admin',
-          status: 'pending',
-        });
-        showFlash('Your login request has been sent to the admin.', 'gold');
-        // In-place component state swap to State 2: Waiting for approval (no route/navigation change)
-        setAuthStatus('pending');
-      } else {
-        setTempToken('tmp_offline_demo');
-        setVerifiedIdentity(username);
-        setAuthStatus('pin');
-        setPinDigits(['', '', '', '', '', '']);
-        setPinError('');
-        showFlash('Admin credentials verified. Proceed to 6-digit Master PIN entry.', 'gold');
-        setTimeout(() => {
-          pinInputRefs.current[0]?.focus();
-        }, 150);
-      }
+      setCredentialError('Cannot reach the auth service. Please try again.');
     } finally {
       setIsValidatingCredentials(false);
     }
@@ -343,19 +310,6 @@ export const LoginScreen: React.FC = () => {
     pinInputRefs.current[focusIdx]?.focus();
   };
 
-  // Quick fill demo 6-digit pin
-  const handleQuickFillPin = () => {
-    if (isLocked) return;
-    setPinDigits(['1', '9', '8', '4', '2', '6']);
-    setPinError('');
-    setJustFilled(true);
-    setTimeout(() => setJustFilled(false), 1500);
-    showFlash('Demo PIN 198426 loaded.', 'gold');
-    setTimeout(() => {
-      pinInputRefs.current[5]?.focus();
-    }, 50);
-  };
-
   // Step 2: Verify 6-Digit Master PIN (POST /api/admin/verify-pin)
   const handleVerifyPin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -378,7 +332,13 @@ export const LoginScreen: React.FC = () => {
       });
 
       if (res.success) {
-        setUserRole('admin');
+        const raw = res.user?.role || res.role;
+        const role = raw === 'admin' ? 'admin' : raw === 'operator' ? 'operator' : null;
+        if (!role) {
+          setPinError('Session role was not returned by the server.');
+          return;
+        }
+        setUserRole(role);
         showFlash(res.message || 'Admin control plane unlocked via two-step authorization', 'positive');
         navigateTo(6); // Screen 6: Analytics Dashboard
       } else {
@@ -405,26 +365,11 @@ export const LoginScreen: React.FC = () => {
         }, 50);
       }
     } catch {
-      // Local fallback for offline demo
-      if (fullPin === '198426' || fullPin === '198400') {
-        setUserRole('admin');
-        showFlash('Admin terminal unlocked (Master security bypass)', 'gold');
-        navigateTo(6);
-      } else {
-        const nextFailed = failedAttempts + 1;
-        setFailedAttempts(nextFailed);
-        if (nextFailed >= 5) {
-          setIsLocked(true);
-          setLockoutSeconds(300);
-          setPinError('Security Lockout: 5 consecutive failed attempts. Verification locked for 5 minutes.');
-        } else {
-          setPinError(`Incorrect PIN. ${5 - nextFailed} attempts remaining.`);
-        }
-        setPinDigits(['', '', '', '', '', '']);
-        setTimeout(() => {
-          pinInputRefs.current[0]?.focus();
-        }, 50);
-      }
+      setPinError('Cannot reach the auth service. Admin PIN must be verified by the server.');
+      setPinDigits(['', '', '', '', '', '']);
+      setTimeout(() => {
+        pinInputRefs.current[0]?.focus();
+      }, 50);
     } finally {
       setIsAuthenticating(false);
     }
@@ -511,10 +456,6 @@ export const LoginScreen: React.FC = () => {
           </div>
           <span className="font-serif text-lg font-bold tracking-tight text-[var(--erp-text)]">
             Ariav
-          </span>
-          <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-[var(--erp-gold)]" />
-          <span className="hidden sm:inline-block font-mono text-[11px] text-[var(--erp-muted)] tracking-wider">
-            ERP 4.2
           </span>
         </motion.div>
 
@@ -742,23 +683,12 @@ export const LoginScreen: React.FC = () => {
                       </span>
                     </motion.div>
 
-                    {/* Enterprise Security Badge */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] font-mono text-[11px] text-[var(--erp-muted)] rounded-xs">
-                      <Shield className="w-3.5 h-3.5 text-[var(--erp-gold)]" />
-                      <span>Enterprise Gateway</span>
-                    </div>
                   </div>
 
                   {/* Card Titles with Animated Transition */}
                   <div className="relative z-10 mb-6">
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--erp-gold)] animate-pulse" />
-                      <span className="font-mono text-[11px] tracking-wider text-[var(--erp-muted)] uppercase">
-                        {authStatus === 'pin' ? 'MASTER PIN VERIFICATION' : 'UNIFIED AUTHENTICATION'}
-                      </span>
-                    </div>
-                    <h2 className="font-serif text-2xl sm:text-[1.85rem] font-bold text-[var(--erp-text)] mt-1.5 tracking-tight">
-                      {authStatus === 'pin' ? 'Master PIN verification' : 'Sign in to Ariav Agency'}
+                    <h2 className="font-serif text-2xl sm:text-[1.85rem] font-bold text-[var(--erp-text)] tracking-tight">
+                      {authStatus === 'pin' ? 'Master PIN verification' : 'Sign in to Ariav ERP'}
                     </h2>
                   </div>
 
@@ -792,7 +722,7 @@ export const LoginScreen: React.FC = () => {
                           setUsername(e.target.value);
                           setCredentialError('');
                         }}
-                        placeholder="paresh.admin or bhavin.operator"
+                        placeholder="Enter username"
                         autoFocus
                         className="w-full pl-10 pr-3.5 py-2.5 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-sm text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] focus:ring-1 focus:ring-[var(--erp-gold)]/40 transition-all font-sans rounded-xs"
                       />
@@ -801,38 +731,9 @@ export const LoginScreen: React.FC = () => {
 
                   {/* Password Field */}
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-medium text-[var(--erp-muted)] font-sans">
-                        Password
-                      </label>
-                      <div className="flex items-center gap-1.5 text-[11px] font-mono">
-                        <span className="text-[var(--erp-muted)] text-[10px]">Fill:</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setUsername('paresh.admin');
-                            setPassword('admin123');
-                            setCredentialError('');
-                            showFlash('Admin demo credentials loaded (paresh.admin)', 'gold');
-                          }}
-                          className="px-1.5 py-0.5 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-gold)] hover:border-[var(--erp-gold)] rounded-xs transition-colors cursor-pointer text-[10px]"
-                        >
-                          Admin
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setUsername('bhavin.operator');
-                            setPassword('operator123');
-                            setCredentialError('');
-                            showFlash('Staff demo credentials loaded (bhavin.operator)', 'gold');
-                          }}
-                          className="px-1.5 py-0.5 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-muted)] hover:text-[var(--erp-text)] hover:border-[var(--erp-gold)] rounded-xs transition-colors cursor-pointer text-[10px]"
-                        >
-                          Staff
-                        </button>
-                      </div>
-                    </div>
+                    <label className="block text-xs font-medium text-[var(--erp-muted)] font-sans mb-1.5">
+                      Password
+                    </label>
 
                     <div className="relative group/pwd">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[var(--erp-muted)] group-focus-within/pwd:text-[var(--erp-gold)] transition-colors">
@@ -894,17 +795,6 @@ export const LoginScreen: React.FC = () => {
                       )}
                     </motion.button>
                   </div>
-
-                  {/* Single Form Notice */}
-                  <div className="pt-3.5 border-t border-[var(--erp-hairline)] flex items-center justify-between text-xs text-[var(--erp-muted)] font-mono">
-                    <span className="flex items-center gap-1.5 text-[var(--erp-muted)]">
-                      <Shield className="w-3.5 h-3.5 text-[var(--erp-gold)]" />
-                      <span>Role-Aware Gateway</span>
-                    </span>
-                    <span className="text-[10px] text-[var(--erp-muted)]/70 uppercase tracking-wider">
-                      Automatic Flow Detection
-                    </span>
-                  </div>
                 </motion.form>
               ) : (
                 /* SCREEN 2 — DEDICATED 6-DIGIT PIN VERIFICATION (Admin only) */
@@ -926,35 +816,15 @@ export const LoginScreen: React.FC = () => {
                       <label className="block text-xs font-medium text-[var(--erp-muted)] font-sans">
                         Enter 6-Digit Master Security PIN
                       </label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowPinMask(!showPinMask)}
-                          className="text-[11px] font-mono text-[var(--erp-muted)] hover:text-[var(--erp-text)] transition-colors cursor-pointer flex items-center gap-1"
-                          title={showPinMask ? 'Reveal Digits' : 'Mask Digits'}
-                        >
-                          {showPinMask ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                          <span>{showPinMask ? 'Show' : 'Mask'}</span>
-                        </button>
-                        <motion.button
-                          type="button"
-                          whileHover={{ scale: 1.04 }}
-                          whileTap={{ scale: 0.96 }}
-                          onClick={handleQuickFillPin}
-                          disabled={isLocked}
-                          className={`group flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-not-allowed ${
-                            justFilled 
-                              ? 'border-[var(--erp-positive)] bg-[var(--erp-positive)]/15 text-[var(--erp-positive)]'
-                              : 'border-[var(--erp-gold)]/40 bg-[var(--erp-gold)]/10 text-[var(--erp-gold)] hover:bg-[var(--erp-gold)]/20 hover:border-[var(--erp-gold)]'
-                          }`}
-                          title="Click to automatically fill demo 6-digit PIN 198426"
-                        >
-                          <Sparkles className={`w-3 h-3 transition-transform ${justFilled ? 'rotate-45' : 'group-hover:rotate-12'}`} />
-                          <span className="text-[11px] font-mono">
-                            {justFilled ? 'Loaded: 198426' : <>Demo PIN: <strong>198426</strong></>}
-                          </span>
-                        </motion.button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowPinMask(!showPinMask)}
+                        className="text-[11px] font-mono text-[var(--erp-muted)] hover:text-[var(--erp-text)] transition-colors cursor-pointer flex items-center gap-1"
+                        title={showPinMask ? 'Reveal Digits' : 'Mask Digits'}
+                      >
+                        {showPinMask ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        <span>{showPinMask ? 'Show' : 'Mask'}</span>
+                      </button>
                     </div>
 
                     {/* 6 Individual Cells with Auto-Advance & Backspace Navigation */}
@@ -1131,11 +1001,6 @@ export const LoginScreen: React.FC = () => {
           </motion.div>
         </div>
       </main>
-
-      {/* Subtle Bottom Credit Line */}
-      <footer className="relative z-10 w-full px-6 sm:px-12 py-5 border-t border-[var(--erp-hairline)] flex items-center justify-between font-mono text-[11px] text-[var(--erp-muted)]">
-        <div>Ariav Textile ERP • Gujarat Agency Financial Gateway</div>
-      </footer>
     </div>
   );
 };

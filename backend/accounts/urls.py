@@ -34,6 +34,8 @@ urlpatterns = [
     path("api/auth/operator/verify-otp", views.verify_otp),
     path("api/auth/admin/pin-reset/request", views.pin_reset_request),
     path("api/auth/admin/pin-reset/confirm", views.pin_reset_confirm),
+    path("api/auth/me", views.session_me),
+    path("api/auth/me/", views.session_me),
     path("api/auth/logout", views.logout_view),
     path("api/auth/audit-trail", views.audit_trail),
     path("api/dashboard/summary/", views.dashboard_summary),

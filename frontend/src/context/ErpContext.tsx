@@ -2,7 +2,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { 
   ScreenDefinition, 
   ERP_SCREENS, 
-  Branch, 
+  ALL_ENTITIES,
+  ALL_ENTITIES_ID,
+  Branch,
+  parseSelectedEntityId,
+  SelectedEntityId, 
   OperatorApprovalRequest, 
   AuditLogEntry, 
   PartyAccount, 
@@ -10,13 +14,13 @@ import {
   UserRole 
 } from '../types/erp';
 import { 
-  INITIAL_BRANCHES, 
   INITIAL_PARTIES, 
   INITIAL_ITEMS, 
-  INITIAL_APPROVAL_REQUESTS, 
   INITIAL_AUDIT_LOGS 
 } from '../data/erpData';
 import { authApi, PythonHealthInfo } from '../services/authApi';
+import { EntityRow, entitiesApi } from '../services/entitiesApi';
+import { notifyError, notifyInfo, notifySuccess } from '../services/notify';
 
 interface ErpContextType {
   currentScreenId: number;
@@ -24,16 +28,19 @@ interface ErpContextType {
   setCurrentScreenId: (id: number) => void;
   navigateTo: (screenIdOrSlug: number | string) => void;
   
-  // Header selectors
+  // Header selectors — selectedEntityId is the app-wide entity scope ('all' or a numeric id)
   branches: Branch[];
   selectedBranch: Branch;
+  selectedEntityId: SelectedEntityId;
   setSelectedBranch: (branch: Branch) => void;
+  setSelectedEntityId: (id: SelectedEntityId) => void;
   financialYear: string;
   setFinancialYear: (fy: string) => void;
   
-  // Security & Role
+  // Security & Role — role is session-backed; setUserRole is login/OTP only
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
+  sessionUserName: string;
   logout: () => void;
 
   // Python Backend API Status
@@ -43,6 +50,7 @@ interface ErpContextType {
   
   // Live Approvals & Queue
   approvalQueue: OperatorApprovalRequest[];
+  approvalQueueLoaded: boolean;
   refreshApprovalQueue: () => Promise<void>;
   approveRequest: (id: string) => Promise<string>;
   rejectRequest: (id: string) => Promise<void>;
@@ -91,12 +99,58 @@ interface ErpContextType {
 
 const ErpContext = createContext<ErpContextType | undefined>(undefined);
 
+const SCREEN_STORAGE_KEY = 'ariav_current_screen';
+const ENTITY_STORAGE_KEY = 'ariav_selected_entity_id';
+
+function mapEntityToBranch(row: EntityRow): Branch {
+  return {
+    id: String(row.id),
+    name: row.entity_name,
+    code: row.short_code,
+    city: row.city,
+    address: [row.address_line_1, row.street, row.area].filter(Boolean).join(', '),
+    phone: row.phone || row.mobile,
+    gstin: row.gst_no,
+    isHeadOffice: row.entity_type === 'Head Office',
+  };
+}
+
+function restoreSelectedBranch(list: Branch[], stored: string | null): Branch {
+  const parsed = parseSelectedEntityId(stored);
+  if (parsed === ALL_ENTITIES_ID) return ALL_ENTITIES;
+  return list.find(b => b.id === String(parsed)) || ALL_ENTITIES;
+}
+
+function readStoredScreen(): number {
+  try {
+    const saved = Number(sessionStorage.getItem(SCREEN_STORAGE_KEY) || '');
+    if (saved === 24) return 36;
+    if (saved === 12) return 42;
+    if (saved === 16 || saved === 31) return 44;
+    if (saved > 4 && ERP_SCREENS.some(s => s.id === saved)) return saved;
+    return 6;
+  } catch {
+    return 6;
+  }
+}
+
 export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentScreenId, setCurrentScreenId] = useState<number>(1); // Start on Login Gateway (screen 1)
-  const [branches] = useState<Branch[]>(INITIAL_BRANCHES);
-  const [selectedBranch, setSelectedBranch] = useState<Branch>(INITIAL_BRANCHES[0]);
+  const hasStoredToken = typeof window !== 'undefined' && !!localStorage.getItem('ariav_auth_token');
+  const [currentScreenId, setCurrentScreenId] = useState<number>(() =>
+    hasStoredToken ? readStoredScreen() : 1
+  );
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranch, setSelectedBranchState] = useState<Branch>(() =>
+    restoreSelectedBranch([], localStorage.getItem(ENTITY_STORAGE_KEY))
+  );
   const [financialYear, setFinancialYear] = useState<string>('2025-26');
-  const [userRole, setUserRole] = useState<UserRole>('admin');
+  const [userRole, setUserRole] = useState<UserRole>(() => {
+    if (!localStorage.getItem('ariav_auth_token')) return 'operator';
+    return localStorage.getItem('ariav_auth_role') === 'admin' ? 'admin' : 'operator';
+  });
+  const [sessionUserName, setSessionUserName] = useState<string>(
+    () => localStorage.getItem('ariav_auth_name') || ''
+  );
 
   const [pendingLoginRequest, setPendingLoginRequest] = useState<{
     id: string;
@@ -125,8 +179,96 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // storage quota
     }
   }, [pendingLoginRequest]);
+
+  useEffect(() => {
+    if (currentScreenId === 12) setCurrentScreenId(42);
+    if (currentScreenId === 16 || currentScreenId === 31) setCurrentScreenId(44);
+  }, [currentScreenId]);
+
+  useEffect(() => {
+    if (currentScreenId > 4) {
+      try {
+        sessionStorage.setItem(SCREEN_STORAGE_KEY, String(currentScreenId));
+      } catch {
+        // storage quota
+      }
+    }
+  }, [currentScreenId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const restore = async () => {
+      const token = localStorage.getItem('ariav_auth_token');
+      if (!token) {
+        if (!cancelled) setCurrentScreenId(1);
+        return;
+      }
+      const me = await authApi.me();
+      if (cancelled) return;
+      if (me.success && (me.role === 'admin' || me.role === 'operator')) {
+        setUserRole(me.role);
+        localStorage.setItem('ariav_auth_role', me.role);
+        const name = me.user?.name || '';
+        if (name) {
+          setSessionUserName(name);
+          localStorage.setItem('ariav_auth_name', name);
+        }
+        setCurrentScreenId((prev) => (prev > 4 ? prev : readStoredScreen()));
+      } else if (me.error === 'unavailable') {
+        return;
+      } else {
+        localStorage.removeItem('ariav_auth_token');
+        localStorage.removeItem('ariav_auth_role');
+        localStorage.removeItem('ariav_auth_name');
+        sessionStorage.removeItem(SCREEN_STORAGE_KEY);
+        setCurrentScreenId(1);
+      }
+    };
+    void restore();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const authenticated = currentScreenId > 4;
+  useEffect(() => {
+    if (!authenticated) return;
+    let cancelled = false;
+    const loadEntities = async () => {
+      try {
+        const rows = await entitiesApi.list({ status: 'Active' });
+        const live = rows.map(mapEntityToBranch);
+        if (cancelled || !live.length) return;
+        setBranches(live);
+        setSelectedBranchState(restoreSelectedBranch(live, localStorage.getItem(ENTITY_STORAGE_KEY)));
+      } catch {
+        // Keep current list if Entity Master cannot be fetched.
+      }
+    };
+    void loadEntities();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, currentScreenId]);
+
+  const setSelectedBranch = useCallback((branch: Branch) => {
+    setSelectedBranchState(branch);
+    localStorage.setItem(ENTITY_STORAGE_KEY, branch.id || ALL_ENTITIES_ID);
+  }, []);
+
+  const selectedEntityId: SelectedEntityId = parseSelectedEntityId(selectedBranch.id);
+
+  const setSelectedEntityId = useCallback((id: SelectedEntityId) => {
+    if (id === ALL_ENTITIES_ID) {
+      setSelectedBranch(ALL_ENTITIES);
+      return;
+    }
+    const found = branches.find(b => b.id === String(id));
+    setSelectedBranch(found || ALL_ENTITIES);
+  }, [branches, setSelectedBranch]);
   
-  const [approvalQueue, setApprovalQueue] = useState<OperatorApprovalRequest[]>(INITIAL_APPROVAL_REQUESTS);
+  const [approvalQueue, setApprovalQueue] = useState<OperatorApprovalRequest[]>([]);
+  const [approvalQueueLoaded, setApprovalQueueLoaded] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOGS);
   const [parties, setParties] = useState<PartyAccount[]>(INITIAL_PARTIES);
   const [items, setItems] = useState<TextileItem[]>(INITIAL_ITEMS);
@@ -147,11 +289,11 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Fetch live approvals from Python SQLite backend
+  // Fetch live operator login approvals
   const refreshApprovalQueue = useCallback(async () => {
     try {
       const res = await authApi.getAdminQueue();
-      if (res.success && res.queue && res.queue.length > 0) {
+      if (res.success && Array.isArray(res.queue)) {
         const mapped: OperatorApprovalRequest[] = res.queue.map(q => ({
           id: q.id,
           operatorName: q.operator_name,
@@ -167,7 +309,9 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setApprovalQueue(mapped);
       }
     } catch {
-      // Keep local state fallback
+      // Keep last successful snapshot; do not restore mock rows
+    } finally {
+      setApprovalQueueLoaded(true);
     }
   }, []);
 
@@ -217,11 +361,17 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [userRole]);
 
+  const commitUserRole = useCallback((role: UserRole) => {
+    setUserRole(role);
+    localStorage.setItem('ariav_auth_role', role);
+    setSessionUserName(localStorage.getItem('ariav_auth_name') || '');
+  }, []);
+
   const currentScreen = ERP_SCREENS.find(s => s.id === currentScreenId) || ERP_SCREENS[5];
 
   const navigateTo = (screenIdOrSlug: number | string) => {
     if (typeof screenIdOrSlug === 'number') {
-      setCurrentScreenId(screenIdOrSlug);
+      setCurrentScreenId(screenIdOrSlug === 24 ? 36 : screenIdOrSlug);
     } else {
       const found = ERP_SCREENS.find(s => s.slug === screenIdOrSlug);
       if (found) setCurrentScreenId(found.id);
@@ -229,6 +379,9 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const showFlash = (text: string, type: 'positive' | 'negative' | 'gold' = 'positive') => {
+    if (type === 'negative') notifyError(text);
+    else if (type === 'gold') notifyInfo(text);
+    else notifySuccess(text);
     setFlashMessage({ text, type });
     setTimeout(() => {
       setFlashMessage(null);
@@ -246,7 +399,11 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newEntry: AuditLogEntry = {
       id: `AUD-${Math.floor(1000 + Math.random() * 9000)}`,
       timestamp: dateStr,
-      user: userRole === 'admin' ? 'Paresh Patel (Admin)' : 'Bhavin Joshi (OP-04)',
+      user: sessionUserName
+        ? `${sessionUserName} (${userRole === 'admin' ? 'Admin' : 'Operator'})`
+        : userRole === 'admin'
+          ? 'Admin'
+          : 'Operator',
       role: userRole === 'admin' ? 'Managing Partner' : 'Branch Accountant',
       action,
       module,
@@ -359,10 +516,13 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
-    addAuditLog('User Session Terminated', 'Security Gateway', `Terminal session locked by ${userRole === 'admin' ? 'Paresh Patel (Admin)' : 'Bhavin Joshi (Operator)'}`, 'notice');
+    addAuditLog('User Session Terminated', 'Security Gateway', `Terminal session locked by ${sessionUserName || userRole}`, 'notice');
     showFlash('Logged out successfully. Terminal locked.', 'gold');
     setPendingLoginRequest(null);
-    setCurrentScreenId(1); // Return to Screen 1: Login Gateway
+    void authApi.logout();
+    setSessionUserName('');
+    setUserRole('operator');
+    setCurrentScreenId(1);
   };
 
   return (
@@ -374,16 +534,20 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         navigateTo,
         branches,
         selectedBranch,
+        selectedEntityId,
         setSelectedBranch,
+        setSelectedEntityId,
         financialYear,
         setFinancialYear,
         userRole,
-        setUserRole,
+        setUserRole: commitUserRole,
+        sessionUserName,
         logout,
         pythonStatus,
         pythonOnline,
         refreshPythonStatus,
         approvalQueue,
+        approvalQueueLoaded,
         refreshApprovalQueue,
         approveRequest,
         rejectRequest,

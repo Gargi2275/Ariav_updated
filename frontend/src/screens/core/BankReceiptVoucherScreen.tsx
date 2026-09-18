@@ -139,7 +139,7 @@ export const BankReceiptVoucherScreen: React.FC = () => {
           />
           <div className="flex flex-col gap-1 text-left">
             <label className="text-xs text-[var(--erp-muted)] font-sans">
-              Agency Depositing Bank
+              Entity Depositing Bank
             </label>
             <select
               value={bankAccount}

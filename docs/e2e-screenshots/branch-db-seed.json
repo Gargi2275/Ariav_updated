@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "code": "AHM-01",
+    "name": "Ahmedabad Narol Central",
+    "city": "Ahmedabad",
+    "phone": "+91 79 2658 4410",
+    "address": "Narol-Vatva Road, Narol GIDC, Ahmedabad 382405, Gujarat",
+    "is_head_office": true,
+    "gstin": "24AAACA1234F1Z8"
+  },
+  {
+    "id": 3,
+    "code": "RJK-03",
+    "name": "Rajkot Commercial Hub",
+    "city": "Rajkot",
+    "phone": "+91 281 247 1190",
+    "address": "Race Course Road Commercial Complex, Rajkot 360001, Gujarat",
+    "is_head_office": false,
+    "gstin": "24AAACA1234F3Z6"
+  },
+  {
+    "id": 2,
+    "code": "SUR-02",
+    "name": "Surat Ring Road Textile Mkt",
+    "city": "Surat",
+    "phone": "+91 261 232 8841",
+    "address": "Ring Road Textile Market, Sahara Darwaja, Surat 395002, Gujarat",
+    "is_head_office": false,
+    "gstin": "24AAACA1234F2Z7"
+  }
+]

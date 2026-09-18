@@ -51,19 +51,19 @@ export const IconRail: React.FC = () => {
     },
     {
       id: 'orders',
-      label: 'Orders',
-      title: 'Order Booking & Import',
+      label: 'PO',
+      title: 'Purchase Orders & Dispatch',
       icon: <ShoppingBag className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: [11],
-      primaryScreenId: 11
+      screenIds: [40, 41],
+      primaryScreenId: 40
     },
     {
       id: 'sales-invoice',
-      label: 'Invoice',
-      title: 'Sales Tax Invoice',
+      label: 'Accounts',
+      title: 'Invoices & Accounts',
       icon: <Receipt className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: [12],
-      primaryScreenId: 12
+      screenIds: [42, 43, 45, 46],
+      primaryScreenId: 42
     },
     {
       id: 'vouchers',
@@ -76,26 +76,26 @@ export const IconRail: React.FC = () => {
     {
       id: 'journal-ledgers',
       label: 'Ledgers',
-      title: 'Journal & Ledgers',
+      title: 'Customer Ledger & Journals',
       icon: <Scale className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: [16, 31],
-      primaryScreenId: 16
+      screenIds: [44, 48],
+      primaryScreenId: 44
     },
     {
       id: 'masters',
       label: 'Masters',
       title: 'Textile & Account Masters',
       icon: <Database className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: [21, 22, 23, 24, 25, 26, 27, 28],
-      primaryScreenId: 21
+      screenIds: [36, 37, 38, 39, 21, 22, 23, 25, 26, 27, 28],
+      primaryScreenId: 36
     },
     {
       id: 'reports',
       label: 'Reports',
       title: 'Financial & Statutory Reports',
       icon: <FileText className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: [29, 30, 32, 33, 34, 35],
-      primaryScreenId: 29
+      screenIds: [47, 29, 30, 32, 33, 34, 35],
+      primaryScreenId: 47
     },
     {
       id: 'admin',
@@ -169,8 +169,8 @@ export const IconRail: React.FC = () => {
           )}
         </button>
 
-        {/* Flyout Menu on Hover with Screen list */}
-        {hoveredGroupId === group.id && (
+        {/* Flyout Menu on Hover — skip when the group has a single destination */}
+        {hoveredGroupId === group.id && group.screenIds.length > 1 && (
           <div
             className={`absolute left-[70px] z-50 w-72 sm:w-80 max-w-[calc(100vw-82px)] bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] shadow-2xl p-2 text-left animate-in fade-in zoom-in-95 duration-100 before:absolute before:-left-3 before:top-0 before:bottom-0 before:w-4 before:content-[''] ${
               flyoutPlacement === 'bottom' ? 'bottom-0' : 'top-0'

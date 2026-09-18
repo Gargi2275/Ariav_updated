@@ -45,6 +45,8 @@ def public_user(user: AuthUser) -> dict:
         "email": user.email,
         "role": user.role,
         "branch": branch_name,
+        "branch_id": user.branch_id,
+        "branch_code": user.branch.code if user.branch_id else "",
         "operatorCode": user.operator_code,
     }
 
@@ -622,6 +624,18 @@ def pin_reset_confirm(request):
         mst.save(update_fields=["failed_attempts", "locked_until"])
     write_audit("Admin Master PIN Updated", "Security Gate", "New master PIN provisioned", "Admin", "admin", client_ip(request), "critical")
     return Response({"success": True, "message": "New Admin PIN provisioned successfully. Please authenticate with your new PIN."})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def session_me(request):
+    user = request.user
+    if not isinstance(user, AuthUser):
+        return Response({"success": False, "error": "Not authenticated"}, status=401)
+    role = "admin" if user.is_admin_role else "operator"
+    if user.branch_id:
+        user = AuthUser.objects.select_related("branch").get(pk=user.pk)
+    return Response({"success": True, "role": role, "user": public_user(user)})
 
 
 @api_view(["POST"])

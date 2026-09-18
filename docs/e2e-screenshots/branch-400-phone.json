@@ -1,0 +1,8 @@
+{
+  "status": 400,
+  "body": {
+    "phone": [
+      "Enter a valid Indian phone (10-digit mobile, STD landline, or +91\u2026)."
+    ]
+  }
+}
