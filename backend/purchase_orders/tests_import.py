@@ -340,10 +340,21 @@ class PurchaseOrderImportApiTests(TestCase):
         self.assertEqual(PurchaseOrder.objects.count(), 0)
         self.assertIn("changed since preview", res.json()["detail"].lower() + " " + str(res.json()))
 
-    def test_digital_brand_rejected_and_operator_can_import(self):
+    def test_digital_brand_and_operator_can_import(self):
         digital = self._preview(self.aditi, brand=self.digital)
-        self.assertEqual(digital.status_code, 400, digital.content)
-        self.assertEqual(PurchaseOrder.objects.count(), 0)
+        self.assertEqual(digital.status_code, 200, digital.content)
+        body = digital.json()
+        self.assertTrue(body["importable"])
+        committed = self._commit(
+            self.aditi,
+            body,
+            brand=self.digital,
+            order_nos=[row["order_no"] for row in body["importable"][:1]],
+        )
+        self.assertEqual(committed.status_code, 201, committed.content)
+        po = PurchaseOrder.objects.get(po_number=body["importable"][0]["order_no"])
+        self.assertEqual(po.brand_id, self.digital.id)
+        self.assertEqual(po.order_type, PurchaseOrder.OrderType.DIGITAL)
 
         self.client.force_authenticate(self.operator)
         preview = self._preview(self.aditi)

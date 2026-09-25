@@ -224,11 +224,6 @@ def unmatched_reason(customer_code: str, entity: Entity) -> str:
 
 
 def build_preview(file_bytes: bytes, entity: Entity, brand: Brand) -> dict:
-    if brand.order_method != Brand.OrderMethod.MANUAL_POR:
-        raise ValidationError(
-            {"brand_id": "Import is only available for Manual/POR brands."}
-        )
-
     groups, parse_warnings = parse_workbook(file_bytes)
     customers = _customers_for_entity(entity)
     existing = _existing_po_numbers()
@@ -421,10 +416,6 @@ def commit_import(*, user, token: str, entity_id: int, brand_id: int, order_nos:
         raise ValidationError({"entity_id": "Entity was not found."})
     if brand is None:
         raise ValidationError({"brand_id": "Brand was not found."})
-    if brand.order_method != Brand.OrderMethod.MANUAL_POR:
-        raise ValidationError(
-            {"brand_id": "Import is only available for Manual/POR brands."}
-        )
 
     customers = _customers_for_entity(entity)
     existing = _existing_po_numbers()
@@ -459,9 +450,14 @@ def commit_import(*, user, token: str, entity_id: int, brand_id: int, order_nos:
     created: list[dict] = []
     with transaction.atomic():
         for row in to_create:
+            order_type = (
+                PurchaseOrder.OrderType.MANUAL
+                if brand.order_method == Brand.OrderMethod.MANUAL_POR
+                else PurchaseOrder.OrderType.DIGITAL
+            )
             po = PurchaseOrder.objects.create(
                 po_number=row["order_no"],
-                order_type=PurchaseOrder.OrderType.MANUAL,
+                order_type=order_type,
                 entity=entity,
                 customer_id=row["matched_customer_id"],
                 brand=brand,

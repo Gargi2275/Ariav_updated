@@ -36,10 +36,13 @@ import {
 } from '../../services/dispatchesApi';
 import { INVOICE_FROM_PO_KEY } from '../../services/invoicesApi';
 
-const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
+const sectionTitle = 'text-[11px] font-mono uppercase tracking-[0.14em] text-[var(--erp-gold)] border-b border-[var(--erp-gold)]/25 pb-2 mb-4 flex items-center gap-2';
+const fieldSelectClass = 'px-3 py-2.5 text-sm bg-[var(--erp-surface-2)] border text-[var(--erp-text)] transition-[border-color,box-shadow] duration-200 focus:outline-none focus:border-[var(--erp-gold)] focus:shadow-[0_0_0_3px_rgba(201,162,39,0.12)]';
+const lineControlClass = 'w-full px-2.5 py-2 bg-[var(--erp-surface-2)] border text-[var(--erp-text)] transition-[border-color,box-shadow,opacity] duration-200 focus:outline-none focus:border-[var(--erp-gold)] focus:shadow-[0_0_0_3px_rgba(201,162,39,0.1)] disabled:opacity-45';
 
 type LineDraft = {
   key: string;
+  category_id?: number;
   product_id?: number;
   product_description: string;
   manualEntry: boolean;
@@ -77,7 +80,15 @@ function money(value: string | number | null | undefined): string {
 }
 
 function newLine(manualEntry = false): LineDraft {
-  return { key: `${Date.now()}-${Math.random().toString(16).slice(2)}`, product_description: '', manualEntry, quantity: '', rate: '' };
+  return {
+    key: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    category_id: undefined,
+    product_id: undefined,
+    product_description: '',
+    manualEntry,
+    quantity: '',
+    rate: '',
+  };
 }
 
 const ADMIN_STATUS_LABELS: Record<string, string> = {
@@ -208,6 +219,22 @@ export const PurchaseOrderScreen: React.FC = () => {
     void productsApi.list({ status: 'Active', brand_id: form.brand_id }).then(setProducts).catch(notifyApiError);
   }, [form.brand_id]);
 
+  /** When editing a draft, hydrate category from the loaded catalogue product. */
+  useEffect(() => {
+    if (!products.length) return;
+    setLines(prev => {
+      let changed = false;
+      const next = prev.map(l => {
+        if (!l.product_id || l.category_id || l.manualEntry) return l;
+        const product = products.find(p => p.id === l.product_id);
+        if (!product?.category_id) return l;
+        changed = true;
+        return { ...l, category_id: product.category_id };
+      });
+      return changed ? next : prev;
+    });
+  }, [products]);
+
   const totals = useMemo(() => {
     let qty = 0;
     let amt = 0;
@@ -261,6 +288,7 @@ export const PurchaseOrderScreen: React.FC = () => {
       setLines(row.lines.length
         ? row.lines.map(l => ({
           key: String(l.id ?? `${l.product_id || l.product_description}`),
+          category_id: undefined,
           product_id: l.product_id || undefined,
           product_description: l.product_description || '',
           manualEntry: !l.product_id,
@@ -292,22 +320,42 @@ export const PurchaseOrderScreen: React.FC = () => {
       })),
   });
 
+  const brandCategories = useMemo(() => {
+    const map = new Map<number, { id: number; label: string }>();
+    for (const p of products) {
+      if (!p.category_id || map.has(p.category_id)) continue;
+      map.set(p.category_id, {
+        id: p.category_id,
+        label: p.parent_category_name
+          ? `${p.parent_category_name} › ${p.category_name}`
+          : p.category_name,
+      });
+    }
+    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [products]);
+
   const validateForm = (requireRates = false): boolean => {
     const messages = collectRequired({
       po_number: form.po_number,
       entity_id: form.entity_id,
-      customer_id: form.customer_id,
       brand_id: form.brand_id,
+      customer_id: form.customer_id,
       po_date: form.po_date,
     });
     const filled = lines.filter(l => l.product_id || l.product_description.trim());
     if (!filled.length) messages.lines = 'Add at least one line item.';
     lines.forEach((l, i) => {
       const hasItem = !!(l.product_id || l.product_description.trim());
-      if (!hasItem && lines.length === 1) return;
-      if (hasItem && !num(l.quantity)) messages[`line_${i}_qty`] = REQUIRED_MSG;
-      if (l.manualEntry && !l.product_description.trim()) messages[`line_${i}_desc`] = REQUIRED_MSG;
-      if (!l.manualEntry && hasItem && !l.product_id) messages[`line_${i}_product`] = REQUIRED_MSG;
+      if (!hasItem && !l.category_id && lines.length === 1) return;
+      if (l.manualEntry) {
+        if (!l.product_description.trim()) messages[`line_${i}_desc`] = REQUIRED_MSG;
+      } else {
+        if (hasItem || l.category_id || lines.length === 1) {
+          if (!l.category_id) messages[`line_${i}_category`] = REQUIRED_MSG;
+          if (!l.product_id) messages[`line_${i}_product`] = REQUIRED_MSG;
+        }
+      }
+      if ((hasItem || l.category_id) && !num(l.quantity)) messages[`line_${i}_qty`] = REQUIRED_MSG;
       if (hasItem && requireRates && l.rate.trim() === '') {
         messages[`line_${i}_rate`] = 'Rate is required before submit.';
       }
@@ -436,11 +484,34 @@ export const PurchaseOrderScreen: React.FC = () => {
     }
   };
 
-  const setLineProduct = (key: string, productId: number) => {
+  const setLineCategory = (key: string, categoryId: number | undefined, index: number) => {
+    setLines(prev => prev.map(l => l.key === key
+      ? {
+        ...l,
+        category_id: categoryId,
+        product_id: undefined,
+        product_description: '',
+        rate: '',
+      }
+      : l));
+    setFieldMessages(prev => clearFieldMessage(
+      clearFieldMessage(prev, `line_${index}_category`),
+      `line_${index}_product`,
+    ));
+  };
+
+  const setLineProduct = (key: string, productId: number, index: number) => {
     const product = products.find(p => p.id === productId);
     setLines(prev => prev.map(l => l.key === key
-      ? { ...l, product_id: productId, product_description: '', rate: product ? String(product.rate) : l.rate }
+      ? {
+        ...l,
+        product_id: productId,
+        category_id: product?.category_id ?? l.category_id,
+        product_description: '',
+        rate: product ? String(product.rate) : l.rate,
+      }
       : l));
+    setFieldMessages(prev => clearFieldMessage(prev, `line_${index}_product`));
   };
 
   const columns: Column<PurchaseOrderRow>[] = [
@@ -480,7 +551,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     },
   ];
 
-  const filterCustomers = customers.filter(c => c.status === 'Active' || c.id === form.customer_id);
+  const formCustomers = customers.filter(c => c.status === 'Active' || c.id === form.customer_id);
   const statusActions = detail ? (PO_TRANSITIONS[detail.status] || []) : [];
 
   return (
@@ -489,7 +560,7 @@ export const PurchaseOrderScreen: React.FC = () => {
         moduleNumber="40"
         section="Orders"
         title="Purchase Orders"
-        subtitle="Digital PO and Manual/POR — entity, customer, brand and line items"
+        subtitle="Digital PO and Manual/POR — entity, brand, customer and line items"
         actions={
           canDraftWrite ? (
             <div className="flex items-center gap-2">
@@ -565,205 +636,362 @@ export const PurchaseOrderScreen: React.FC = () => {
       )}
 
       {mode === 'form' && canDraftWrite && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <form noValidate onSubmit={e => { e.preventDefault(); void persist(false); }} className="w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-6">
-            <div className="flex justify-between border-b border-[var(--erp-hairline)] pb-3 sticky top-0 bg-[var(--erp-surface)] z-10">
-              <h3 className="font-display text-lg font-bold flex items-center gap-2"><FileText className="w-4 h-4 text-[var(--erp-gold)]" />{form.id ? 'Edit Purchase Order' : 'Create Purchase Order'}</h3>
-              <button type="button" onClick={() => setMode('list')}><X className="w-4 h-4" /></button>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <button
+            type="button"
+            aria-label="Close form"
+            className="absolute inset-0 bg-black/70 cursor-default"
+            onClick={() => setMode('list')}
+          />
+          <form
+            noValidate
+            onSubmit={e => { e.preventDefault(); void persist(false); }}
+            className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+          >
+            <div
+              aria-hidden
+              className="sticky top-0 z-20 h-[2px] bg-gradient-to-r from-transparent via-[var(--erp-gold)] to-transparent"
+            />
+
+            <div className="sticky top-[2px] z-10 flex justify-between items-start gap-4 border-b border-[var(--erp-hairline)] bg-[var(--erp-surface)]/95 backdrop-blur-md px-6 pt-5 pb-4">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--erp-muted)] mb-1">
+                  {form.id ? 'Draft edit' : 'New document'}
+                </p>
+                <h3 className="font-display text-xl font-bold flex items-center gap-2.5 text-[var(--erp-text)]">
+                  <span className="inline-flex h-8 w-8 items-center justify-center border border-[var(--erp-gold)]/40 bg-[var(--erp-gold)]/10">
+                    <FileText className="w-4 h-4 text-[var(--erp-gold)]" />
+                  </span>
+                  {form.id ? 'Edit Purchase Order' : 'Create Purchase Order'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMode('list')}
+                className="h-8 w-8 inline-flex items-center justify-center border border-[var(--erp-hairline)] text-[var(--erp-muted)] hover:text-[var(--erp-text)] hover:border-[var(--erp-gold)] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <RequiredLegend />
-            <section>
-              <h4 className={sectionTitle}>Header</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <TextInput
-                  ref={numberRef}
-                  label="PO number"
-                  mono
-                  required
-                  error={fieldMessages.po_number}
-                  value={form.po_number || ''}
-                  onChange={e => {
-                    setForm({ ...form, po_number: e.target.value });
-                    setFieldMessages(prev => clearFieldMessage(prev, 'po_number'));
-                  }}
-                />
-                <TextInput
-                  label="PO date"
-                  type="date"
-                  required
-                  error={fieldMessages.po_date}
-                  value={form.po_date || ''}
-                  onChange={e => {
-                    setForm({ ...form, po_date: e.target.value });
-                    setFieldMessages(prev => clearFieldMessage(prev, 'po_date'));
-                  }}
-                />
-                <FormField label="Entity" required error={fieldMessages.entity_id}>
-                  <select
-                    value={form.entity_id || ''}
+
+            <div className="px-6 py-5 space-y-7">
+              <RequiredLegend />
+
+              <section
+                className="rounded-none border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 p-4 sm:p-5"
+              >
+                <h4 className={sectionTitle}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
+                  Header
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <TextInput
+                    ref={numberRef}
+                    label="PO number"
+                    mono
+                    required
+                    error={fieldMessages.po_number}
+                    value={form.po_number || ''}
                     onChange={e => {
-                      const id = e.target.value ? Number(e.target.value) : undefined;
-                      setForm({ ...form, entity_id: id, customer_id: undefined });
-                      setFieldMessages(prev => clearFieldMessage(clearFieldMessage(prev, 'entity_id'), 'customer_id'));
-                    }}
-                    className={`px-3 py-2 text-sm bg-[var(--erp-surface)] border text-[var(--erp-text)] ${fieldMessages.entity_id ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                  >
-                    <option value="">Select entity…</option>
-                    {entities.map(ent => <option key={ent.id} value={ent.id}>{ent.short_code} · {ent.entity_name}</option>)}
-                  </select>
-                </FormField>
-                <FormField label="Customer" required error={fieldMessages.customer_id}>
-                  <CustomerPicker
-                    customers={filterCustomers}
-                    value={form.customer_id || ''}
-                    disabled={!form.entity_id}
-                    error={!!fieldMessages.customer_id}
-                    placeholder={form.entity_id ? 'Search customer…' : 'Select entity first'}
-                    onChange={id => {
-                      setForm({ ...form, customer_id: id || undefined });
-                      setFieldMessages(prev => clearFieldMessage(prev, 'customer_id'));
+                      setForm({ ...form, po_number: e.target.value });
+                      setFieldMessages(prev => clearFieldMessage(prev, 'po_number'));
                     }}
                   />
-                </FormField>
-                <FormField label="Brand" required error={fieldMessages.brand_id} className="sm:col-span-2">
-                  <select
-                    value={form.brand_id || ''}
+                  <TextInput
+                    label="PO date"
+                    type="date"
+                    required
+                    error={fieldMessages.po_date}
+                    value={form.po_date || ''}
                     onChange={e => {
-                      const id = e.target.value ? Number(e.target.value) : undefined;
-                      setForm({ ...form, brand_id: id });
-                      setLines([newLine()]);
-                      setHandyFile(null);
-                      setFieldMessages(prev => clearFieldMessage(prev, 'brand_id'));
+                      setForm({ ...form, po_date: e.target.value });
+                      setFieldMessages(prev => clearFieldMessage(prev, 'po_date'));
                     }}
-                    className={`px-3 py-2 text-sm bg-[var(--erp-surface)] border text-[var(--erp-text)] ${fieldMessages.brand_id ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                  >
-                    <option value="">Select brand…</option>
-                    {activeBrands.map(b => (
-                      <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name} ({b.order_method})</option>
-                    ))}
-                  </select>
-                  {selectedBrand && (
-                    <p className="mt-1 text-[11px] font-mono text-[var(--erp-muted)]">
-                      Order type: {isManual ? 'Manual / POR' : 'Digital PO'} (from brand order method)
-                    </p>
-                  )}
-                </FormField>
-                {isManual && (
-                  <FileDropZone
-                    className="sm:col-span-2"
-                    label="Upload handy form"
-                    helper="Optional — one image or PDF"
-                    accept="image/*,.pdf,application/pdf"
-                    file={handyFile}
-                    onChange={setHandyFile}
-                    existingHint={form.handy_form_url ? (
-                      <a href={form.handy_form_url} target="_blank" rel="noreferrer" className="text-[11px] font-mono text-[var(--erp-gold)]">
-                        View current handy form
-                      </a>
-                    ) : null}
                   />
+                  <FormField label="Entity" required error={fieldMessages.entity_id}>
+                    <select
+                      value={form.entity_id || ''}
+                      onChange={e => {
+                        const id = e.target.value ? Number(e.target.value) : undefined;
+                        setForm({ ...form, entity_id: id, customer_id: undefined });
+                        setFieldMessages(prev => clearFieldMessage(clearFieldMessage(prev, 'entity_id'), 'customer_id'));
+                      }}
+                      className={`${fieldSelectClass} ${fieldMessages.entity_id ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
+                    >
+                      <option value="">Select entity…</option>
+                      {entities.map(ent => <option key={ent.id} value={ent.id}>{ent.short_code} · {ent.entity_name}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Brand" required error={fieldMessages.brand_id}>
+                    <select
+                      value={form.brand_id || ''}
+                      onChange={e => {
+                        const id = e.target.value ? Number(e.target.value) : undefined;
+                        setForm({ ...form, brand_id: id });
+                        setLines([newLine()]);
+                        setHandyFile(null);
+                        setFieldMessages(prev => clearFieldMessage(prev, 'brand_id'));
+                      }}
+                      className={`${fieldSelectClass} ${fieldMessages.brand_id ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
+                    >
+                      <option value="">Select brand…</option>
+                      {activeBrands.map(b => (
+                        <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name} ({b.order_method})</option>
+                      ))}
+                    </select>
+                    {selectedBrand && (
+                        <p
+                          className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono uppercase tracking-wider border border-[var(--erp-gold)]/35 bg-[var(--erp-gold)]/10 text-[var(--erp-gold)]"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
+                          Order type · {isManual ? 'Manual / POR' : 'Digital PO'}
+                        </p>
+                      )}
+                    
+                  </FormField>
+                  <FormField label="Customer" required error={fieldMessages.customer_id} className="sm:col-span-2">
+                    <CustomerPicker
+                      customers={formCustomers}
+                      value={form.customer_id || ''}
+                      disabled={!form.entity_id}
+                      error={!!fieldMessages.customer_id}
+                      placeholder={form.entity_id ? 'Search customer…' : 'Select entity first'}
+                      onChange={id => {
+                        setForm({ ...form, customer_id: id || undefined });
+                        setFieldMessages(prev => clearFieldMessage(prev, 'customer_id'));
+                      }}
+                    />
+                  </FormField>
+                  {isManual && (
+                      <div
+                        className="sm:col-span-2 overflow-hidden"
+                      >
+                        <FileDropZone
+                          label="Upload handy form"
+                          helper="Optional — one image or PDF"
+                          accept="image/*,.pdf,application/pdf"
+                          file={handyFile}
+                          onChange={setHandyFile}
+                          existingHint={form.handy_form_url ? (
+                            <a href={form.handy_form_url} target="_blank" rel="noreferrer" className="text-[11px] font-mono text-[var(--erp-gold)]">
+                              View current handy form
+                            </a>
+                          ) : null}
+                        />
+                      </div>
+                    )}
+                  
+                </div>
+              </section>
+
+              <section
+                className="rounded-none border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 p-4 sm:p-5"
+              >
+                <h4 className={sectionTitle}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
+                  Line items
+                </h4>
+                {fieldMessages.lines && (
+                  <p className="text-xs font-mono text-[var(--erp-negative)] mb-3">{fieldMessages.lines}</p>
                 )}
-              </div>
-            </section>
+                <div className="overflow-x-auto border border-[var(--erp-hairline)] bg-[var(--erp-surface)]">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[var(--erp-surface-2)] font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--erp-muted)]">
+                      <tr>
+                        <th className="px-3 py-2.5 min-w-[160px]">Category *</th>
+                        <th className="px-3 py-2.5 min-w-[180px]">Product *</th>
+                        <th className="px-3 py-2.5 w-28">Qty *</th>
+                        <th className="px-3 py-2.5 w-28">Rate</th>
+                        <th className="px-3 py-2.5 w-32 text-right">Line total</th>
+                        <th className="px-3 py-2.5 w-10" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((line, index) => {
+                          const product = products.find(p => p.id === line.product_id);
+                          const lineProducts = products.filter(p => p.category_id === line.category_id);
+                          const lineTotal = num(line.quantity) * num(line.rate);
+                          const freeText = isManual && line.manualEntry;
+                          return (
+                            <tr
+                              key={line.key}
+                              className="border-t border-[var(--erp-hairline)] hover:bg-[var(--erp-gold)]/[0.03] transition-colors"
+                            >
+                              <td className="px-3 py-2.5 align-top">
+                                {freeText ? (
+                                  <span className="text-[10px] font-mono text-[var(--erp-muted)]">—</span>
+                                ) : (
+                                  <select
+                                    disabled={!form.brand_id}
+                                    value={line.category_id || ''}
+                                    onChange={e => setLineCategory(
+                                      line.key,
+                                      e.target.value ? Number(e.target.value) : undefined,
+                                      index,
+                                    )}
+                                    className={`${lineControlClass} ${fieldMessages[`line_${index}_category`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
+                                  >
+                                    <option value="">Select category…</option>
+                                    {brandCategories.map(c => (
+                                      <option key={c.id} value={c.id}>{c.label}</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 align-top">
+                                {freeText ? (
+                                  <input
+                                    value={line.product_description}
+                                    placeholder="Item from handy form…"
+                                    onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, product_description: e.target.value } : l))}
+                                    className={`${lineControlClass} ${fieldMessages[`line_${index}_desc`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
+                                  />
+                                ) : (
+                                  <select
+                                    disabled={!form.brand_id || !line.category_id}
+                                    value={line.product_id || ''}
+                                    onChange={e => setLineProduct(line.key, Number(e.target.value), index)}
+                                    className={`${lineControlClass} ${fieldMessages[`line_${index}_product`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
+                                  >
+                                    <option value="">{line.category_id ? 'Select product…' : 'Select category first'}</option>
+                                    {lineProducts.map(p => (
+                                      <option key={p.id} value={p.id}>{p.product_code} · {p.product_name}</option>
+                                    ))}
+                                  </select>
+                                )}
+                                {isManual && (
+                                  <button
+                                    type="button"
+                                    className="mt-1.5 text-[10px] font-mono text-[var(--erp-gold)] hover:underline"
+                                    onClick={() => setLines(prev => prev.map(l => l.key === line.key
+                                      ? {
+                                        ...l,
+                                        manualEntry: !freeText,
+                                        category_id: undefined,
+                                        product_id: undefined,
+                                        product_description: '',
+                                        rate: '',
+                                      }
+                                      : l))}
+                                  >
+                                    {freeText ? 'Pick from catalogue' : 'Product not in catalogue? Enter manually'}
+                                  </button>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 align-top">
+                                <input
+                                  value={line.quantity}
+                                  onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, quantity: e.target.value } : l))}
+                                  className={`${lineControlClass} font-mono ${fieldMessages[`line_${index}_qty`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
+                                />
+                              </td>
+                              <td className="px-3 py-2.5 align-top">
+                                <input
+                                  value={line.rate}
+                                  placeholder={freeText ? 'Enter rate' : ''}
+                                  onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, rate: e.target.value } : l))}
+                                  className={`${lineControlClass} font-mono ${fieldMessages[`line_${index}_rate`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
+                                />
+                                {!!(line.product_id || line.product_description.trim()) && rateIsUnset(line.rate) ? (
+                                  <div className="mt-1"><RateNotSetBadge /></div>
+                                ) : null}
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono align-top">
+                                <span
+                                  className="inline-block text-[var(--erp-text)]"
+                                >
+                                  {money(lineTotal)}
+                                </span>
+                                {product ? <span className="block text-[10px] text-[var(--erp-muted)]">{product.unit}</span> : null}
+                              </td>
+                              <td className="px-3 py-2.5 align-top">
+                                {lines.length > 1 && (
+                                  <button
+                                    type="button"
+                                    className="text-[var(--erp-muted)] hover:text-[var(--erp-negative)] transition-colors"
+                                    onClick={() => setLines(prev => prev.filter(l => l.key !== line.key))}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  type="button"
+                  disabled={!form.brand_id}
+                  onClick={() => setLines(prev => [...prev, newLine()])}
+                  className="mt-3 px-3.5 py-2 text-[11px] font-mono border border-dashed border-[var(--erp-hairline-strong)] text-[var(--erp-muted)] hover:text-[var(--erp-gold)] hover:border-[var(--erp-gold)] hover:bg-[var(--erp-gold)]/5 transition-all disabled:opacity-40"
+                >
+                  + Add line
+                </button>
+                <div className="mt-4 flex justify-end gap-8 font-mono text-sm border-t border-[var(--erp-hairline)] pt-3">
+                  <div className="text-[var(--erp-muted)]">
+                    Qty{' '}
+                    <span
+                      className="inline-block text-[var(--erp-text)]"
+                    >
+                      {totals.qty.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="text-[var(--erp-muted)]">
+                    Amount{' '}
+                    <span
+                      className="inline-block text-[var(--erp-gold)] font-semibold"
+                    >
+                      {money(totals.amt)}
+                    </span>
+                  </div>
+                </div>
+              </section>
 
-            <section>
-              <h4 className={sectionTitle}>Line items</h4>
-              {fieldMessages.lines && <p className="text-xs font-mono text-[var(--erp-negative)] mb-2">{fieldMessages.lines}</p>}
-              <div className="overflow-x-auto border border-[var(--erp-hairline)]">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-[var(--erp-surface-2)] font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">
-                    <tr>
-                      <th className="px-3 py-2">Product *</th>
-                      <th className="px-3 py-2 w-28">Qty *</th>
-                      <th className="px-3 py-2 w-28">Rate</th>
-                      <th className="px-3 py-2 w-32 text-right">Line total</th>
-                      <th className="px-3 py-2 w-10" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.map((line, index) => {
-                      const product = products.find(p => p.id === line.product_id);
-                      const lineTotal = num(line.quantity) * num(line.rate);
-                      const freeText = isManual && line.manualEntry;
-                      return (
-                        <tr key={line.key} className="border-t border-[var(--erp-hairline)]">
-                          <td className="px-3 py-2">
-                            {freeText ? (
-                              <input
-                                value={line.product_description}
-                                placeholder="Item from handy form…"
-                                onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, product_description: e.target.value } : l))}
-                                className={`w-full px-2 py-1.5 bg-[var(--erp-surface)] border text-[var(--erp-text)] ${fieldMessages[`line_${index}_desc`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                              />
-                            ) : (
-                              <select
-                                disabled={!form.brand_id}
-                                value={line.product_id || ''}
-                                onChange={e => setLineProduct(line.key, Number(e.target.value))}
-                                className={`w-full px-2 py-1.5 bg-[var(--erp-surface)] border text-[var(--erp-text)] disabled:opacity-50 ${fieldMessages[`line_${index}_product`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                              >
-                                <option value="">Select product…</option>
-                                {products.map(p => <option key={p.id} value={p.id}>{p.product_code} · {p.product_name}</option>)}
-                              </select>
-                            )}
-                            {isManual && (
-                              <button
-                                type="button"
-                                className="mt-1 text-[10px] font-mono text-[var(--erp-gold)] hover:underline"
-                                onClick={() => setLines(prev => prev.map(l => l.key === line.key
-                                  ? { ...l, manualEntry: !freeText, product_id: undefined, product_description: '', rate: '' }
-                                  : l))}
-                              >
-                                {freeText ? 'Pick from catalogue' : 'Product not in catalogue? Enter manually'}
-                              </button>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              value={line.quantity}
-                              onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, quantity: e.target.value } : l))}
-                              className={`w-full px-2 py-1.5 font-mono bg-[var(--erp-surface)] border text-[var(--erp-text)] ${fieldMessages[`line_${index}_qty`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              value={line.rate}
-                              placeholder={freeText ? 'Enter rate' : ''}
-                              onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, rate: e.target.value } : l))}
-                              className={`w-full px-2 py-1.5 font-mono bg-[var(--erp-surface)] border text-[var(--erp-text)] ${fieldMessages[`line_${index}_rate`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                            />
-                            {!!(line.product_id || line.product_description.trim()) && rateIsUnset(line.rate) ? (
-                              <div className="mt-1"><RateNotSetBadge /></div>
-                            ) : null}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono">{money(lineTotal)}{product ? <span className="block text-[10px] text-[var(--erp-muted)]">{product.unit}</span> : null}</td>
-                          <td className="px-3 py-2">
-                            {lines.length > 1 && (
-                              <button type="button" className="text-[var(--erp-muted)] hover:text-[var(--erp-negative)]" onClick={() => setLines(prev => prev.filter(l => l.key !== line.key))}><Trash2 className="w-3.5 h-3.5" /></button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <button type="button" disabled={!form.brand_id} onClick={() => setLines(prev => [...prev, newLine()])} className="mt-3 px-3 py-1.5 text-[11px] font-mono border border-[var(--erp-hairline)] text-[var(--erp-muted)] hover:text-[var(--erp-gold)] disabled:opacity-40">+ Add line</button>
-              <div className="mt-4 flex justify-end gap-8 font-mono text-sm border-t border-[var(--erp-hairline)] pt-3">
-                <div>Qty <span className="text-[var(--erp-text)]">{totals.qty.toFixed(2)}</span></div>
-                <div>Amount <span className="text-[var(--erp-gold)]">{money(totals.amt)}</span></div>
-              </div>
-            </section>
+              <section
+                className="rounded-none border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 p-4 sm:p-5"
+              >
+                <h4 className={sectionTitle}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
+                  Remarks
+                </h4>
+                <textarea
+                  value={form.remarks || ''}
+                  onChange={e => setForm({ ...form, remarks: e.target.value })}
+                  rows={3}
+                  placeholder="Optional notes for this purchase order…"
+                  className="w-full px-3 py-2.5 text-sm bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] focus:shadow-[0_0_0_3px_rgba(201,162,39,0.12)] transition-[border-color,box-shadow] duration-200 rounded-none placeholder:text-[var(--erp-faint)]"
+                />
+              </section>
+            </div>
 
-            <section>
-              <h4 className={sectionTitle}>Remarks</h4>
-              <textarea value={form.remarks || ''} onChange={e => setForm({ ...form, remarks: e.target.value })} rows={3} className="w-full px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] rounded-none" />
-            </section>
-
-            <div className="flex justify-end gap-3 pt-2 border-t border-[var(--erp-hairline)]">
-              <button type="button" onClick={() => setMode('list')} className="px-4 py-2 border border-[var(--erp-hairline)] text-xs font-mono">Cancel</button>
-              <button type="submit" disabled={saving} className="px-5 py-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold">{saving ? 'Saving…' : 'Save as Draft'}</button>
-              <button type="button" disabled={saving} onClick={() => void persist(true)} className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">{saving ? 'Saving…' : 'Submit'}</button>
+            <div className="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-[var(--erp-hairline)] bg-[var(--erp-surface)]/95 backdrop-blur-md px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setMode('list')}
+                className="px-4 py-2.5 border border-[var(--erp-hairline)] text-xs font-mono text-[var(--erp-muted)] hover:text-[var(--erp-text)] hover:border-[var(--erp-hairline-strong)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-5 py-2.5 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold hover:bg-[var(--erp-gold)]/10 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save as Draft'}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void persist(true)}
+                className="px-5 py-2.5 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold hover:bg-[var(--erp-gold-soft)] shadow-[0_8px_24px_rgba(201,162,39,0.25)] hover:shadow-[0_10px_28px_rgba(201,162,39,0.35)] transition-all disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Submit'}
+              </button>
             </div>
           </form>
         </div>

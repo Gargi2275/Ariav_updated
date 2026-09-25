@@ -16,8 +16,11 @@ export const ThemeToggle: React.FC = () => {
       aria-checked={isPaper}
       aria-label={`${activeName} mode. Switch to ${otherName}.`}
       title={`${activeName} mode (active). Click to switch to ${otherName}.`}
-      onClick={toggleTheme}
-      className="h-8 px-1.5 inline-flex items-center justify-center shrink-0 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-gold)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--erp-gold)]"
+      onClick={e => {
+        toggleTheme();
+        e.currentTarget.blur();
+      }}
+      className="h-8 px-1.5 inline-flex items-center justify-center shrink-0 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 active:border-[var(--erp-hairline)] hover:border-[var(--erp-hairline)]"
     >
       <span
         aria-hidden

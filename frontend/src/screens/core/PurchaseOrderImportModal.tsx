@@ -44,7 +44,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
   const [preview, setPreview] = useState<PoImportPreview | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const manualBrands = brands.filter(b => b.order_method === 'Manual/POR' && b.status === 'Active');
+  const activeBrands = brands.filter(b => b.status === 'Active');
   const selectedEntity = entities.find(e => e.id === entityId);
 
   const runPreview = async () => {
@@ -146,8 +146,10 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
                   }`}
                 >
                   <option value="">Select brand…</option>
-                  {manualBrands.map(b => (
-                    <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name} (Manual/POR)</option>
+                  {activeBrands.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.brand_code} · {b.brand_name} ({b.order_method})
+                    </option>
                   ))}
                 </select>
               </FormField>
