@@ -52,31 +52,32 @@ def _sum(qs, field) -> Decimal:
     return money(total)
 
 
-def _invoice_qs(entity_id=None, created_by_id=None):
+def scope_customers(qs, customer_ids, field="customer_id"):
+    """customer_ids is None (unrestricted) or an id collection / subquery from customers_visible_to."""
+    if customer_ids is not None:
+        qs = qs.filter(**{f"{field}__in": customer_ids})
+    return qs
+
+
+def _invoice_qs(entity_id=None, customer_ids=None):
     qs = Invoice.objects.all()
     if entity_id:
         qs = qs.filter(entity_id=entity_id)
-    if created_by_id:
-        qs = qs.filter(created_by_id=created_by_id)
-    return qs
+    return scope_customers(qs, customer_ids)
 
 
-def _payment_qs(entity_id=None, created_by_id=None):
+def _payment_qs(entity_id=None, customer_ids=None):
     qs = Payment.objects.all()
     if entity_id:
         qs = qs.filter(entity_id=entity_id)
-    if created_by_id:
-        qs = qs.filter(created_by_id=created_by_id)
-    return qs
+    return scope_customers(qs, customer_ids)
 
 
-def _po_qs(entity_id=None, created_by_id=None):
+def _po_qs(entity_id=None, customer_ids=None):
     qs = PurchaseOrder.objects.all()
     if entity_id:
         qs = qs.filter(entity_id=entity_id)
-    if created_by_id:
-        qs = qs.filter(created_by_id=created_by_id)
-    return qs
+    return scope_customers(qs, customer_ids)
 
 
 def _remaining_by_invoice(invoices) -> dict[int, Decimal]:
@@ -98,10 +99,10 @@ def _remaining_by_invoice(invoices) -> dict[int, Decimal]:
     return remaining
 
 
-def _kpis(entity_id=None, created_by_id=None) -> dict:
-    invoices = _invoice_qs(entity_id, created_by_id)
-    payments = _payment_qs(entity_id, created_by_id)
-    pos = _po_qs(entity_id, created_by_id)
+def _kpis(entity_id=None, customer_ids=None) -> dict:
+    invoices = _invoice_qs(entity_id, customer_ids)
+    payments = _payment_qs(entity_id, customer_ids)
+    pos = _po_qs(entity_id, customer_ids)
     sales = invoices.filter(status__in=SALES_STATUSES)
     unpaid = list(invoices.filter(status__in=UNPAID_STATUSES))
     remaining = _remaining_by_invoice(unpaid)
@@ -111,7 +112,7 @@ def _kpis(entity_id=None, created_by_id=None) -> dict:
         Decimal("0.00"),
     )
     advance = _sum(payments, "unallocated_amount")
-    customers = Customer.objects.filter(status=Customer.Status.ACTIVE)
+    customers = scope_customers(Customer.objects.filter(status=Customer.Status.ACTIVE), customer_ids, "id")
     brands = Brand.objects.filter(status=Brand.Status.ACTIVE)
     products = Product.objects.filter(status=Product.Status.ACTIVE)
     entities = Entity.objects.filter(status=Entity.Status.ACTIVE)
@@ -203,14 +204,14 @@ def _category_share(entity_id=None) -> list[dict]:
     return out
 
 
-def customer_unpaid_buckets(entity_id=None, created_by_id=None) -> dict:
+def customer_unpaid_buckets(entity_id=None, customer_ids=None) -> dict:
     """Per-customer remaining / overdue from unpaid invoices.
 
     Shared by the Admin Dashboard debtor table and Reports → Outstanding.
     """
     today = timezone.localdate()
     unpaid = list(
-        _invoice_qs(entity_id, created_by_id)
+        _invoice_qs(entity_id, customer_ids)
         .filter(status__in=UNPAID_STATUSES)
         .select_related("customer")
     )
@@ -243,8 +244,8 @@ def customer_unpaid_buckets(entity_id=None, created_by_id=None) -> dict:
     return by_customer
 
 
-def customer_outstanding_report(entity_id=None, created_by_id=None) -> list[dict]:
-    buckets = customer_unpaid_buckets(entity_id, created_by_id=created_by_id)
+def customer_outstanding_report(entity_id=None, customer_ids=None) -> list[dict]:
+    buckets = customer_unpaid_buckets(entity_id, customer_ids=customer_ids)
     if not buckets:
         return []
     primary = {

@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from accounts.access import scope_to_visible_customers
 from products.models import Product
 from purchase_orders.models import PurchaseOrder, PurchaseOrderLine
 
@@ -192,6 +193,15 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "tax_percent": {"required": False},
             "other_charges": {"required": False},
         }
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get("request")
+        if request is not None:
+            fields["purchase_order_id"].queryset = scope_to_visible_customers(
+                PurchaseOrder.objects.all(), request.user
+            )
+        return fields
 
     def get_created_by_name(self, obj):
         if not obj.created_by_id:

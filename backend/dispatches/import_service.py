@@ -18,6 +18,7 @@ from django.db import transaction
 from openpyxl import load_workbook
 from rest_framework.exceptions import ValidationError
 
+from accounts.access import scope_to_visible_customers
 from purchase_orders.import_service import (
     MAX_DESCRIPTION,
     _cell_str,
@@ -25,7 +26,7 @@ from purchase_orders.import_service import (
     _parse_qty,
     compose_description,
 )
-from purchase_orders.models import PurchaseOrder, PurchaseOrderLine
+from purchase_orders.models import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatusChange
 
 from .models import Dispatch, DispatchLine
 from .services import (
@@ -254,9 +255,10 @@ def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str]]:
     return list(grouped.values()), warnings
 
 
-def _po_by_number() -> dict[str, PurchaseOrder]:
+def _po_by_number(user) -> dict[str, PurchaseOrder]:
+    """POs the user may see, so matches and reasons never mention another Customer's PO."""
     mapping: dict[str, PurchaseOrder] = {}
-    qs = PurchaseOrder.objects.select_related("customer").prefetch_related(
+    qs = scope_to_visible_customers(PurchaseOrder.objects.all(), user).select_related("customer").prefetch_related(
         "lines__product",
         "lines__dispatch_lines",
     )
@@ -463,9 +465,9 @@ def evaluate_group(group: dict, pos: dict[str, PurchaseOrder]) -> tuple[dict | N
     )
 
 
-def build_preview(file_bytes: bytes) -> dict:
+def build_preview(file_bytes: bytes, *, user) -> dict:
     groups, parse_warnings = parse_workbook(file_bytes)
-    pos = _po_by_number()
+    pos = _po_by_number(user)
     importable: list[dict] = []
     excluded: list[dict] = []
     warnings = list(parse_warnings)
@@ -592,7 +594,7 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
     to_create = [importable_by_key[key] for key in approved if key in importable_by_key]
     skipped_excluded = [excluded_by_key[key] for key in approved if key in excluded_by_key]
 
-    pos = _po_by_number()
+    pos = _po_by_number(user)
     stale: list[str] = []
     for row in to_create:
         err = _revalidate_importable(row, pos)
@@ -638,7 +640,7 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
                     purchase_order_line_id=line["purchase_order_line_id"],
                     dispatched_quantity=Decimal(str(line["quantity"])),
                 )
-            sync_purchase_order_dispatch_status(po)
+            sync_purchase_order_dispatch_status(po, user=user, source=PurchaseOrderStatusChange.Source.IMPORT)
             po.refresh_from_db()
             from notifications.services import notify_dispatch_created
 
@@ -655,7 +657,7 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
                     "line_count": len(matched),
                 }
             )
-            pos = _po_by_number()
+            pos = _po_by_number(user)
 
     drop_preview(token)
     remaining_excluded = list(cached["excluded"])

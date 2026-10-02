@@ -302,7 +302,7 @@ class NotificationApiTests(TestCase):
             0,
         )
 
-    def test_operator_notifications_are_scoped_to_own_records(self):
+    def test_operator_notifications_are_scoped_to_visible_customers(self):
         admin_pay = self.client.post(
             "/api/payments/",
             {
@@ -342,4 +342,6 @@ class NotificationApiTests(TestCase):
         listed = self.client.get("/api/notifications/", HTTP_HOST="localhost")
         op_ids = [row["reference_id"] for row in listed.json()]
         self.assertIn(op_pay.json()["id"], op_ids)
-        self.assertNotIn(admin_pay.json()["id"], op_ids)
+        # The operator now has a relationship with this Customer, so the admin's
+        # payment for the same Customer is visible too (same rule as the Payments list).
+        self.assertIn(admin_pay.json()["id"], op_ids)

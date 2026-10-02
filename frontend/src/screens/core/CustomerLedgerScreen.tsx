@@ -47,7 +47,7 @@ export const CustomerLedgerScreen: React.FC = () => {
   const loadCustomers = useCallback(async () => {
     setListLoading(true);
     try {
-      const rows = await customersApi.list({ status: 'Active' });
+      const rows = await customersApi.list({ status: 'Active', scope: 'visible' });
       setCustomers(Array.isArray(rows) ? rows : []);
     } catch (e) {
       notifyApiError(e, 'Could not load customers.');

@@ -10,6 +10,9 @@ import { notifyApiError, notifySuccess } from '../../services/notify';
 import { DispatchRow, OPEN_DISPATCH_KEY, DispatchImportCommitResult, DispatchImportCreated, dispatchesApi } from '../../services/dispatchesApi';
 import { OPEN_PO_KEY } from '../../services/purchaseOrdersApi';
 import { DispatchImportModal } from './DispatchImportModal';
+import { PoInvoicesList } from './PoInvoicesList';
+import { NOT_RECORDED } from '../../services/invoicesApi';
+import { openTraceTarget } from '../../services/traceLinks';
 import { readCustomerListFilter } from '../../services/customersApi';
 
 export const DispatchScreen: React.FC = () => {
@@ -160,7 +163,20 @@ export const DispatchScreen: React.FC = () => {
             <div className="flex justify-between items-start border-b border-[var(--erp-hairline)] pb-3">
               <div>
                 <h3 className="font-display text-lg font-bold flex items-center gap-2"><Truck className="w-4 h-4 text-[var(--erp-gold)]" />{detail.lr_number}</h3>
-                <p className="text-xs font-mono text-[var(--erp-muted)] mt-1">{detail.dispatch_date} · {detail.po_number} · {detail.transporter} · {detail.challan_reference}</p>
+                <p className="text-xs font-mono text-[var(--erp-muted)] mt-1">
+                  {detail.dispatch_date} ·{' '}
+                  <button
+                    type="button"
+                    className="text-[var(--erp-gold)] hover:underline cursor-pointer"
+                    onClick={() => openTraceTarget('purchase_order', detail.purchase_order_id, navigateTo)}
+                  >
+                    {detail.po_number}
+                  </button>
+                  {' '}· {detail.transporter} · {detail.challan_reference}
+                </p>
+                <p className="text-xs font-mono text-[var(--erp-muted)] mt-1">
+                  Recorded by {detail.created_by_name || <span className="italic">{NOT_RECORDED}</span>}
+                </p>
               </div>
               <button type="button" onClick={() => setDetail(null)}><X className="w-4 h-4" /></button>
             </div>
@@ -180,6 +196,11 @@ export const DispatchScreen: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            <section>
+              <h4 className="text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-2">Invoices on {detail.po_number}</h4>
+              <p className="text-xs font-mono text-[var(--erp-muted)] mb-2">Invoices are raised against the PO, not against a specific dispatch.</p>
+              <PoInvoicesList purchaseOrderId={detail.purchase_order_id} />
+            </section>
           </div>
         </div>
       )}

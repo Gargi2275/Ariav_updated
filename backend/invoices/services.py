@@ -63,6 +63,51 @@ def invoice_display_status(invoice) -> str:
     return invoice.status
 
 
+class InvoiceTransitionError(ValueError):
+    pass
+
+
+def _actor(user):
+    return user if getattr(user, "is_authenticated", False) else None
+
+
+def issue_invoice(invoice, user):
+    """Draft → Issued, recording who issued it and when."""
+    from invoices.models import Invoice
+    from invoices.transitions import validate_transition
+
+    err = validate_transition(invoice.status, Invoice.Status.ISSUED)
+    if err:
+        raise InvoiceTransitionError(err)
+    if not invoice.lines.exists():
+        raise InvoiceTransitionError("Add at least one line item before issuing.")
+    invoice.status = Invoice.Status.ISSUED
+    invoice.issued_by = _actor(user)
+    invoice.issued_at = timezone.now()
+    invoice.save(update_fields=["status", "issued_by", "issued_at", "updated_at"])
+    return invoice
+
+
+def change_invoice_status(invoice, target: str, user):
+    """Manual status change; Issued and Cancelled record their actor and time."""
+    from invoices.models import Invoice
+    from invoices.transitions import validate_transition
+
+    if target == Invoice.Status.ISSUED:
+        return issue_invoice(invoice, user)
+    err = validate_transition(invoice.status, target)
+    if err:
+        raise InvoiceTransitionError(err)
+    invoice.status = target
+    fields = ["status", "updated_at"]
+    if target == Invoice.Status.CANCELLED:
+        invoice.cancelled_by = _actor(user)
+        invoice.cancelled_at = timezone.now()
+        fields += ["cancelled_by", "cancelled_at"]
+    invoice.save(update_fields=fields)
+    return invoice
+
+
 def compute_invoice_totals(
     subtotal,
     discount_percent=None,

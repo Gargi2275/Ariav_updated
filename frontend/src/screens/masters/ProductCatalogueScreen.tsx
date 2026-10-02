@@ -21,6 +21,7 @@ import {
   productsApi,
   toProductFormData,
 } from '../../services/productsApi';
+import { CurrentPriceRow, priceListsApi } from '../../services/priceListsApi';
 
 function nullableDecimal(value: string | number | null | undefined): number | null {
   if (value === '' || value == null) return null;
@@ -59,6 +60,7 @@ export const ProductCatalogueScreen: React.FC = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
   const [pendingDelete, setPendingDelete] = useState<ProductRow | null>(null);
+  const [currentPrice, setCurrentPrice] = useState<CurrentPriceRow | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
 
   const loadLookups = useCallback(async () => {
@@ -121,6 +123,7 @@ export const ProductCatalogueScreen: React.FC = () => {
     setImagePreview('');
     setFieldErrors([]);
     setFieldMessages({});
+    setCurrentPrice(null);
     setModalOpen(true);
   };
 
@@ -133,6 +136,11 @@ export const ProductCatalogueScreen: React.FC = () => {
       setImagePreview(row.image_url || '');
       setFieldErrors([]);
       setFieldMessages({});
+      try {
+        setCurrentPrice(await priceListsApi.currentPrice(row.id));
+      } catch {
+        setCurrentPrice(null);
+      }
       setModalOpen(true);
     } catch (e) {
       notifyApiError(e);
@@ -316,6 +324,13 @@ export const ProductCatalogueScreen: React.FC = () => {
               <button type="button" onClick={() => setModalOpen(false)}><X className="w-4 h-4" /></button>
             </div>
             <RequiredLegend />
+            {form.id && currentPrice && (
+              <div className="border border-[var(--erp-gold)]/35 bg-[var(--erp-gold)]/5 px-4 py-3 text-sm">
+                <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">Current Price</div>
+                <div className="mt-1 font-display font-bold text-[var(--erp-gold)]">₹{num(currentPrice.price).toFixed(2)} / meter</div>
+                <div className="text-xs text-[var(--erp-muted)]">Source: {currentPrice.source}{currentPrice.season_label ? ` · ${currentPrice.season_label}` : ''}</div>
+              </div>
+            )}
             <section>
               <h4 className={sectionTitle}>Identity</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

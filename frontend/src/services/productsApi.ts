@@ -70,6 +70,8 @@ export interface ProductRow {
   updated_at?: string;
   created_by?: number | null;
   created_by_name?: string;
+  /** Purchase-order lines using this product; only present when listed with `with_usage: 1`. */
+  usage_count?: number | null;
 }
 
 export const emptyProduct = (): Partial<ProductRow> => ({
@@ -128,6 +130,7 @@ export const productsApi = {
     category_id?: number;
     availability?: string;
     search?: string;
+    with_usage?: 1;
   } = {}) =>
     fetch(apiUrl(`/api/products/${qs(params)}`), { headers: authHeaders(true) }).then(r => parse<ProductRow[]>(r)),
   retrieve: (id: number) =>

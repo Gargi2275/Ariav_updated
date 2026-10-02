@@ -13,7 +13,7 @@ export const ApprovalQueueScreen: React.FC = () => {
 
   const handleApprove = async (req: OperatorApprovalRequest) => {
     const otp = await approveRequest(req.id);
-    setRevealedOtp({ id: req.id, otp, operator: req.operatorName });
+    if (otp) setRevealedOtp({ id: req.id, otp, operator: req.operatorName });
   };
 
   const pendingCount = approvalQueue.filter(r => r.status === 'pending').length;

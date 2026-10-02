@@ -2,9 +2,10 @@ from django.http import HttpResponse
 from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
-from accounts.access import operator_can_view_customer
+from accounts.access import can_view_customer, scope_to_visible_customers
 from masters.permissions import IsAuthenticatedAdminOrReadOnly
 
 from .models import Customer
@@ -29,6 +30,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
         status_filter = self.request.query_params.get("status")
         q = self.request.query_params.get("search")
         entity_id = self.request.query_params.get("entity_id")
+        if self.action == "list" and (self.request.query_params.get("scope") or "").lower() == "visible":
+            qs = scope_to_visible_customers(qs, self.request.user, field="id")
         if status_filter:
             qs = qs.filter(status__iexact=status_filter)
         if q:
@@ -38,18 +41,16 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return qs.distinct()
 
     def _forbid_unrelated_financial_view(self, customer):
-        """Judgment call: operators may open ledger/360 only for customers on a
-        PO, invoice, or payment they created. Admins see every customer.
-        The original spec did not define this boundary; full financial history
-        is treated as staff-scoped unless the user is admin.
+        """Operators may open ledger/360 only for customers_visible_to them (403 here,
+        unlike the transaction endpoints' 404, to keep the existing behaviour).
         """
-        if operator_can_view_customer(self.request.user, customer):
+        if can_view_customer(self.request.user, customer.pk):
             return None
         return Response(
             {
                 "detail": (
                     "You can only view this customer’s ledger and 360° if they appear "
-                    "on a purchase order, invoice, or payment you created."
+                    "on a purchase order, dispatch, invoice, or payment you created."
                 )
             },
             status=status.HTTP_403_FORBIDDEN,
@@ -84,6 +85,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="advance-balance")
     def advance_balance(self, request, pk=None):
         customer = self.get_object()
+        if not can_view_customer(request.user, customer.pk):
+            raise NotFound()
         from payments.services import customer_advance_credit
 
         return Response(

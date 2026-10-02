@@ -51,6 +51,7 @@ export const ERP_SCREENS: ScreenDefinition[] = [
   { id: 37, slug: 'brand-master', title: 'Brand Master', category: 'Masters', subtitle: 'Mill labels, commission terms & Digital PO / Manual POR', iconName: 'Tag', shortcut: '37' },
   { id: 38, slug: 'category-master', title: 'Category Master', category: 'Masters', subtitle: 'Two-level Category → Subcategory (shared across brands)', iconName: 'FolderTree', shortcut: '38' },
   { id: 39, slug: 'product-catalogue', title: 'Product Catalogue', category: 'Masters', subtitle: 'Brand SKUs, rate, availability and subcategory', iconName: 'Boxes', shortcut: '39' },
+  { id: 49, slug: 'price-lists', title: 'Price Lists', category: 'Masters', subtitle: 'Seasonal Brand prices with product history and date ranges', iconName: 'Tags', shortcut: '49' },
   { id: 21, slug: 'item-master', title: 'Item Master Catalogue', category: 'Masters', subtitle: 'SKU, Description, HSN, Base Price & GST Slab', iconName: 'Boxes', shortcut: '21' },
   { id: 22, slug: 'group-product', title: 'Group Product Master', category: 'Masters', subtitle: 'Yarn, Greige Weaves, GSM Bands & Classification', iconName: 'FolderTree', shortcut: '22' },
   { id: 23, slug: 'customer-master', title: 'Customer Master', category: 'Masters', subtitle: 'Unique customer code, entities, GSTIN, credit terms', iconName: 'Users', shortcut: '23' },

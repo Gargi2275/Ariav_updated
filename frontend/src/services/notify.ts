@@ -7,6 +7,7 @@
  */
 import { toast } from 'react-toastify';
 import { parseApiErrorDetails, type ParsedApiError } from './apiError';
+import { SESSION_EXPIRED_MESSAGE } from './sessionExpiry';
 
 export function notifySuccess(message: string) {
   toast.success(message, { autoClose: 4000 });
@@ -22,6 +23,9 @@ export function notifyError(message: string) {
 
 export function notifyApiError(err: unknown, fallback?: string): ParsedApiError {
   const parsed = parseApiErrorDetails(err, fallback);
+  if ((err as { status?: number } | null)?.status === 401) {
+    return { ...parsed, message: SESSION_EXPIRED_MESSAGE };
+  }
   notifyError(parsed.message);
   return parsed;
 }

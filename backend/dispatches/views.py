@@ -5,6 +5,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
+from accounts.access import scope_to_visible_customers
+
 from .import_service import (
     build_preview,
     commit_import,
@@ -33,7 +35,7 @@ class DispatchViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = scope_to_visible_customers(super().get_queryset(), self.request.user, "purchase_order__customer_id")
         po_id = self.request.query_params.get("purchase_order_id")
         customer_id = self.request.query_params.get("customer_id")
         date_from = self.request.query_params.get("date_from")
@@ -63,7 +65,7 @@ class DispatchViewSet(viewsets.ModelViewSet):
         dispatch = self.get_object()
         po = dispatch.purchase_order
         dispatch.delete()
-        sync_purchase_order_dispatch_status(po)
+        sync_purchase_order_dispatch_status(po, user=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"], url_path="import/preview")
@@ -75,7 +77,7 @@ class DispatchViewSet(viewsets.ModelViewSet):
         if not name.endswith((".xlsx", ".xlsm")):
             return Response({"file": "Upload an Excel file (.xlsx)."}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            preview = build_preview(upload.read())
+            preview = build_preview(upload.read(), user=request.user)
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
         token = store_preview(request.user.id, preview)

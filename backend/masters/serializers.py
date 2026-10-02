@@ -4,7 +4,6 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from masters.models import (
-    AccountMaster,
     BrokerMaster,
     ChartAccount,
     GroupProduct,
@@ -196,67 +195,6 @@ class ItemSerializer(serializers.ModelSerializer):
         gst = attrs.get("gst_percent", getattr(self.instance, "gst_percent", None))
         if slab is not None and gst is not None and Decimal(str(slab.gst_percent)) != Decimal(str(gst)):
             attrs["gst_percent"] = slab.gst_percent
-        return attrs
-
-
-class PartySerializer(serializers.ModelSerializer):
-    linked_branch_ids = serializers.PrimaryKeyRelatedField(
-        source="linked_branches",
-        many=True,
-        queryset=MasterBranch.objects.all(),
-        required=False,
-    )
-    linked_branch_names = serializers.SerializerMethodField()
-    broker_name = serializers.CharField(source="broker_ref.name", read_only=True)
-
-    class Meta:
-        model = AccountMaster
-        fields = (
-            "id",
-            "code",
-            "name",
-            "trade_name",
-            "group",
-            "city",
-            "state",
-            "gstin",
-            "pan",
-            "credit_limit",
-            "credit_days",
-            "broker",
-            "broker_ref",
-            "broker_name",
-            "opening_balance",
-            "balance_type",
-            "is_active",
-            "linked_branch_ids",
-            "linked_branch_names",
-        )
-
-    def get_linked_branch_names(self, obj):
-        return list(obj.linked_branches.values_list("name", flat=True))
-
-    def validate_code(self, value):
-        value = (value or "").strip().upper()
-        if not value:
-            raise serializers.ValidationError("Party code is required.")
-        return value
-
-    def validate_gstin(self, value):
-        return validate_gstin(value)
-
-    def validate_pan(self, value):
-        return validate_pan(value)
-
-    def validate_credit_limit(self, value):
-        if value is not None and value < 0:
-            raise serializers.ValidationError("Credit limit cannot be negative.")
-        return value
-
-    def validate(self, attrs):
-        broker_ref = attrs.get("broker_ref", getattr(self.instance, "broker_ref", None))
-        if broker_ref and not attrs.get("broker"):
-            attrs["broker"] = f"{broker_ref.name} ({broker_ref.code})"
         return attrs
 
 

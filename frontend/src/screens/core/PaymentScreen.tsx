@@ -124,7 +124,7 @@ export const PaymentScreen: React.FC = () => {
         customersApi.advanceBalance(id),
       ]);
       setOutstanding(invoices.filter(inv => num(inv.remaining_balance) > 0));
-      setAdvanceBalance(num(advance.advance_balance));
+      setAdvanceBalance(advance ? num(advance.advance_balance) : 0);
     } catch (e) {
       notifyApiError(e);
     }

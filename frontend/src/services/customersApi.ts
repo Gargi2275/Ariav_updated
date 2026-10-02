@@ -323,7 +323,8 @@ export function writeCustomerListFilter(id: number) {
 }
 
 export const customersApi = {
-  list: (params: { status?: string; search?: string; entity_id?: number | string } = {}) =>
+  /** `scope: 'visible'` limits operators to Customers they have a PO, Dispatch, Invoice or Payment with. */
+  list: (params: { status?: string; search?: string; entity_id?: number | string; scope?: 'visible' } = {}) =>
     request<CustomerRow[]>(`/api/customers/${qs(params)}`),
   retrieve: (id: number) => request<CustomerRow>(`/api/customers/${id}/`),
   ledger: (id: number, params: { from?: string; to?: string } = {}) =>
@@ -346,10 +347,14 @@ export const customersApi = {
     }
     return res.blob();
   },
+  /** Resolves to null when the operator has no relationship with the Customer yet (404). */
   advanceBalance: (id: number) =>
     request<{ customer_id: number; customer_code: string; advance_balance: string }>(
       `/api/customers/${id}/advance-balance/`,
-    ),
+    ).catch(err => {
+      if ((err as { status?: number }).status === 404) return null;
+      throw err;
+    }),
   create: (body: unknown) => request<CustomerRow>('/api/customers/', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: number, body: unknown) =>
     request<CustomerRow>(`/api/customers/${id}/`, { method: 'PUT', body: JSON.stringify(body) }),

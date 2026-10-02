@@ -43,6 +43,7 @@ import { EntityMasterScreen } from './screens/masters/EntityMasterScreen';
 import { BrandMasterScreen } from './screens/masters/BrandMasterScreen';
 import { CategoryMasterScreen } from './screens/masters/CategoryMasterScreen';
 import { ProductCatalogueScreen } from './screens/masters/ProductCatalogueScreen';
+import { PriceListScreen } from './screens/masters/PriceListScreen';
 import { CustomerMasterScreen } from './screens/masters/CustomerMasterScreen';
 import { ItemMasterScreen } from './screens/masters/ItemMasterScreen';
 import { GroupProductScreen } from './screens/masters/GroupProductScreen';
@@ -129,6 +130,8 @@ const ScreenDispatcher: React.FC = () => {
       return <CategoryMasterScreen />;
     case 39:
       return <ProductCatalogueScreen />;
+    case 49:
+      return <PriceListScreen />;
     case 21:
       return <ItemMasterScreen />;
     case 22:

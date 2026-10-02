@@ -17,6 +17,9 @@ import '@fontsource/jetbrains-mono/latin-500.css';
 import '@fontsource/jetbrains-mono/latin-600.css';
 import '@fontsource/jetbrains-mono/latin-700.css';
 import './index.css';
+import { installAuthInterceptor } from './services/apiBase';
+
+installAuthInterceptor();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

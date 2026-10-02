@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip, StatusChipType } from '../../components/common/StatusChip';
 import { CustomerPicker } from '../../components/common/CustomerPicker';
+import { SelectOption } from '../../components/common/AccessibleSelectModal';
 import { TextInput, FormField, RequiredLegend } from '../../components/common/FormControls';
 import { FileDropZone } from '../../components/common/FileDropZone';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
@@ -17,6 +18,7 @@ import { BrandRow, brandsApi } from '../../services/brandsApi';
 import { CustomerRow, customersApi, readCustomerListFilter } from '../../services/customersApi';
 import { EntityRow, entitiesApi } from '../../services/entitiesApi';
 import { ProductRow, productsApi } from '../../services/productsApi';
+import { priceListsApi } from '../../services/priceListsApi';
 import {
   PO_STATUSES,
   PO_TRANSITIONS,
@@ -35,21 +37,11 @@ import {
   todayIso as dispatchToday,
 } from '../../services/dispatchesApi';
 import { INVOICE_FROM_PO_KEY } from '../../services/invoicesApi';
+import { PoInvoicesList } from './PoInvoicesList';
+import { LineDraft, PurchaseOrderLineItems } from './PurchaseOrderLineItems';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-[0.14em] text-[var(--erp-gold)] border-b border-[var(--erp-gold)]/25 pb-2 mb-4 flex items-center gap-2';
 const fieldSelectClass = 'px-3 py-2.5 text-sm bg-[var(--erp-surface-2)] border text-[var(--erp-text)] transition-[border-color,box-shadow] duration-200 focus:outline-none focus:border-[var(--erp-gold)] focus:shadow-[0_0_0_3px_rgba(201,162,39,0.12)]';
-const lineControlClass = 'w-full px-2.5 py-2 bg-[var(--erp-surface-2)] border text-[var(--erp-text)] transition-[border-color,box-shadow,opacity] duration-200 focus:outline-none focus:border-[var(--erp-gold)] focus:shadow-[0_0_0_3px_rgba(201,162,39,0.1)] disabled:opacity-45';
-
-type LineDraft = {
-  key: string;
-  category_id?: number;
-  product_id?: number;
-  product_description: string;
-  manualEntry: boolean;
-  quantity: string;
-  rate: string;
-};
-
 function poChipStatus(status: string): StatusChipType | string {
   switch (status) {
     case 'Rejected':
@@ -195,6 +187,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     void customersApi.list({
       status: 'Active',
       entity_id: entityFilter || undefined,
+      scope: 'visible',
     }).then(setListCustomers).catch(notifyApiError);
   }, [entityFilter]);
 
@@ -216,7 +209,7 @@ export const PurchaseOrderScreen: React.FC = () => {
       setProducts([]);
       return;
     }
-    void productsApi.list({ status: 'Active', brand_id: form.brand_id }).then(setProducts).catch(notifyApiError);
+    void productsApi.list({ status: 'Active', brand_id: form.brand_id, with_usage: 1 }).then(setProducts).catch(notifyApiError);
   }, [form.brand_id]);
 
   /** When editing a draft, hydrate category from the loaded catalogue product. */
@@ -321,17 +314,41 @@ export const PurchaseOrderScreen: React.FC = () => {
   });
 
   const brandCategories = useMemo(() => {
-    const map = new Map<number, { id: number; label: string }>();
+    const map = new Map<number, SelectOption & { usage: number }>();
     for (const p of products) {
-      if (!p.category_id || map.has(p.category_id)) continue;
+      if (!p.category_id) continue;
+      const existing = map.get(p.category_id);
+      if (existing) {
+        existing.usage += p.usage_count ?? 0;
+        continue;
+      }
       map.set(p.category_id, {
         id: p.category_id,
-        label: p.parent_category_name
-          ? `${p.parent_category_name} › ${p.category_name}`
-          : p.category_name,
+        label: p.category_name,
+        detail: p.parent_category_name || undefined,
+        usage: p.usage_count ?? 0,
       });
     }
-    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+    return [...map.values()].sort(
+      (a, b) => (a.detail ?? '').localeCompare(b.detail ?? '') || a.label.localeCompare(b.label),
+    );
+  }, [products]);
+
+  const productOptionsByCategory = useMemo(() => {
+    const map = new Map<number, SelectOption[]>();
+    for (const p of products) {
+      if (!p.category_id) continue;
+      const list = map.get(p.category_id) ?? [];
+      list.push({
+        id: p.id,
+        label: p.product_name,
+        detail: [`Code: ${p.product_code}`, p.unit].filter(Boolean).join(' · '),
+        usage: p.usage_count ?? 0,
+      });
+      map.set(p.category_id, list);
+    }
+    for (const list of map.values()) list.sort((a, b) => a.label.localeCompare(b.label));
+    return map;
   }, [products]);
 
   const validateForm = (requireRates = false): boolean => {
@@ -500,15 +517,24 @@ export const PurchaseOrderScreen: React.FC = () => {
     ));
   };
 
-  const setLineProduct = (key: string, productId: number, index: number) => {
+  const setLineProduct = async (key: string, productId: number, index: number) => {
     const product = products.find(p => p.id === productId);
+    let rate = product ? String(product.rate) : '';
+    try {
+      if (product) {
+        const current = await priceListsApi.currentPrice(product.id, form.po_date || undefined);
+        rate = String(current.price);
+      }
+    } catch {
+      // Product rate remains the fallback when the optional price lookup is unavailable.
+    }
     setLines(prev => prev.map(l => l.key === key
       ? {
         ...l,
         product_id: productId,
         category_id: product?.category_id ?? l.category_id,
         product_description: '',
-        rate: product ? String(product.rate) : l.rate,
+        rate: product ? rate : l.rate,
       }
       : l));
     setFieldMessages(prev => clearFieldMessage(prev, `line_${index}_product`));
@@ -793,163 +819,21 @@ export const PurchaseOrderScreen: React.FC = () => {
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
                   Line items
                 </h4>
-                {fieldMessages.lines && (
-                  <p className="text-xs font-mono text-[var(--erp-negative)] mb-3">{fieldMessages.lines}</p>
-                )}
-                <div className="overflow-x-auto border border-[var(--erp-hairline)] bg-[var(--erp-surface)]">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[var(--erp-surface-2)] font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--erp-muted)]">
-                      <tr>
-                        <th className="px-3 py-2.5 min-w-[160px]">Category *</th>
-                        <th className="px-3 py-2.5 min-w-[180px]">Product *</th>
-                        <th className="px-3 py-2.5 w-28">Qty *</th>
-                        <th className="px-3 py-2.5 w-28">Rate</th>
-                        <th className="px-3 py-2.5 w-32 text-right">Line total</th>
-                        <th className="px-3 py-2.5 w-10" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lines.map((line, index) => {
-                          const product = products.find(p => p.id === line.product_id);
-                          const lineProducts = products.filter(p => p.category_id === line.category_id);
-                          const lineTotal = num(line.quantity) * num(line.rate);
-                          const freeText = isManual && line.manualEntry;
-                          return (
-                            <tr
-                              key={line.key}
-                              className="border-t border-[var(--erp-hairline)] hover:bg-[var(--erp-gold)]/[0.03] transition-colors"
-                            >
-                              <td className="px-3 py-2.5 align-top">
-                                {freeText ? (
-                                  <span className="text-[10px] font-mono text-[var(--erp-muted)]">—</span>
-                                ) : (
-                                  <select
-                                    disabled={!form.brand_id}
-                                    value={line.category_id || ''}
-                                    onChange={e => setLineCategory(
-                                      line.key,
-                                      e.target.value ? Number(e.target.value) : undefined,
-                                      index,
-                                    )}
-                                    className={`${lineControlClass} ${fieldMessages[`line_${index}_category`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                  >
-                                    <option value="">Select category…</option>
-                                    {brandCategories.map(c => (
-                                      <option key={c.id} value={c.id}>{c.label}</option>
-                                    ))}
-                                  </select>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
-                                {freeText ? (
-                                  <input
-                                    value={line.product_description}
-                                    placeholder="Item from handy form…"
-                                    onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, product_description: e.target.value } : l))}
-                                    className={`${lineControlClass} ${fieldMessages[`line_${index}_desc`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                  />
-                                ) : (
-                                  <select
-                                    disabled={!form.brand_id || !line.category_id}
-                                    value={line.product_id || ''}
-                                    onChange={e => setLineProduct(line.key, Number(e.target.value), index)}
-                                    className={`${lineControlClass} ${fieldMessages[`line_${index}_product`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                  >
-                                    <option value="">{line.category_id ? 'Select product…' : 'Select category first'}</option>
-                                    {lineProducts.map(p => (
-                                      <option key={p.id} value={p.id}>{p.product_code} · {p.product_name}</option>
-                                    ))}
-                                  </select>
-                                )}
-                                {isManual && (
-                                  <button
-                                    type="button"
-                                    className="mt-1.5 text-[10px] font-mono text-[var(--erp-gold)] hover:underline"
-                                    onClick={() => setLines(prev => prev.map(l => l.key === line.key
-                                      ? {
-                                        ...l,
-                                        manualEntry: !freeText,
-                                        category_id: undefined,
-                                        product_id: undefined,
-                                        product_description: '',
-                                        rate: '',
-                                      }
-                                      : l))}
-                                  >
-                                    {freeText ? 'Pick from catalogue' : 'Product not in catalogue? Enter manually'}
-                                  </button>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
-                                <input
-                                  value={line.quantity}
-                                  onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, quantity: e.target.value } : l))}
-                                  className={`${lineControlClass} font-mono ${fieldMessages[`line_${index}_qty`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                />
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
-                                <input
-                                  value={line.rate}
-                                  placeholder={freeText ? 'Enter rate' : ''}
-                                  onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, rate: e.target.value } : l))}
-                                  className={`${lineControlClass} font-mono ${fieldMessages[`line_${index}_rate`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                />
-                                {!!(line.product_id || line.product_description.trim()) && rateIsUnset(line.rate) ? (
-                                  <div className="mt-1"><RateNotSetBadge /></div>
-                                ) : null}
-                              </td>
-                              <td className="px-3 py-2.5 text-right font-mono align-top">
-                                <span
-                                  className="inline-block text-[var(--erp-text)]"
-                                >
-                                  {money(lineTotal)}
-                                </span>
-                                {product ? <span className="block text-[10px] text-[var(--erp-muted)]">{product.unit}</span> : null}
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
-                                {lines.length > 1 && (
-                                  <button
-                                    type="button"
-                                    className="text-[var(--erp-muted)] hover:text-[var(--erp-negative)] transition-colors"
-                                    onClick={() => setLines(prev => prev.filter(l => l.key !== line.key))}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      
-                    </tbody>
-                  </table>
-                </div>
-                <button
-                  type="button"
-                  disabled={!form.brand_id}
-                  onClick={() => setLines(prev => [...prev, newLine()])}
-                  className="mt-3 px-3.5 py-2 text-[11px] font-mono border border-dashed border-[var(--erp-hairline-strong)] text-[var(--erp-muted)] hover:text-[var(--erp-gold)] hover:border-[var(--erp-gold)] hover:bg-[var(--erp-gold)]/5 transition-all disabled:opacity-40"
-                >
-                  + Add line
-                </button>
-                <div className="mt-4 flex justify-end gap-8 font-mono text-sm border-t border-[var(--erp-hairline)] pt-3">
-                  <div className="text-[var(--erp-muted)]">
-                    Qty{' '}
-                    <span
-                      className="inline-block text-[var(--erp-text)]"
-                    >
-                      {totals.qty.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="text-[var(--erp-muted)]">
-                    Amount{' '}
-                    <span
-                      className="inline-block text-[var(--erp-gold)] font-semibold"
-                    >
-                      {money(totals.amt)}
-                    </span>
-                  </div>
-                </div>
+                <PurchaseOrderLineItems
+                  lines={lines}
+                  setLines={setLines}
+                  onAddLine={() => setLines(prev => [...prev, newLine()])}
+                  onCategoryChange={setLineCategory}
+                  onProductChange={setLineProduct}
+                  categories={brandCategories}
+                  productOptionsByCategory={productOptionsByCategory}
+                  products={products}
+                  brandSelected={!!form.brand_id}
+                  brandName={selectedBrand?.brand_name}
+                  isManual={isManual}
+                  fieldMessages={fieldMessages}
+                  totals={totals}
+                />
               </section>
 
               <section
@@ -1127,6 +1011,10 @@ export const PurchaseOrderScreen: React.FC = () => {
               ) : (
                 <p className="text-xs font-mono text-[var(--erp-muted)]">No dispatches recorded yet.</p>
               )}
+            </section>
+            <section>
+              <h4 className={sectionTitle}>Invoices on this PO</h4>
+              <PoInvoicesList purchaseOrderId={detail.id} />
             </section>
             <div className="flex flex-wrap justify-between gap-3 pt-3 border-t border-[var(--erp-hairline)]">
               <div className="flex flex-wrap gap-2">

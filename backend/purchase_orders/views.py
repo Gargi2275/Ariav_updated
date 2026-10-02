@@ -6,6 +6,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
+from accounts.access import scope_to_visible_customers
 from brands.models import Brand
 from entities.models import Entity
 
@@ -19,7 +20,13 @@ from .models import PurchaseOrder
 from .pdf import build_po_pdf
 from .permissions import PurchaseOrderPermission
 from .serializers import PurchaseOrderSerializer
-from .transitions import allowed_next_statuses, validate_transition
+from .transitions import (
+    DISPATCH_STATUSES,
+    MANUAL_DISPATCH_ERROR,
+    allowed_next_statuses,
+    apply_status_change,
+    validate_transition,
+)
 
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
@@ -35,7 +42,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = scope_to_visible_customers(super().get_queryset(), self.request.user)
         status_filter = self.request.query_params.get("status")
         entity_id = self.request.query_params.get("entity_id")
         customer_id = self.request.query_params.get("customer_id")
@@ -84,11 +91,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         rate_err = _unpriced_lines_error(po)
         if rate_err:
             return Response({"detail": rate_err}, status=status.HTTP_400_BAD_REQUEST)
-        po.status = PurchaseOrder.Status.SUBMITTED
-        po.save(update_fields=["status", "updated_at"])
-        from notifications.services import notify_po_status_changed
-
-        notify_po_status_changed(po)
+        apply_status_change(po, PurchaseOrder.Status.SUBMITTED, user=request.user)
         return Response(PurchaseOrderSerializer(po, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="status")
@@ -105,6 +108,13 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 {"status": "Invalid status."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if target in DISPATCH_STATUSES:
+            return Response({"detail": MANUAL_DISPATCH_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+        if not getattr(request.user, "is_admin_role", False):
+            return Response(
+                {"detail": "Only administrators can change this status."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         err = validate_transition(po.status, target)
         if err:
             return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
@@ -112,11 +122,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             rate_err = _unpriced_lines_error(po)
             if rate_err:
                 return Response({"detail": rate_err}, status=status.HTTP_400_BAD_REQUEST)
-        po.status = target
-        po.save(update_fields=["status", "updated_at"])
-        from notifications.services import notify_po_status_changed
-
-        notify_po_status_changed(po)
+        apply_status_change(po, target, user=request.user)
         return Response(PurchaseOrderSerializer(po, context={"request": request}).data)
 
     @action(detail=True, methods=["get"], url_path="pdf")

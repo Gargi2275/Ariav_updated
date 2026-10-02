@@ -13,6 +13,7 @@ from customers.models import Customer, CustomerEntity
 from entities.models import Entity
 from invoices.models import Invoice
 from products.models import Product
+from purchase_orders.models import PurchaseOrder
 
 
 class InvoiceApiTests(TestCase):
@@ -261,6 +262,7 @@ class InvoiceApiTests(TestCase):
 
     def test_operator_can_create_and_issue_not_cancel(self):
         po = self._accept_and_dispatch()
+        PurchaseOrder.objects.filter(pk=po["id"]).update(created_by=self.operator)
         self.client.force_authenticate(self.operator)
         created = self._post_invoice(self._invoice_payload(po, invoice_number="INV-OP-1"))
         self.assertEqual(created.status_code, 201, created.content)

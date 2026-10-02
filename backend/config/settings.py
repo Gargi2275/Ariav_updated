@@ -1,14 +1,21 @@
 import os
-from datetime import timedelta
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "unsafe-dev-key")
 DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in ("1", "true", "yes")
+
+# Never used outside DEBUG: without DJANGO_SECRET_KEY a non-debug process refuses to start.
+DEV_ONLY_SECRET_KEY = "dev-only-insecure-secret-key-do-not-use-in-production"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false.")
+    SECRET_KEY = DEV_ONLY_SECRET_KEY
 ALLOWED_HOSTS = [
     h.strip()
     for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
@@ -29,6 +36,7 @@ INSTALLED_APPS = [
     "brands",
     "categories",
     "products",
+    "price_lists",
     "customers",
     "purchase_orders",
     "dispatches",
@@ -143,27 +151,37 @@ CACHES = {
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "accounts.authentication.UserTokenAuthentication",
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
+    # Closed by default: public routes must declare @permission_classes([AllowAny])
+    # and be listed in accounts/tests_route_guard.py PUBLIC_ROUTES.
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny",
+        "rest_framework.permissions.IsAuthenticated",
     ],
-}
-
-SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=24),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
 
 LOGIN_REQUEST_TTL_SECONDS = 300
 PIN_MAX_ATTEMPTS = 5
 PIN_LOCKOUT_SECONDS = 300
+OTP_MAX_ATTEMPTS = 5
 SESSION_TOKEN_HOURS = 24
 TEMP_TOKEN_SECONDS = 600
+# Only enable behind a reverse proxy that overwrites X-Forwarded-For; otherwise
+# clients could spoof their IP and dodge the per-IP rate limits.
+TRUST_X_FORWARDED_FOR = os.environ.get("DJANGO_TRUST_X_FORWARDED_FOR", "false").lower() in ("1", "true", "yes")
+
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
+    X_FRAME_OPTIONS = "DENY"
+    SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "false").lower() in ("1", "true", "yes")
+    SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
+    if TRUST_X_FORWARDED_FOR:
+        SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 DEV_ADMIN_USERNAME = os.environ.get("DEV_ADMIN_USERNAME", "admin")
 DEV_ADMIN_PASSWORD = os.environ.get("DEV_ADMIN_PASSWORD", "admin123")
-DEV_ADMIN_PIN = os.environ.get("DEV_ADMIN_PIN", "2468")
 DEV_OPERATOR_USERNAME = os.environ.get("DEV_OPERATOR_USERNAME", "bhavin.operator")
 DEV_OPERATOR_PASSWORD = os.environ.get("DEV_OPERATOR_PASSWORD", "operator123")
 

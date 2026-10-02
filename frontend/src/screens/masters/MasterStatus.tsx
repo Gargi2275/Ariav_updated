@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
+import { SESSION_EXPIRED_MESSAGE } from '../../services/sessionExpiry';
 
 export const MasterLoading: React.FC<{ label?: string; rows?: number }> = ({
   label = 'Loading master records…',
@@ -32,23 +33,26 @@ export const MasterLoading: React.FC<{ label?: string; rows?: number }> = ({
   </div>
 );
 
-export const MasterError: React.FC<{ message: string; onRetry?: () => void }> = ({ message, onRetry }) => (
-  <div className="flex items-center justify-between gap-3 border border-[var(--erp-negative)]/40 bg-[var(--erp-negative)]/8 px-3 py-2 text-xs">
-    <span className="flex items-center gap-2 font-mono text-[var(--erp-negative)]">
-      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-      {message}
-    </span>
-    {onRetry && (
-      <button
-        type="button"
-        onClick={onRetry}
-        className="px-2 py-1 border border-[var(--erp-hairline)] text-[var(--erp-text)] hover:border-[var(--erp-gold)] cursor-pointer"
-      >
-        Retry
-      </button>
-    )}
-  </div>
-);
+export const MasterError: React.FC<{ message: string; onRetry?: () => void }> = ({ message, onRetry }) => {
+  if (message === SESSION_EXPIRED_MESSAGE) return null;
+  return (
+    <div className="flex items-center justify-between gap-3 border border-[var(--erp-negative)]/40 bg-[var(--erp-negative)]/8 px-3 py-2 text-xs">
+      <span className="flex items-center gap-2 font-mono text-[var(--erp-negative)]">
+        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+        {message}
+      </span>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="px-2 py-1 border border-[var(--erp-hairline)] text-[var(--erp-text)] hover:border-[var(--erp-gold)] cursor-pointer"
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  );
+};
 
 export function emptyTableProps(
   total: number,

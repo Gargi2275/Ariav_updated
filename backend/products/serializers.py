@@ -25,6 +25,7 @@ class ProductSerializer(serializers.ModelSerializer):
     parent_category_name = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
+    usage_count = serializers.SerializerMethodField()
     frate = OptionalDecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     trate = OptionalDecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
 
@@ -65,6 +66,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "updated_at",
             "created_by",
             "created_by_name",
+            "usage_count",
         )
         read_only_fields = (
             "id",
@@ -90,6 +92,9 @@ class ProductSerializer(serializers.ModelSerializer):
         if not obj.created_by_id:
             return ""
         return obj.created_by.display_name or obj.created_by.username
+
+    def get_usage_count(self, obj):
+        return getattr(obj, "usage_count", None)
 
     def get_parent_category_code(self, obj):
         parent = obj.category.parent_category if obj.category_id else None

@@ -86,7 +86,7 @@ export const IconRail: React.FC = () => {
       label: 'Masters',
       title: 'Textile & Account Masters',
       icon: <Database className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: [36, 37, 38, 39, 21, 22, 23, 25, 26, 27, 28],
+      screenIds: [36, 37, 38, 39, 49, 21, 22, 23, 25, 26, 27, 28],
       primaryScreenId: 36
     },
     {

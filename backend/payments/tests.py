@@ -9,6 +9,7 @@ from brands.models import Brand
 from categories.models import Category
 from customers.models import Customer, CustomerEntity
 from entities.models import Entity
+from payments.models import Payment
 from products.models import Product
 
 
@@ -545,6 +546,10 @@ class PaymentApiTests(TestCase):
         )
         self.assertEqual(allocated.status_code, 200, allocated.content)
         self.client.force_authenticate(self.operator)
+        unrelated = self.client.get("/api/payment-adjustments/", HTTP_HOST="localhost")
+        self.assertEqual(unrelated.status_code, 200, unrelated.content)
+        self.assertEqual(unrelated.json(), [])
+        Payment.objects.filter(pk=payment["id"]).update(created_by=self.operator)
         listed = self.client.get("/api/payment-adjustments/", HTTP_HOST="localhost")
         self.assertEqual(listed.status_code, 200, listed.content)
         self.assertEqual(len(listed.json()), 1)

@@ -61,6 +61,22 @@ class Invoice(models.Model):
         on_delete=models.SET_NULL,
         related_name="created_invoices",
     )
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="issued_invoices",
+    )
+    issued_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="cancelled_invoices",
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "invoices_invoice"

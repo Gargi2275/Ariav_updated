@@ -60,7 +60,7 @@ export const PaymentAdjustmentsScreen: React.FC = () => {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    void customersApi.list({}).then(setCustomers).catch(notifyApiError);
+    void customersApi.list({ scope: 'visible' }).then(setCustomers).catch(notifyApiError);
   }, []);
 
   const openPayment = (paymentId: number) => {

@@ -176,6 +176,45 @@ class PurchaseOrderApiTests(TestCase):
         self.assertEqual(res.status_code, 400, res.content)
         self.assertEqual(PurchaseOrder.objects.get(pk=pid).status, "Draft")
 
+    def test_dispatch_statuses_cannot_be_set_manually_by_admin_or_operator(self):
+        pid = self._create().json()["id"]
+        self.client.post(f"/api/purchase-orders/{pid}/submit/", HTTP_HOST="localhost")
+        self.client.post(
+            f"/api/purchase-orders/{pid}/status/",
+            {"status": "Sent to Brand"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        accepted = self.client.post(
+            f"/api/purchase-orders/{pid}/status/",
+            {"status": "Brand Accepted"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.content)
+
+        message = "This status can only be set automatically when a Dispatch is recorded against this PO — it cannot be set manually."
+        admin_attempt = self.client.post(
+            f"/api/purchase-orders/{pid}/status/",
+            {"status": "Fully Dispatched"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(admin_attempt.status_code, 400, admin_attempt.content)
+        self.assertIn(message, str(admin_attempt.json()))
+
+        PurchaseOrder.objects.filter(pk=pid).update(created_by=self.operator)
+        self.client.force_authenticate(self.operator)
+        operator_attempt = self.client.post(
+            f"/api/purchase-orders/{pid}/status/",
+            {"status": "Partially Dispatched"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(operator_attempt.status_code, 400, operator_attempt.content)
+        self.assertIn(message, str(operator_attempt.json()))
+        self.assertEqual(PurchaseOrder.objects.get(pk=pid).status, "Brand Accepted")
+
     def test_pdf_for_submitted_po(self):
         pid = self._create().json()["id"]
         self.client.post(f"/api/purchase-orders/{pid}/submit/", HTTP_HOST="localhost")

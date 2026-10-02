@@ -98,7 +98,7 @@ class AuditLog(models.Model):
 
 
 class LoginRequest(models.Model):
-    """Staff login ticket. Status also mirrored in cache with 5-minute TTL."""
+    """Staff login ticket. Stores only a hash of the verbal OTP."""
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -118,8 +118,13 @@ class LoginRequest(models.Model):
     terminal_ip = models.CharField(max_length=64, blank=True)
     action_requested = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    verbal_otp = models.CharField(max_length=16, blank=True)
+    verbal_otp = models.CharField(
+        max_length=16,
+        blank=True,
+        help_text="Legacy plaintext column; no longer written. Only otp_hash is stored.",
+    )
     otp_hash = models.CharField(max_length=128, blank=True)
+    otp_failed_attempts = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)
 
@@ -131,3 +136,25 @@ class LoginRequest(models.Model):
         if not self.expires_at:
             return 0
         return max(int((self.expires_at - timezone.now()).total_seconds()), 0)
+
+    def effective_status(self) -> str:
+        """Status as seen by callers, without writing: open tickets past expires_at read as expired."""
+        if self.status in (self.Status.PENDING, self.Status.APPROVED) and self.expires_at and self.seconds_remaining() == 0:
+            return self.Status.EXPIRED
+        return self.status
+
+
+class AuthThrottle(models.Model):
+    """Rate-limit / lockout counter for the public auth endpoints (DB-backed so it
+    survives restarts and is shared by every worker). `key` is a SHA-256 of the
+    scope + IP/account, so no IPs or usernames are stored in clear.
+    """
+
+    key = models.CharField(max_length=64, unique=True)
+    subject = models.CharField(max_length=64, blank=True, db_index=True)
+    hits = models.PositiveIntegerField(default=0)
+    window_started_at = models.DateTimeField()
+    locked_until = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "accounts_auththrottle"
