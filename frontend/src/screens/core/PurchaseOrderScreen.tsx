@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Eye, FileText, Plus, Search, Trash2, Truck, Upload, X } from 'lucide-react';
+import { Download, Eye, FileText, Kanban, Plus, Search, Table2, Trash2, Truck, Upload, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip, StatusChipType } from '../../components/common/StatusChip';
 import { CustomerPicker } from '../../components/common/CustomerPicker';
+import { SelectOption } from '../../components/common/AccessibleSelectModal';
 import { TextInput, FormField, RequiredLegend } from '../../components/common/FormControls';
 import { FileDropZone } from '../../components/common/FileDropZone';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
@@ -14,20 +16,23 @@ import { notifyApiError, notifyError, notifySuccess } from '../../services/notif
 import { acquireSaveLock, releaseSaveLock } from '../../services/saveLock';
 import { clearFieldMessage, collectRequired, REQUIRED_MSG } from '../../services/requiredFields';
 import { BrandRow, brandsApi } from '../../services/brandsApi';
-import { CustomerRow, customersApi, readCustomerListFilter } from '../../services/customersApi';
+import { CustomerRow, CustomerStatementSummary, customersApi, readCustomerListFilter } from '../../services/customersApi';
 import { EntityRow, entitiesApi } from '../../services/entitiesApi';
 import { ProductRow, productsApi } from '../../services/productsApi';
+import { priceListsApi } from '../../services/priceListsApi';
 import {
   PO_STATUSES,
-  PO_TRANSITIONS,
+  PipelineSummary,
   OPEN_PO_KEY,
   PurchaseOrderRow,
+  PurchaseOrderLineRow,
   emptyPurchaseOrder,
   purchaseOrdersApi,
   PoImportCommitResult,
 } from '../../services/purchaseOrdersApi';
 import { RateNotSetBadge, rateIsUnset } from '../../components/common/RateNotSetBadge';
 import { ImportExcludedReport, PurchaseOrderImportModal } from './PurchaseOrderImportModal';
+import { PurchaseOrderPipeline, PurchaseOrderPipelineHandle } from './PurchaseOrderPipeline';
 import {
   DispatchRow,
   canRecordDispatch,
@@ -35,21 +40,21 @@ import {
   todayIso as dispatchToday,
 } from '../../services/dispatchesApi';
 import { INVOICE_FROM_PO_KEY } from '../../services/invoicesApi';
+import { PoInvoicesList } from './PoInvoicesList';
+import { LineDraft, PurchaseOrderLineItems } from './PurchaseOrderLineItems';
+import {
+  lineItemsAreReadOnly,
+  PurchaseOrderLineImportToggle,
+  shouldShowLineItemsGrid,
+} from './PurchaseOrderLineImportToggle';
+import {
+  isDigitalPoBrand,
+  MAX_LINE_IMPORT_ROWS,
+  parsePurchaseOrderLines,
+} from '../../services/purchaseOrderLineImport';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-[0.14em] text-[var(--erp-gold)] border-b border-[var(--erp-gold)]/25 pb-2 mb-4 flex items-center gap-2';
 const fieldSelectClass = 'px-3 py-2.5 text-sm bg-[var(--erp-surface-2)] border text-[var(--erp-text)] transition-[border-color,box-shadow] duration-200 focus:outline-none focus:border-[var(--erp-gold)] focus:shadow-[0_0_0_3px_rgba(201,162,39,0.12)]';
-const lineControlClass = 'w-full px-2.5 py-2 bg-[var(--erp-surface-2)] border text-[var(--erp-text)] transition-[border-color,box-shadow,opacity] duration-200 focus:outline-none focus:border-[var(--erp-gold)] focus:shadow-[0_0_0_3px_rgba(201,162,39,0.1)] disabled:opacity-45';
-
-type LineDraft = {
-  key: string;
-  category_id?: number;
-  product_id?: number;
-  product_description: string;
-  manualEntry: boolean;
-  quantity: string;
-  rate: string;
-};
-
 function poChipStatus(status: string): StatusChipType | string {
   switch (status) {
     case 'Rejected':
@@ -104,7 +109,7 @@ const ADMIN_STATUS_LABELS: Record<string, string> = {
 };
 
 export const PurchaseOrderScreen: React.FC = () => {
-  const { userRole, navigateTo } = useErp();
+  const { userRole, sessionUserName, navigateTo } = useErp();
   const canDraftWrite = userRole === 'admin' || userRole === 'operator';
   const canStatusOverride = userRole === 'admin';
 
@@ -121,12 +126,32 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [entityFilter, setEntityFilter] = useState<number | ''>('');
   const [customerFilter, setCustomerFilter] = useState<number | ''>(() => readCustomerListFilter());
   const [brandFilter, setBrandFilter] = useState<number | ''>('');
-  const [orderTypeFilter, setOrderTypeFilter] = useState('');
+  const [unpricedOnly, setUnpricedOnly] = useState(false);
+  const [orderTypeFilter, setOrderTypeFilter] = useState(() => (
+    localStorage.getItem(`po-type:${sessionUserName || userRole}`) || ''
+  ));
+  const [density] = useState<'compact'>('compact');
+  const pipelineRef = useRef<PurchaseOrderPipelineHandle>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'pipeline'>(() => (
+    localStorage.getItem(`po-view:${sessionUserName || userRole}`) === 'pipeline' ? 'pipeline' : 'list'
+  ));
+  const [pipelineRows, setPipelineRows] = useState<Record<string, PurchaseOrderRow[]>>({});
+  const [pipelineSummary, setPipelineSummary] = useState<PipelineSummary['statuses']>({});
+  const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
+  const [pipelineOffsets, setPipelineOffsets] = useState<Record<string, number>>({});
+  const [pipelineLoading, setPipelineLoading] = useState(false);
   const [handyFile, setHandyFile] = useState<File | null>(null);
 
   const [mode, setMode] = useState<'list' | 'form' | 'detail'>('list');
   const [form, setForm] = useState<Partial<PurchaseOrderRow>>(emptyPurchaseOrder());
+  const [customerStatementSummary, setCustomerStatementSummary] = useState<CustomerStatementSummary | null>(null);
   const [lines, setLines] = useState<LineDraft[]>([newLine()]);
+  const [lineEntryMode, setLineEntryMode] = useState<'manual' | 'upload'>('manual');
+  const [lineImportFile, setLineImportFile] = useState<File | null>(null);
+  const [lineImportLoaded, setLineImportLoaded] = useState(false);
+  const [lineImportBusy, setLineImportBusy] = useState(false);
+  const [lineImportError, setLineImportError] = useState('');
+  const [lineImportSkipped, setLineImportSkipped] = useState<Array<{ rowNumber: number; reason: string }>>([]);
   const [detail, setDetail] = useState<PurchaseOrderRow | null>(null);
   const [fieldMessages, setFieldMessages] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -155,6 +180,17 @@ export const PurchaseOrderScreen: React.FC = () => {
   );
   const selectedBrand = activeBrands.find(b => b.id === form.brand_id);
   const isManual = selectedBrand?.order_method === 'Manual/POR';
+  const isDigitalPo = isDigitalPoBrand(selectedBrand);
+
+  useEffect(() => {
+    if (!isDigitalPo) {
+      setLineEntryMode('manual');
+      setLineImportFile(null);
+      setLineImportLoaded(false);
+      setLineImportError('');
+      setLineImportSkipped([]);
+    }
+  }, [isDigitalPo]);
 
   const loadLookups = useCallback(async () => {
     try {
@@ -179,6 +215,7 @@ export const PurchaseOrderScreen: React.FC = () => {
         customer_id: customerFilter || undefined,
         brand_id: brandFilter || undefined,
         order_type: orderTypeFilter || undefined,
+        has_unpriced: unpricedOnly || undefined,
       }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load purchase orders.');
@@ -186,15 +223,93 @@ export const PurchaseOrderScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, entityFilter, customerFilter, brandFilter, orderTypeFilter]);
+  }, [statusFilter, entityFilter, customerFilter, brandFilter, orderTypeFilter, unpricedOnly]);
 
   useEffect(() => { void loadLookups(); }, [loadLookups]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (viewMode === 'list') void load();
+  }, [load, viewMode]);
+
+  const pipelineFilters = useMemo(() => ({
+    entity_id: entityFilter || undefined,
+    customer_id: customerFilter || undefined,
+    brand_id: brandFilter || undefined,
+    order_type: orderTypeFilter || undefined,
+    search: search.trim() || undefined,
+    has_unpriced: unpricedOnly || undefined,
+  }), [entityFilter, customerFilter, brandFilter, orderTypeFilter, search, unpricedOnly]);
+
+  const loadPipeline = useCallback(async () => {
+    setPipelineLoading(true);
+    setError('');
+    try {
+      const [summary, ...columns] = await Promise.all([
+        purchaseOrdersApi.pipelineSummary(pipelineFilters),
+        ...PO_STATUSES.map(status => purchaseOrdersApi.list({ ...pipelineFilters, status, limit: 20, offset: 0 })),
+      ]);
+      const nextRows: Record<string, PurchaseOrderRow[]> = {};
+      const nextOffsets: Record<string, number> = {};
+      PO_STATUSES.forEach((status, index) => {
+        nextRows[status] = columns[index];
+        nextOffsets[status] = columns[index].length;
+      });
+      setPipelineSummary(summary.statuses);
+      setTypeCounts(summary.type_counts);
+      setPipelineRows(nextRows);
+      setPipelineOffsets(nextOffsets);
+    } catch (e) {
+      const parsed = notifyApiError(e, 'Could not load purchase order pipeline.');
+      setError(parsed.message);
+    } finally {
+      setPipelineLoading(false);
+    }
+  }, [pipelineFilters]);
+
+  useEffect(() => {
+    if (viewMode === 'pipeline') void loadPipeline();
+  }, [loadPipeline, viewMode]);
+
+  const setPurchaseOrderView = (next: 'list' | 'pipeline') => {
+    setViewMode(next);
+    localStorage.setItem(`po-view:${sessionUserName || userRole}`, next);
+  };
+
+  const setPurchaseOrderType = (next: string) => {
+    setOrderTypeFilter(next);
+    localStorage.setItem(`po-type:${sessionUserName || userRole}`, next);
+  };
+
+  const typeCountFilters = useMemo(() => ({
+    entity_id: entityFilter || undefined,
+    customer_id: customerFilter || undefined,
+    brand_id: brandFilter || undefined,
+    search: search.trim() || undefined,
+  }), [entityFilter, customerFilter, brandFilter, search]);
+
+  useEffect(() => {
+    if (viewMode === 'list') {
+      void purchaseOrdersApi.pipelineSummary(typeCountFilters)
+        .then(response => setTypeCounts(response.type_counts))
+        .catch(error => notifyApiError(error, 'Could not load purchase order type counts.'));
+    }
+  }, [typeCountFilters, viewMode]);
+
+  const loadPipelineMore = async (status: string) => {
+    const offset = pipelineOffsets[status] || 0;
+    try {
+      const more = await purchaseOrdersApi.list({ ...pipelineFilters, status, limit: 20, offset });
+      setPipelineRows(previous => ({ ...previous, [status]: [...(previous[status] || []), ...more] }));
+      setPipelineOffsets(previous => ({ ...previous, [status]: offset + more.length }));
+    } catch (e) {
+      notifyApiError(e, 'Could not load more purchase orders.');
+    }
+  };
 
   useEffect(() => {
     void customersApi.list({
       status: 'Active',
       entity_id: entityFilter || undefined,
+      scope: 'visible',
     }).then(setListCustomers).catch(notifyApiError);
   }, [entityFilter]);
 
@@ -216,7 +331,7 @@ export const PurchaseOrderScreen: React.FC = () => {
       setProducts([]);
       return;
     }
-    void productsApi.list({ status: 'Active', brand_id: form.brand_id }).then(setProducts).catch(notifyApiError);
+    void productsApi.list({ status: 'Active', brand_id: form.brand_id, with_usage: 1 }).then(setProducts).catch(notifyApiError);
   }, [form.brand_id]);
 
   /** When editing a draft, hydrate category from the loaded catalogue product. */
@@ -249,11 +364,36 @@ export const PurchaseOrderScreen: React.FC = () => {
 
   const openCreate = () => {
     setForm(emptyPurchaseOrder());
+    setCustomerStatementSummary(null);
     setLines([newLine()]);
+    setLineEntryMode('manual');
+    setLineImportFile(null);
+    setLineImportLoaded(false);
+    setLineImportError('');
+    setLineImportSkipped([]);
     setHandyFile(null);
     setFieldMessages({});
     setMode('form');
   };
+
+  useEffect(() => {
+    if (mode !== 'form' || !form.entity_id || !form.customer_id) {
+      setCustomerStatementSummary(null);
+      return;
+    }
+    let cancelled = false;
+    void customersApi.statementSummary(form.customer_id, { entity_id: form.entity_id })
+      .then(summary => { if (!cancelled) setCustomerStatementSummary(summary); })
+      .catch(error => {
+        if (cancelled) return;
+        if ((error as { status?: number }).status === 404) {
+          setCustomerStatementSummary(null);
+        } else {
+          notifyApiError(error, 'Could not load customer statement.');
+        }
+      });
+    return () => { cancelled = true; };
+  }, [mode, form.entity_id, form.customer_id]);
 
   const openDetail = async (id: number) => {
     try {
@@ -285,6 +425,11 @@ export const PurchaseOrderScreen: React.FC = () => {
       }
       setForm(row);
       setHandyFile(null);
+      setLineEntryMode('manual');
+      setLineImportFile(null);
+      setLineImportLoaded(false);
+      setLineImportError('');
+      setLineImportSkipped([]);
       setLines(row.lines.length
         ? row.lines.map(l => ({
           key: String(l.id ?? `${l.product_id || l.product_description}`),
@@ -321,20 +466,44 @@ export const PurchaseOrderScreen: React.FC = () => {
   });
 
   const brandCategories = useMemo(() => {
-    const map = new Map<number, { id: number; label: string }>();
+    const map = new Map<number, SelectOption & { usage: number }>();
     for (const p of products) {
-      if (!p.category_id || map.has(p.category_id)) continue;
+      if (!p.category_id) continue;
+      const existing = map.get(p.category_id);
+      if (existing) {
+        existing.usage += p.usage_count ?? 0;
+        continue;
+      }
       map.set(p.category_id, {
         id: p.category_id,
-        label: p.parent_category_name
-          ? `${p.parent_category_name} › ${p.category_name}`
-          : p.category_name,
+        label: p.category_name,
+        detail: p.parent_category_name || undefined,
+        usage: p.usage_count ?? 0,
       });
     }
-    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+    return [...map.values()].sort(
+      (a, b) => (a.detail ?? '').localeCompare(b.detail ?? '') || a.label.localeCompare(b.label),
+    );
   }, [products]);
 
-  const validateForm = (requireRates = false): boolean => {
+  const productOptionsByCategory = useMemo(() => {
+    const map = new Map<number, SelectOption[]>();
+    for (const p of products) {
+      if (!p.category_id) continue;
+      const list = map.get(p.category_id) ?? [];
+      list.push({
+        id: p.id,
+        label: p.product_name,
+        detail: [`Code: ${p.product_code}`, p.unit].filter(Boolean).join(' · '),
+        usage: p.usage_count ?? 0,
+      });
+      map.set(p.category_id, list);
+    }
+    for (const list of map.values()) list.sort((a, b) => a.label.localeCompare(b.label));
+    return map;
+  }, [products]);
+
+  const validateForm = (): boolean => {
     const messages = collectRequired({
       po_number: form.po_number,
       entity_id: form.entity_id,
@@ -343,6 +512,7 @@ export const PurchaseOrderScreen: React.FC = () => {
       po_date: form.po_date,
     });
     const filled = lines.filter(l => l.product_id || l.product_description.trim());
+    if (lineImportError) messages.lines = 'Resolve the Excel upload errors before submitting.';
     if (!filled.length) messages.lines = 'Add at least one line item.';
     lines.forEach((l, i) => {
       const hasItem = !!(l.product_id || l.product_description.trim());
@@ -356,9 +526,6 @@ export const PurchaseOrderScreen: React.FC = () => {
         }
       }
       if ((hasItem || l.category_id) && !num(l.quantity)) messages[`line_${i}_qty`] = REQUIRED_MSG;
-      if (hasItem && requireRates && l.rate.trim() === '') {
-        messages[`line_${i}_rate`] = 'Rate is required before submit.';
-      }
     });
     setFieldMessages(messages);
     if (Object.keys(messages).length) {
@@ -369,7 +536,7 @@ export const PurchaseOrderScreen: React.FC = () => {
   };
 
   const persist = async (submitAfter: boolean) => {
-    if (!validateForm(submitAfter)) return;
+    if (!validateForm()) return;
     if (!acquireSaveLock(savingLock)) return;
     setSaving(true);
     try {
@@ -425,6 +592,20 @@ export const PurchaseOrderScreen: React.FC = () => {
       window.open(url, '_blank', 'noopener');
     } catch (err) {
       notifyApiError(err, 'Could not generate PDF.');
+    }
+  };
+
+  const downloadDispatchExcel = async (id: number) => {
+    try {
+      const blob = await purchaseOrdersApi.dispatchExcel(id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `dispatch-${detail?.po_number || id}.xlsx`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      notifyApiError(err, 'Could not generate dispatch Excel.');
     }
   };
 
@@ -484,6 +665,19 @@ export const PurchaseOrderScreen: React.FC = () => {
     }
   };
 
+  const setLineRate = async (line: PurchaseOrderLineRow) => {
+    if (!detail?.id || !line.id) return;
+    const value = window.prompt('Enter rate', '');
+    if (value === null || !value.trim()) return;
+    try {
+      const updated = await purchaseOrdersApi.setRate(detail.id, line.id, value.trim());
+      setDetail(updated);
+      notifySuccess('Rate set.');
+    } catch (e) {
+      notifyApiError(e, 'Could not set rate.');
+    }
+  };
+
   const setLineCategory = (key: string, categoryId: number | undefined, index: number) => {
     setLines(prev => prev.map(l => l.key === key
       ? {
@@ -500,18 +694,99 @@ export const PurchaseOrderScreen: React.FC = () => {
     ));
   };
 
-  const setLineProduct = (key: string, productId: number, index: number) => {
+  const setLineProduct = async (key: string, productId: number, index: number) => {
     const product = products.find(p => p.id === productId);
+    let rate = product ? String(product.rate) : '';
+    try {
+      if (product) {
+        const current = await priceListsApi.currentPrice(product.id, form.po_date || undefined);
+        rate = String(current.price);
+      }
+    } catch {
+      // Product rate remains the fallback when the optional price lookup is unavailable.
+    }
     setLines(prev => prev.map(l => l.key === key
       ? {
         ...l,
         product_id: productId,
         category_id: product?.category_id ?? l.category_id,
         product_description: '',
-        rate: product ? String(product.rate) : l.rate,
+        rate: product ? rate : l.rate,
       }
       : l));
     setFieldMessages(prev => clearFieldMessage(prev, `line_${index}_product`));
+  };
+
+  const handleLineImport = async (file: File | null) => {
+    if (!file) {
+      setLineImportFile(null);
+      setLineImportLoaded(false);
+      setLines([newLine()]);
+      setLineImportError('');
+      setLineImportSkipped([]);
+      return;
+    }
+    const existingLines = lines.some(line => line.product_id || line.product_description.trim());
+    if (existingLines && !window.confirm('Replace the existing line items with the uploaded file?')) return;
+    setLineImportFile(file);
+    setLineImportLoaded(false);
+    setLineImportBusy(true);
+    setLineImportError('');
+    setLineImportSkipped([]);
+    try {
+      const result = await parsePurchaseOrderLines(file, products);
+      if (result.rows.length) {
+        setLines(result.rows.map(row => ({
+          key: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          category_id: row.product.category_id,
+          product_id: row.product.id,
+          product_description: '',
+          manualEntry: false,
+          quantity: row.quantity,
+          rate: row.rate,
+        })));
+      }
+      setLineImportLoaded(result.rows.length > 0);
+      setLineImportSkipped(result.skipped);
+      if (result.skipped.length) {
+        setLineImportError('Some rows were not loaded. Correct the file and replace it, or remove the upload before submitting.');
+      }
+    } catch (error) {
+      setLineImportError(error instanceof Error ? error.message : 'The upload could not be read.');
+      setLineImportSkipped([]);
+    } finally {
+      setLineImportBusy(false);
+    }
+  };
+
+  const removeLineImport = () => {
+    setLineImportFile(null);
+    setLineImportLoaded(false);
+    setLines([newLine()]);
+    setLineImportError('');
+    setLineImportSkipped([]);
+  };
+
+  const replaceLineImport = () => {
+    if (!window.confirm('Replace the loaded line items with a new file?')) return;
+    removeLineImport();
+  };
+
+  const downloadLineTemplate = () => {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet([['Product', 'Qty', 'Rate'], ['SKU-1', 1, 0]]),
+      'Lines',
+    );
+    const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'purchase-order-line-items-template.xlsx';
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   const columns: Column<PurchaseOrderRow>[] = [
@@ -552,26 +827,26 @@ export const PurchaseOrderScreen: React.FC = () => {
   ];
 
   const formCustomers = customers.filter(c => c.status === 'Active' || c.id === form.customer_id);
-  const statusActions = detail ? (PO_TRANSITIONS[detail.status] || []) : [];
+  const statusActions = detail?.allowed_transitions || [];
 
   return (
-    <div className="p-6 flex flex-col gap-6 text-left">
+    <div className={`${viewMode === 'pipeline' ? 'h-full min-h-0 flex-1' : 'min-h-full'} p-3 flex flex-col gap-3 text-left`}>
       <PageHeader
         moduleNumber="40"
         section="Orders"
         title="Purchase Orders"
-        subtitle="Digital PO and Manual/POR — entity, brand, customer and line items"
+        compact
         actions={
           canDraftWrite ? (
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setImportOpen(true)}
-                className="px-4 py-1.5 border border-[var(--erp-gold)] text-[var(--erp-gold)] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                className="h-8 px-2.5 border border-[var(--erp-gold)] text-[var(--erp-gold)] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
               >
                 <Upload className="w-3.5 h-3.5" /> Import from file
               </button>
-              <button type="button" onClick={openCreate} className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+              <button type="button" onClick={openCreate} className="h-8 px-2.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
                 <Plus className="w-3.5 h-3.5" /> Create PO
               </button>
             </div>
@@ -582,12 +857,36 @@ export const PurchaseOrderScreen: React.FC = () => {
       {importReport && importReport.excluded.length > 0 && mode === 'list' && (
         <ImportExcludedReport excluded={importReport.excluded} onDismiss={() => setImportReport(null)} />
       )}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-3">
-        <div className="relative w-full lg:w-80">
+      <div className="flex flex-wrap items-center gap-1.5 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-1.5">
+        <div className="relative w-64 shrink-0">
           <Search className="w-4 h-4 text-[var(--erp-muted)] absolute left-3 top-2.5" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search PO number…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
         </div>
-        <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+        <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs">
+          <div className="flex border border-[var(--erp-hairline)]">
+            <button type="button" onClick={() => setPurchaseOrderView('list')} className={`px-2 py-1 flex items-center gap-1 ${viewMode === 'list' ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}><Table2 className="w-3.5 h-3.5" /> Table</button>
+            <button type="button" onClick={() => setPurchaseOrderView('pipeline')} className={`px-2 py-1 flex items-center gap-1 ${viewMode === 'pipeline' ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}><Kanban className="w-3.5 h-3.5" /> Pipeline</button>
+          </div>
+          <div className="flex border border-[var(--erp-hairline)]">
+            <button type="button" title="Compact density" aria-label="Compact density" className="h-7 w-7 bg-[var(--erp-gold)] text-[#0F141B]">≡</button>
+          </div>
+          <div className="flex items-center gap-1 border border-[var(--erp-hairline)] p-0.5" aria-label="Purchase order type">
+            {[
+              ['', `All ${typeCounts.Digital + typeCounts.Manual || 0}`],
+              ['Digital', `Digital ${typeCounts.Digital || 0}`],
+              ['Manual', `Manual ${typeCounts.Manual || 0}`],
+            ].map(([value, label]) => (
+              <button
+                key={value || 'all'}
+                type="button"
+                onClick={() => setPurchaseOrderType(value)}
+                aria-pressed={orderTypeFilter === value}
+                className={`px-2 py-1 ${orderTypeFilter === value ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)] hover:text-[var(--erp-text)]'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <select value={entityFilter} onChange={e => { setEntityFilter(e.target.value ? Number(e.target.value) : ''); setCustomerFilter(''); }} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
             <option value="">All entities</option>
             {entities.map(ent => <option key={ent.id} value={ent.id}>{ent.short_code} · {ent.entity_name}</option>)}
@@ -605,19 +904,31 @@ export const PurchaseOrderScreen: React.FC = () => {
             <option value="">All brands</option>
             {activeBrands.map(b => <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name}</option>)}
           </select>
-          <select value={orderTypeFilter} onChange={e => setOrderTypeFilter(e.target.value)} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
-            <option value="">All types</option>
-            <option value="Digital">Digital</option>
-            <option value="Manual">Manual</option>
-          </select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
             <option value="">All statuses</option>
             {PO_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
+          <button type="button" onClick={() => setUnpricedOnly(value => !value)} aria-pressed={unpricedOnly} className={`px-2 py-1 border border-[var(--erp-hairline)] ${unpricedOnly ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}>Unpriced</button>
+          <div className="ml-auto flex gap-1">
+            <button type="button" onClick={() => pipelineRef.current?.scrollBy(-1)} aria-label="Scroll pipeline left" title="Scroll left" className="h-7 w-7 border border-[var(--erp-hairline)] text-[var(--erp-muted)]">‹</button>
+            <button type="button" onClick={() => pipelineRef.current?.scrollBy(1)} aria-label="Scroll pipeline right" title="Scroll right" className="h-7 w-7 border border-[var(--erp-hairline)] text-[var(--erp-muted)]">›</button>
+          </div>
         </div>
       </div>
 
-      {loading ? (
+      {viewMode === 'pipeline' ? (
+        <PurchaseOrderPipeline
+          ref={pipelineRef}
+          rowsByStatus={pipelineRows}
+          summary={pipelineSummary}
+          orderTypeFilter={orderTypeFilter}
+          loading={pipelineLoading}
+          onLoadMore={status => void loadPipelineMore(status)}
+          onOpen={id => void openDetail(id)}
+          onRefresh={loadPipeline}
+          density={density}
+        />
+      ) : loading ? (
         <MasterLoading label="Loading purchase orders…" />
       ) : (
         <DataTable
@@ -632,6 +943,7 @@ export const PurchaseOrderScreen: React.FC = () => {
             canDraftWrite ? 'Create first PO' : '',
             canDraftWrite ? openCreate : () => undefined,
           )}
+          density={density}
         />
       )}
 
@@ -729,8 +1041,14 @@ export const PurchaseOrderScreen: React.FC = () => {
                       value={form.brand_id || ''}
                       onChange={e => {
                         const id = e.target.value ? Number(e.target.value) : undefined;
+                        const nextBrand = activeBrands.find(brand => brand.id === id);
                         setForm({ ...form, brand_id: id });
                         setLines([newLine()]);
+                        setLineEntryMode(isDigitalPoBrand(nextBrand) ? 'upload' : 'manual');
+                        setLineImportFile(null);
+                        setLineImportLoaded(false);
+                        setLineImportError('');
+                        setLineImportSkipped([]);
                         setHandyFile(null);
                         setFieldMessages(prev => clearFieldMessage(prev, 'brand_id'));
                       }}
@@ -760,29 +1078,16 @@ export const PurchaseOrderScreen: React.FC = () => {
                       placeholder={form.entity_id ? 'Search customer…' : 'Select entity first'}
                       onChange={id => {
                         setForm({ ...form, customer_id: id || undefined });
+                        setCustomerStatementSummary(null);
                         setFieldMessages(prev => clearFieldMessage(prev, 'customer_id'));
                       }}
                     />
+                    {customerStatementSummary ? (
+                      <span className="mt-1 inline-flex w-fit items-center border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2 py-1 text-[11px] font-mono text-[var(--erp-muted)]">
+                        Outstanding: {money(customerStatementSummary.closing_amount)} {customerStatementSummary.closing_dc} as of {new Date(`${customerStatementSummary.period_to}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                    ) : null}
                   </FormField>
-                  {isManual && (
-                      <div
-                        className="sm:col-span-2 overflow-hidden"
-                      >
-                        <FileDropZone
-                          label="Upload handy form"
-                          helper="Optional — one image or PDF"
-                          accept="image/*,.pdf,application/pdf"
-                          file={handyFile}
-                          onChange={setHandyFile}
-                          existingHint={form.handy_form_url ? (
-                            <a href={form.handy_form_url} target="_blank" rel="noreferrer" className="text-[11px] font-mono text-[var(--erp-gold)]">
-                              View current handy form
-                            </a>
-                          ) : null}
-                        />
-                      </div>
-                    )}
-                  
                 </div>
               </section>
 
@@ -793,163 +1098,94 @@ export const PurchaseOrderScreen: React.FC = () => {
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
                   Line items
                 </h4>
-                {fieldMessages.lines && (
-                  <p className="text-xs font-mono text-[var(--erp-negative)] mb-3">{fieldMessages.lines}</p>
-                )}
-                <div className="overflow-x-auto border border-[var(--erp-hairline)] bg-[var(--erp-surface)]">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[var(--erp-surface-2)] font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--erp-muted)]">
-                      <tr>
-                        <th className="px-3 py-2.5 min-w-[160px]">Category *</th>
-                        <th className="px-3 py-2.5 min-w-[180px]">Product *</th>
-                        <th className="px-3 py-2.5 w-28">Qty *</th>
-                        <th className="px-3 py-2.5 w-28">Rate</th>
-                        <th className="px-3 py-2.5 w-32 text-right">Line total</th>
-                        <th className="px-3 py-2.5 w-10" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lines.map((line, index) => {
-                          const product = products.find(p => p.id === line.product_id);
-                          const lineProducts = products.filter(p => p.category_id === line.category_id);
-                          const lineTotal = num(line.quantity) * num(line.rate);
-                          const freeText = isManual && line.manualEntry;
-                          return (
-                            <tr
-                              key={line.key}
-                              className="border-t border-[var(--erp-hairline)] hover:bg-[var(--erp-gold)]/[0.03] transition-colors"
+                {isDigitalPo ? (
+                  <div className="mb-4 space-y-3">
+                    <PurchaseOrderLineImportToggle
+                      isDigitalPo={isDigitalPo}
+                      mode={lineEntryMode}
+                      onModeChange={setLineEntryMode}
+                    />
+                    {lineEntryMode === 'upload' ? (
+                      <div className="space-y-3">
+                        {lineImportLoaded && lineImportFile ? (
+                          <div className="flex flex-wrap items-center gap-3 px-3 py-3 border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)]">
+                            <FileText className="w-5 h-5 text-[var(--erp-gold)] shrink-0" />
+                            <span className="min-w-0 flex-1 text-sm font-medium truncate">
+                              {lineImportFile.name} · {lines.length} row{lines.length === 1 ? '' : 's'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={replaceLineImport}
+                              className="text-xs font-mono text-[var(--erp-gold)] hover:underline"
                             >
-                              <td className="px-3 py-2.5 align-top">
-                                {freeText ? (
-                                  <span className="text-[10px] font-mono text-[var(--erp-muted)]">—</span>
-                                ) : (
-                                  <select
-                                    disabled={!form.brand_id}
-                                    value={line.category_id || ''}
-                                    onChange={e => setLineCategory(
-                                      line.key,
-                                      e.target.value ? Number(e.target.value) : undefined,
-                                      index,
-                                    )}
-                                    className={`${lineControlClass} ${fieldMessages[`line_${index}_category`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                  >
-                                    <option value="">Select category…</option>
-                                    {brandCategories.map(c => (
-                                      <option key={c.id} value={c.id}>{c.label}</option>
-                                    ))}
-                                  </select>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
-                                {freeText ? (
-                                  <input
-                                    value={line.product_description}
-                                    placeholder="Item from handy form…"
-                                    onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, product_description: e.target.value } : l))}
-                                    className={`${lineControlClass} ${fieldMessages[`line_${index}_desc`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                  />
-                                ) : (
-                                  <select
-                                    disabled={!form.brand_id || !line.category_id}
-                                    value={line.product_id || ''}
-                                    onChange={e => setLineProduct(line.key, Number(e.target.value), index)}
-                                    className={`${lineControlClass} ${fieldMessages[`line_${index}_product`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                  >
-                                    <option value="">{line.category_id ? 'Select product…' : 'Select category first'}</option>
-                                    {lineProducts.map(p => (
-                                      <option key={p.id} value={p.id}>{p.product_code} · {p.product_name}</option>
-                                    ))}
-                                  </select>
-                                )}
-                                {isManual && (
-                                  <button
-                                    type="button"
-                                    className="mt-1.5 text-[10px] font-mono text-[var(--erp-gold)] hover:underline"
-                                    onClick={() => setLines(prev => prev.map(l => l.key === line.key
-                                      ? {
-                                        ...l,
-                                        manualEntry: !freeText,
-                                        category_id: undefined,
-                                        product_id: undefined,
-                                        product_description: '',
-                                        rate: '',
-                                      }
-                                      : l))}
-                                  >
-                                    {freeText ? 'Pick from catalogue' : 'Product not in catalogue? Enter manually'}
-                                  </button>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
-                                <input
-                                  value={line.quantity}
-                                  onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, quantity: e.target.value } : l))}
-                                  className={`${lineControlClass} font-mono ${fieldMessages[`line_${index}_qty`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                />
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
-                                <input
-                                  value={line.rate}
-                                  placeholder={freeText ? 'Enter rate' : ''}
-                                  onChange={e => setLines(prev => prev.map(l => l.key === line.key ? { ...l, rate: e.target.value } : l))}
-                                  className={`${lineControlClass} font-mono ${fieldMessages[`line_${index}_rate`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                                />
-                                {!!(line.product_id || line.product_description.trim()) && rateIsUnset(line.rate) ? (
-                                  <div className="mt-1"><RateNotSetBadge /></div>
-                                ) : null}
-                              </td>
-                              <td className="px-3 py-2.5 text-right font-mono align-top">
-                                <span
-                                  className="inline-block text-[var(--erp-text)]"
-                                >
-                                  {money(lineTotal)}
-                                </span>
-                                {product ? <span className="block text-[10px] text-[var(--erp-muted)]">{product.unit}</span> : null}
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
-                                {lines.length > 1 && (
-                                  <button
-                                    type="button"
-                                    className="text-[var(--erp-muted)] hover:text-[var(--erp-negative)] transition-colors"
-                                    onClick={() => setLines(prev => prev.filter(l => l.key !== line.key))}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      
-                    </tbody>
-                  </table>
-                </div>
-                <button
-                  type="button"
-                  disabled={!form.brand_id}
-                  onClick={() => setLines(prev => [...prev, newLine()])}
-                  className="mt-3 px-3.5 py-2 text-[11px] font-mono border border-dashed border-[var(--erp-hairline-strong)] text-[var(--erp-muted)] hover:text-[var(--erp-gold)] hover:border-[var(--erp-gold)] hover:bg-[var(--erp-gold)]/5 transition-all disabled:opacity-40"
-                >
-                  + Add line
-                </button>
-                <div className="mt-4 flex justify-end gap-8 font-mono text-sm border-t border-[var(--erp-hairline)] pt-3">
-                  <div className="text-[var(--erp-muted)]">
-                    Qty{' '}
-                    <span
-                      className="inline-block text-[var(--erp-text)]"
-                    >
-                      {totals.qty.toFixed(2)}
-                    </span>
+                              Replace file
+                            </button>
+                            <button
+                              type="button"
+                              onClick={removeLineImport}
+                              className="text-xs font-mono text-[var(--erp-muted)] hover:text-[var(--erp-negative)] hover:underline"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <FileDropZone
+                            id="po-line-items-file"
+                            label="Line items file"
+                            helper={`Excel only (.xlsx, .xls) · max 2 MB · max ${MAX_LINE_IMPORT_ROWS} rows`}
+                            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                            file={lineImportFile}
+                            disabled={lineImportBusy}
+                            onFileRejected={message => setLineImportError(message)}
+                            rejectionMessage="Only Excel files (.xlsx, .xls) are allowed."
+                            onChange={file => { void handleLineImport(file); }}
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={downloadLineTemplate}
+                          className="text-xs font-mono text-[var(--erp-gold)] hover:underline"
+                        >
+                          Download template
+                        </button>
+                        {lineImportBusy ? <p role="status" className="text-xs text-[var(--erp-muted)]">Parsing file…</p> : null}
+                        {lineImportError ? (
+                          <div role="alert" className="border border-[var(--erp-negative)]/40 bg-[var(--erp-negative)]/10 p-3 text-sm text-[var(--erp-negative)]">
+                            <p>{lineImportError}</p>
+                            {lineImportSkipped.length ? (
+                              <ul className="mt-2 space-y-1 text-xs">
+                                {lineImportSkipped.map(item => <li key={item.rowNumber}>Row {item.rowNumber}: {item.reason}</li>)}
+                              </ul>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {!lineImportError && lineImportFile ? (
+                          <p className="text-xs text-[var(--erp-muted)]">
+                            Rows loaded into the grid. Switch to Enter manually to edit them. Amounts are calculated as Qty × Rate.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="text-[var(--erp-muted)]">
-                    Amount{' '}
-                    <span
-                      className="inline-block text-[var(--erp-gold)] font-semibold"
-                    >
-                      {money(totals.amt)}
-                    </span>
-                  </div>
-                </div>
+                ) : null}
+                {shouldShowLineItemsGrid(lineEntryMode, lineImportLoaded) ? (
+                  <PurchaseOrderLineItems
+                    lines={lines}
+                    setLines={setLines}
+                    onAddLine={() => setLines(prev => [...prev, newLine()])}
+                    onCategoryChange={setLineCategory}
+                    onProductChange={setLineProduct}
+                    categories={brandCategories}
+                    productOptionsByCategory={productOptionsByCategory}
+                    products={products}
+                    brandSelected={!!form.brand_id}
+                    brandName={selectedBrand?.brand_name}
+                    isManual={isManual}
+                    readOnly={lineItemsAreReadOnly(lineEntryMode, lineImportLoaded)}
+                    fieldMessages={fieldMessages}
+                    totals={totals}
+                  />
+                ) : null}
               </section>
 
               <section
@@ -1037,7 +1273,9 @@ export const PurchaseOrderScreen: React.FC = () => {
                         {rateIsUnset(line.rate) ? (
                           <div className="flex flex-col items-end gap-1">
                             <span>—</span>
-                            <RateNotSetBadge />
+                            {canStatusOverride && !['Closed', 'Rejected', 'Cancelled'].includes(detail.status) ? (
+                              <button type="button" onClick={() => void setLineRate(line)} className="text-[10px] text-[var(--erp-gold)] hover:underline">Set rate</button>
+                            ) : <RateNotSetBadge />}
                           </div>
                         ) : money(line.rate)}
                       </td>
@@ -1049,7 +1287,10 @@ export const PurchaseOrderScreen: React.FC = () => {
             </div>
             <div className="flex justify-end gap-8 font-mono text-sm">
               <div>Qty {num(detail.total_quantity).toFixed(2)}</div>
-              <div className="text-[var(--erp-gold)]">{money(detail.total_amount)}</div>
+              <div className="text-[var(--erp-gold)]">
+                {detail.priced_lines ? money(detail.total_amount) : '—'}
+                {detail.unpriced_lines ? <span className="ml-2 text-xs text-[var(--erp-muted)]">({detail.unpriced_lines} unpriced)</span> : null}
+              </div>
             </div>
             {detail.remarks ? <p className="text-sm text-[var(--erp-muted)]"><span className="font-mono text-[10px] uppercase">Remarks</span><br />{detail.remarks}</p> : null}
             {detail.order_type === 'Manual' && detail.handy_form_url ? (
@@ -1128,6 +1369,10 @@ export const PurchaseOrderScreen: React.FC = () => {
                 <p className="text-xs font-mono text-[var(--erp-muted)]">No dispatches recorded yet.</p>
               )}
             </section>
+            <section>
+              <h4 className={sectionTitle}>Invoices on this PO</h4>
+              <PoInvoicesList purchaseOrderId={detail.id} />
+            </section>
             <div className="flex flex-wrap justify-between gap-3 pt-3 border-t border-[var(--erp-hairline)]">
               <div className="flex flex-wrap gap-2">
                 {detail.status === 'Draft' && canDraftWrite && (
@@ -1163,6 +1408,9 @@ export const PurchaseOrderScreen: React.FC = () => {
                 )}
                 <button type="button" onClick={() => void openPdf(detail.id)} className="px-4 py-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold flex items-center gap-1.5">
                   <Download className="w-3.5 h-3.5" /> Download PDF
+                </button>
+                <button type="button" onClick={() => void downloadDispatchExcel(detail.id)} className="px-4 py-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold flex items-center gap-1.5">
+                  <Download className="w-3.5 h-3.5" /> Client Dispatch Excel
                 </button>
               </div>
             </div>

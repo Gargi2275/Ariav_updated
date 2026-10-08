@@ -19,6 +19,7 @@ from dashboards.services import (
     _kpis,
     customer_outstanding_report,
     money_str,
+    scope_customers,
 )
 from dispatches.models import DispatchLine
 from entities.models import Entity
@@ -67,34 +68,41 @@ def _scope_entity(qs, entity_id, field="entity_id"):
     return qs
 
 
-def _scope_created(qs, created_by_id, field="created_by_id"):
-    if created_by_id:
-        qs = qs.filter(**{field: created_by_id})
-    return qs
-
-
-def _po_value_by_month(date_from, date_to, entity_id=None, created_by_id=None) -> dict[str, Decimal]:
+def _po_value_by_month(date_from, date_to, entity_id=None, customer_ids=None) -> dict[str, Decimal]:
     lines = PurchaseOrderLine.objects.filter(
         purchase_order__po_date__range=(date_from, date_to),
     ).exclude(purchase_order__status__in=PO_EXCLUDED)
     if entity_id:
         lines = lines.filter(purchase_order__entity_id=entity_id)
-    if created_by_id:
-        lines = lines.filter(purchase_order__created_by_id=created_by_id)
+    lines = scope_customers(lines, customer_ids, "purchase_order__customer_id")
     grouped = {}
-    for row in lines.values("purchase_order__po_date").annotate(total=Sum("line_total")):
+    for row in lines.filter(rate__isnull=False).values("purchase_order__po_date").annotate(total=Sum("line_total")):
         key = month_key(row["purchase_order__po_date"])
         grouped[key] = grouped.get(key, Decimal("0.00")) + money(row["total"] or 0)
     return grouped
 
 
-def _sales_value_by_month(date_from, date_to, entity_id=None, created_by_id=None) -> dict[str, Decimal]:
+def _unpriced_lines_by_month(date_from, date_to, entity_id=None, customer_ids=None) -> dict[str, int]:
+    lines = PurchaseOrderLine.objects.filter(
+        purchase_order__po_date__range=(date_from, date_to),
+        rate__isnull=True,
+    ).exclude(purchase_order__status__in=PO_EXCLUDED)
+    if entity_id:
+        lines = lines.filter(purchase_order__entity_id=entity_id)
+    lines = scope_customers(lines, customer_ids, "purchase_order__customer_id")
+    return {
+        month_key(row["purchase_order__po_date"]): row["count"]
+        for row in lines.values("purchase_order__po_date").annotate(count=Count("id"))
+    }
+
+
+def _sales_value_by_month(date_from, date_to, entity_id=None, customer_ids=None) -> dict[str, Decimal]:
     invoices = Invoice.objects.filter(
         status__in=SALES_STATUSES,
         invoice_date__range=(date_from, date_to),
     )
     invoices = _scope_entity(invoices, entity_id)
-    invoices = _scope_created(invoices, created_by_id)
+    invoices = scope_customers(invoices, customer_ids)
     grouped = {}
     for row in invoices.values("invoice_date").annotate(total=Sum("net_amount")):
         key = month_key(row["invoice_date"])
@@ -102,23 +110,25 @@ def _sales_value_by_month(date_from, date_to, entity_id=None, created_by_id=None
     return grouped
 
 
-def purchase_sales_trend(date_from, date_to, entity_id=None, created_by_id=None) -> list[dict]:
-    po_map = _po_value_by_month(date_from, date_to, entity_id, created_by_id)
-    sales_map = _sales_value_by_month(date_from, date_to, entity_id, created_by_id)
+def purchase_sales_trend(date_from, date_to, entity_id=None, customer_ids=None) -> list[dict]:
+    po_map = _po_value_by_month(date_from, date_to, entity_id, customer_ids)
+    unpriced_map = _unpriced_lines_by_month(date_from, date_to, entity_id, customer_ids)
+    sales_map = _sales_value_by_month(date_from, date_to, entity_id, customer_ids)
     return [
         {
             "month": month_key(start),
             "po_value": money_str(po_map.get(month_key(start), 0)),
+            "unpriced_lines": unpriced_map.get(month_key(start), 0),
             "sales_value": money_str(sales_map.get(month_key(start), 0)),
         }
         for start in month_starts(date_from, date_to)
     ]
 
 
-def payment_trend(date_from, date_to, entity_id=None, created_by_id=None) -> list[dict]:
+def payment_trend(date_from, date_to, entity_id=None, customer_ids=None) -> list[dict]:
     payments = Payment.objects.filter(payment_date__range=(date_from, date_to))
     payments = _scope_entity(payments, entity_id)
-    payments = _scope_created(payments, created_by_id)
+    payments = scope_customers(payments, customer_ids)
     grouped = {}
     for row in payments.values("payment_date").annotate(total=Sum("amount")):
         key = month_key(row["payment_date"])
@@ -132,7 +142,7 @@ def payment_trend(date_from, date_to, entity_id=None, created_by_id=None) -> lis
     ]
 
 
-def _sales_lines(date_from, date_to, entity_id=None, created_by_id=None):
+def _sales_lines(date_from, date_to, entity_id=None, customer_ids=None):
     lines = InvoiceLine.objects.filter(
         invoice__status__in=SALES_STATUSES,
         invoice__invoice_date__range=(date_from, date_to),
@@ -140,13 +150,11 @@ def _sales_lines(date_from, date_to, entity_id=None, created_by_id=None):
     )
     if entity_id:
         lines = lines.filter(invoice__entity_id=entity_id)
-    if created_by_id:
-        lines = lines.filter(invoice__created_by_id=created_by_id)
-    return lines
+    return scope_customers(lines, customer_ids, "invoice__customer_id")
 
 
-def product_trend(date_from, date_to, entity_id=None, created_by_id=None, limit=10) -> list[dict]:
-    lines = _sales_lines(date_from, date_to, entity_id, created_by_id)
+def product_trend(date_from, date_to, entity_id=None, customer_ids=None, limit=10) -> list[dict]:
+    lines = _sales_lines(date_from, date_to, entity_id, customer_ids)
     ranked = list(
         lines.values("product_id", "product__product_name", "product__product_code")
         .annotate(total_value=Sum("line_total"), total_qty=Sum("quantity"))
@@ -191,8 +199,8 @@ def product_trend(date_from, date_to, entity_id=None, created_by_id=None, limit=
     return out
 
 
-def seasonal_trend(date_from, date_to, entity_id=None, created_by_id=None) -> list[dict]:
-    lines = _sales_lines(date_from, date_to, entity_id, created_by_id).select_related("product")
+def seasonal_trend(date_from, date_to, entity_id=None, customer_ids=None) -> list[dict]:
+    lines = _sales_lines(date_from, date_to, entity_id, customer_ids).select_related("product")
     grouped = {}
     for line in lines:
         season = (line.product.season or "").strip() or "Unspecified"
@@ -203,7 +211,7 @@ def seasonal_trend(date_from, date_to, entity_id=None, created_by_id=None) -> li
     ]
 
 
-def bad_debt_trend(date_from, date_to, entity_id=None, created_by_id=None) -> dict:
+def bad_debt_trend(date_from, date_to, entity_id=None, customer_ids=None) -> dict:
     # TODO: populate monthly write-off totals once a bad-debt / write-off module exists.
     # Do not substitute overdue invoice remaining — overdue is not bad debt.
     return {
@@ -215,11 +223,11 @@ def bad_debt_trend(date_from, date_to, entity_id=None, created_by_id=None) -> di
     }
 
 
-def outstanding_report(entity_id=None, created_by_id=None) -> list[dict]:
-    return customer_outstanding_report(entity_id, created_by_id=created_by_id)
+def outstanding_report(entity_id=None, customer_ids=None) -> list[dict]:
+    return customer_outstanding_report(entity_id, customer_ids=customer_ids)
 
 
-def customer_performance(date_from, date_to, entity_id=None, created_by_id=None) -> list[dict]:
+def customer_performance(date_from, date_to, entity_id=None, customer_ids=None) -> list[dict]:
     pos = PurchaseOrder.objects.filter(po_date__range=(date_from, date_to)).exclude(
         status__in=PO_EXCLUDED
     )
@@ -232,14 +240,19 @@ def customer_performance(date_from, date_to, entity_id=None, created_by_id=None)
         pos = pos.filter(entity_id=entity_id)
         invoices = invoices.filter(entity_id=entity_id)
         payments = payments.filter(entity_id=entity_id)
-    if created_by_id:
-        pos = pos.filter(created_by_id=created_by_id)
-        invoices = invoices.filter(created_by_id=created_by_id)
-        payments = payments.filter(created_by_id=created_by_id)
+    pos = scope_customers(pos, customer_ids)
+    invoices = scope_customers(invoices, customer_ids)
+    payments = scope_customers(payments, customer_ids)
 
     po_counts = {
         row["customer_id"]: row["n"]
         for row in pos.values("customer_id").annotate(n=Count("id"))
+    }
+    unpriced = {
+        row["customer_id"]: row["n"]
+        for row in PurchaseOrderLine.objects.filter(
+            purchase_order__in=pos, rate__isnull=True
+        ).values("purchase_order__customer_id").annotate(n=Count("id"))
     }
     invoiced = {
         row["customer_id"]: money(row["total"] or 0)
@@ -268,17 +281,17 @@ def customer_performance(date_from, date_to, entity_id=None, created_by_id=None)
 
     outstanding_map = {
         row["customer_id"]: row
-        for row in customer_outstanding_report(entity_id, created_by_id=created_by_id)
+        for row in customer_outstanding_report(entity_id, customer_ids=customer_ids)
     }
-    customer_ids = set(po_counts) | set(invoiced) | set(paid)
-    if not customer_ids:
+    row_customer_ids = set(po_counts) | set(invoiced) | set(paid)
+    if not row_customer_ids:
         return []
     customers = {
         row.id: row
-        for row in Customer.objects.filter(id__in=customer_ids)
+        for row in Customer.objects.filter(id__in=row_customer_ids)
     }
     rows = []
-    for cid in customer_ids:
+    for cid in row_customer_ids:
         customer = customers.get(cid)
         if not customer:
             continue
@@ -293,6 +306,7 @@ def customer_performance(date_from, date_to, entity_id=None, created_by_id=None)
                 "customer_code": customer.customer_code,
                 "customer_name": customer.customer_name,
                 "total_orders": po_counts.get(cid, 0),
+                "unpriced_lines": unpriced.get(cid, 0),
                 "total_invoiced": money_str(invoiced.get(cid, 0)),
                 "total_paid": money_str(paid.get(cid, 0)),
                 "average_days_to_pay": avg,
@@ -303,7 +317,7 @@ def customer_performance(date_from, date_to, entity_id=None, created_by_id=None)
     return rows
 
 
-def brand_performance(date_from, date_to, entity_id=None, created_by_id=None) -> list[dict]:
+def brand_performance(date_from, date_to, entity_id=None, customer_ids=None) -> list[dict]:
     """on_time_dispatch_rate omitted: POs have no promised dispatch date or lead time.
 
     commission_earned omitted: Commission Management is not built.
@@ -322,14 +336,19 @@ def brand_performance(date_from, date_to, entity_id=None, created_by_id=None) ->
         pos = pos.filter(entity_id=entity_id)
         invoices = invoices.filter(entity_id=entity_id)
         dispatch_lines = dispatch_lines.filter(dispatch__purchase_order__entity_id=entity_id)
-    if created_by_id:
-        pos = pos.filter(created_by_id=created_by_id)
-        invoices = invoices.filter(created_by_id=created_by_id)
-        dispatch_lines = dispatch_lines.filter(dispatch__created_by_id=created_by_id)
+    pos = scope_customers(pos, customer_ids)
+    invoices = scope_customers(invoices, customer_ids)
+    dispatch_lines = scope_customers(dispatch_lines, customer_ids, "dispatch__purchase_order__customer_id")
 
     po_counts = {
         row["brand_id"]: row["n"]
         for row in pos.values("brand_id").annotate(n=Count("id"))
+    }
+    unpriced = {
+        row["brand_id"]: row["n"]
+        for row in PurchaseOrderLine.objects.filter(
+            purchase_order__in=pos, rate__isnull=True
+        ).values("purchase_order__brand_id").annotate(n=Count("id"))
     }
     invoiced = {
         row["brand_id"]: money(row["total"] or 0)
@@ -338,6 +357,8 @@ def brand_performance(date_from, date_to, entity_id=None, created_by_id=None) ->
     dispatched = {}
     for line in dispatch_lines:
         brand_id = line.dispatch.purchase_order.brand_id
+        if line.purchase_order_line.rate is None:
+            continue
         value = money(line.dispatched_quantity * line.purchase_order_line.rate)
         dispatched[brand_id] = dispatched.get(brand_id, Decimal("0.00")) + value
 
@@ -356,6 +377,7 @@ def brand_performance(date_from, date_to, entity_id=None, created_by_id=None) ->
                 "brand_code": brand.brand_code,
                 "brand_name": brand.brand_name,
                 "total_pos": po_counts.get(bid, 0),
+                "unpriced_lines": unpriced.get(bid, 0),
                 "total_dispatched_value": money_str(dispatched.get(bid, 0)),
                 "total_invoiced_value": money_str(invoiced.get(bid, 0)),
             }
@@ -364,14 +386,14 @@ def brand_performance(date_from, date_to, entity_id=None, created_by_id=None) ->
     return rows
 
 
-def entity_performance(date_from, date_to, entity_id=None, created_by_id=None) -> list[dict]:
+def entity_performance(date_from, date_to, entity_id=None, customer_ids=None) -> list[dict]:
     """Side-by-side entity comparison. Outstanding/overdue reuse dashboard KPIs."""
     entities = Entity.objects.all().order_by("short_code")
     if entity_id:
         entities = entities.filter(pk=entity_id)
     rows = []
     for entity in entities:
-        kpis = _kpis(entity.id, created_by_id=created_by_id)
+        kpis = _kpis(entity.id, customer_ids=customer_ids)
         pos = PurchaseOrder.objects.filter(
             entity=entity,
             po_date__range=(date_from, date_to),
@@ -381,9 +403,8 @@ def entity_performance(date_from, date_to, entity_id=None, created_by_id=None) -
             status__in=SALES_STATUSES,
             invoice_date__range=(date_from, date_to),
         )
-        if created_by_id:
-            pos = pos.filter(created_by_id=created_by_id)
-            sales = sales.filter(created_by_id=created_by_id)
+        pos = scope_customers(pos, customer_ids)
+        sales = scope_customers(sales, customer_ids)
         total_sales = money(sales.aggregate(s=Sum("net_amount"))["s"] or 0)
         rows.append(
             {

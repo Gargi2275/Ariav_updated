@@ -127,7 +127,7 @@ class DashboardApiTests(TestCase):
         self.assertEqual(kpis["total_overdue"], "0.00")
         self.assertEqual(kpis["total_advance"], "0.00")
         self.assertEqual(kpis["unadjusted_payments"], "0.00")
-        self.assertEqual(kpis["bad_debt"], "0.00")
+        self.assertIsNone(kpis["bad_debt"])
         self.assertEqual(kpis["total_pos"], 0)
         self.assertEqual(res.json()["debtors"], [])
         self.assertNotIn("commission", str(res.json()).lower())
@@ -157,7 +157,7 @@ class DashboardApiTests(TestCase):
         self.assertEqual(kpis["total_overdue"], "40.00")
         self.assertEqual(kpis["total_advance"], "25.00")
         self.assertEqual(kpis["unadjusted_payments"], "25.00")
-        self.assertEqual(kpis["bad_debt"], "0.00")
+        self.assertIsNone(kpis["bad_debt"])
         self.assertGreaterEqual(kpis["active_entities"], 2)
         debtors = res.json()["debtors"]
         self.assertEqual(len(debtors), 1)

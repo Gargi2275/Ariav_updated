@@ -18,6 +18,7 @@ from django.db import transaction
 from openpyxl import load_workbook
 from rest_framework.exceptions import ValidationError
 
+from accounts.access import scope_to_visible_customers
 from purchase_orders.import_service import (
     MAX_DESCRIPTION,
     _cell_str,
@@ -25,7 +26,7 @@ from purchase_orders.import_service import (
     _parse_qty,
     compose_description,
 )
-from purchase_orders.models import PurchaseOrder, PurchaseOrderLine
+from purchase_orders.models import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatusChange
 
 from .models import Dispatch, DispatchLine
 from .services import (
@@ -146,8 +147,9 @@ def _norm_match(value: str) -> str:
     return " ".join(_cell_str(value).lower().replace("-", " ").split())
 
 
-def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str]]:
+def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str], list[dict]]:
     warnings: list[str] = []
+    skipped_by_reason: OrderedDict[str, list[int]] = OrderedDict()
     try:
         workbook = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
     except Exception as exc:
@@ -196,6 +198,8 @@ def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str]]:
             order_code = _cell_str(record["order_code"])
             invoice_no = _cell_str(record["invoice_no"])
             if not order_code or not invoice_no:
+                reason = "Order Code or Invoice No is blank"
+                skipped_by_reason.setdefault(reason, []).append(excel_row)
                 warnings.append(
                     f"Row {excel_row}: skipped — Order Code or Invoice No is blank."
                 )
@@ -216,8 +220,10 @@ def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str]]:
                     "lr_date": record["lr_date"],
                     "invoice_date": record["invoice_date"],
                     "lines": [],
+                    "source_rows": [],
                 }
                 grouped[key] = group
+            group["source_rows"].append(excel_row)
 
             customer_code = _cell_str(record["customer_code"])
             if customer_code and customer_code not in group["customer_codes"]:
@@ -234,6 +240,8 @@ def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str]]:
                 group["invoice_date"] = record["invoice_date"]
 
             if qty is None:
+                reason = "Qty is missing or invalid"
+                skipped_by_reason.setdefault(reason, []).append(excel_row)
                 warnings.append(
                     f"Row {excel_row} (Order Code {order_code} / Invoice {invoice_no}): "
                     "skipped line — Qty is missing or invalid."
@@ -251,12 +259,17 @@ def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str]]:
     finally:
         workbook.close()
 
-    return list(grouped.values()), warnings
+    skipped = [
+        {"reason": reason, "row_numbers": row_numbers}
+        for reason, row_numbers in skipped_by_reason.items()
+    ]
+    return list(grouped.values()), warnings, skipped
 
 
-def _po_by_number() -> dict[str, PurchaseOrder]:
+def _po_by_number(user) -> dict[str, PurchaseOrder]:
+    """POs the user may see, so matches and reasons never mention another Customer's PO."""
     mapping: dict[str, PurchaseOrder] = {}
-    qs = PurchaseOrder.objects.select_related("customer").prefetch_related(
+    qs = scope_to_visible_customers(PurchaseOrder.objects.all(), user).select_related("customer").prefetch_related(
         "lines__product",
         "lines__dispatch_lines",
     )
@@ -395,6 +408,7 @@ def evaluate_group(group: dict, pos: dict[str, PurchaseOrder]) -> tuple[dict | N
         "customer_code": customer_code,
         "customer_name": customer_name,
         "line_count": line_count,
+        "source_rows": group["source_rows"],
     }
 
     if line_count == 0:
@@ -463,9 +477,9 @@ def evaluate_group(group: dict, pos: dict[str, PurchaseOrder]) -> tuple[dict | N
     )
 
 
-def build_preview(file_bytes: bytes) -> dict:
-    groups, parse_warnings = parse_workbook(file_bytes)
-    pos = _po_by_number()
+def build_preview(file_bytes: bytes, *, user) -> dict:
+    groups, parse_warnings, skipped = parse_workbook(file_bytes)
+    pos = _po_by_number(user)
     importable: list[dict] = []
     excluded: list[dict] = []
     warnings = list(parse_warnings)
@@ -482,6 +496,7 @@ def build_preview(file_bytes: bytes) -> dict:
         "importable": importable,
         "excluded": excluded,
         "warnings": warnings,
+        "skipped": skipped,
     }
 
 
@@ -532,6 +547,7 @@ def public_preview_payload(preview: dict, token: str) -> dict:
         "importable": importable,
         "excluded": preview["excluded"],
         "warnings": preview["warnings"],
+        "skipped": preview["skipped"],
     }
 
 
@@ -592,7 +608,7 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
     to_create = [importable_by_key[key] for key in approved if key in importable_by_key]
     skipped_excluded = [excluded_by_key[key] for key in approved if key in excluded_by_key]
 
-    pos = _po_by_number()
+    pos = _po_by_number(user)
     stale: list[str] = []
     for row in to_create:
         err = _revalidate_importable(row, pos)
@@ -638,7 +654,7 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
                     purchase_order_line_id=line["purchase_order_line_id"],
                     dispatched_quantity=Decimal(str(line["quantity"])),
                 )
-            sync_purchase_order_dispatch_status(po)
+            sync_purchase_order_dispatch_status(po, user=user, source=PurchaseOrderStatusChange.Source.IMPORT)
             po.refresh_from_db()
             from notifications.services import notify_dispatch_created
 
@@ -655,7 +671,7 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
                     "line_count": len(matched),
                 }
             )
-            pos = _po_by_number()
+            pos = _po_by_number(user)
 
     drop_preview(token)
     remaining_excluded = list(cached["excluded"])

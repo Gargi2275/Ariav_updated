@@ -111,6 +111,133 @@ export interface InvoiceRow {
   created_by_name?: string;
 }
 
+export interface TraceUser {
+  id: number;
+  name: string;
+}
+
+export const NOT_RECORDED = 'Not recorded';
+
+/** Null actors/timestamps predate traceability — never guess them. */
+export function traceActor(user: TraceUser | null | undefined): string {
+  return user?.name || NOT_RECORDED;
+}
+
+export function traceStamp(iso: string | null | undefined): string {
+  if (!iso) return NOT_RECORDED;
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return NOT_RECORDED;
+  return dt.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export type TraceLinkType = 'purchase_order' | 'dispatch' | 'invoice' | 'payment' | 'customer';
+
+export interface InvoiceTrace {
+  invoice: {
+    id: number;
+    invoice_number: string;
+    invoice_date: string;
+    due_date: string;
+    status: string;
+    display_status: string;
+    is_overdue: boolean;
+    net_amount: string;
+    created_by: TraceUser | null;
+    created_at: string | null;
+    issued_by: TraceUser | null;
+    issued_at: string | null;
+    cancelled_by: TraceUser | null;
+    cancelled_at: string | null;
+  };
+  customer: { id: number; customer_code: string; customer_name: string };
+  entity: { id: number; short_code: string; entity_name: string };
+  brand: { id: number; brand_code: string; brand_name: string };
+  purchase_order: {
+    id: number;
+    po_number: string;
+    po_date: string;
+    order_type: string;
+    status: string;
+    created_by: TraceUser | null;
+    created_at: string | null;
+    status_history: Array<{
+      from_status: string;
+      to_status: string;
+      source: 'manual' | 'dispatch_auto' | 'import';
+      changed_by: TraceUser | null;
+      changed_at: string | null;
+    }>;
+  } | null;
+  /** PO-derived figures are null when the PO belongs to a Customer outside the user's scope. */
+  lines: Array<{
+    invoice_line_id: number;
+    purchase_order_line_id: number | null;
+    product: string;
+    ordered_quantity: string | null;
+    dispatched_on_po_line: string | null;
+    quantity_on_this_invoice: string;
+    invoiced_across_invoices: string | null;
+    remaining_undispatched: string | null;
+    remaining_uninvoiced: string | null;
+    dispatched_not_invoiced: string | null;
+  }>;
+  dispatches: Array<{
+    id: number;
+    dispatch_date: string;
+    lr_number: string;
+    transporter: string;
+    challan_reference: string;
+    total_quantity: string;
+    lines: Array<{ purchase_order_line_id: number; product: string; quantity: string }>;
+    created_by: TraceUser | null;
+    created_at: string | null;
+  }>;
+  dispatches_note: string;
+  payments: {
+    allocations: Array<{
+      allocation_id: number;
+      payment_id: number;
+      payment_number: string;
+      payment_date: string;
+      payment_mode: string;
+      allocated_amount: string;
+      created_by: TraceUser | null;
+      created_at: string | null;
+    }>;
+    adjustments: Array<{
+      id: number;
+      payment_id: number;
+      payment_number: string;
+      amount: string;
+      reason: string;
+      reference: string;
+      status: string;
+      created_by: TraceUser | null;
+      created_at: string | null;
+      approved_by: TraceUser | null;
+      approved_at: string | null;
+    }>;
+  };
+  financials: { net_amount: string; total_paid: string; outstanding_balance: string };
+  adjustments: unknown[];
+  adjustments_note: string;
+  timeline: Array<{
+    at: string | null;
+    kind: string;
+    label: string;
+    actor: TraceUser | null;
+    link: { type: TraceLinkType; id: number };
+    source?: string;
+    approved_by?: TraceUser | null;
+  }>;
+}
+
 export function todayIso(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -132,6 +259,7 @@ export const invoicesApi = {
     search?: string;
   } = {}) => request<InvoiceRow[]>(`/api/invoices/${qs(params)}`),
   retrieve: (id: number) => request<InvoiceRow>(`/api/invoices/${id}/`),
+  trace: (id: number) => request<InvoiceTrace>(`/api/invoices/${id}/trace/`),
   create: (body: unknown) =>
     request<InvoiceRow>('/api/invoices/', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: number, body: unknown) =>

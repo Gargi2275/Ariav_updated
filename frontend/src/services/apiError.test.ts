@@ -50,4 +50,14 @@ const brandDup = parseApiErrorDetails({
 });
 assertEqual(brandDup.message, "Brand code 'XYZ' is already in use. Try a different code.");
 
+const headers = parseApiErrorDetails({
+  status: 400,
+  data: {
+    file: 'Missing required column(s): price_value.',
+    detected_headers: ['brand_code', ' price_value ', 'season_label'],
+  },
+});
+assert(headers.message.includes('Missing required column(s): price_value.'), headers.message);
+assert(headers.message.includes('Detected columns in your file: brand_code,  price_value , season_label'), headers.message);
+
 console.log('parseApiErrorDetails: all assertions passed');

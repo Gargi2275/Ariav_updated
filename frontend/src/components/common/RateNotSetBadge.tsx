@@ -1,5 +1,4 @@
 import React from 'react';
-import { StatusChip } from './StatusChip';
 
 export function rateIsUnset(rate: string | number | null | undefined): boolean {
   if (rate === null || rate === undefined) return true;
@@ -8,5 +7,5 @@ export function rateIsUnset(rate: string | number | null | undefined): boolean {
 }
 
 export const RateNotSetBadge: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <StatusChip status="critical" label="RATE NOT SET" className={className} />
+  <span className={`text-[var(--erp-muted)] ${className}`}>Not set</span>
 );

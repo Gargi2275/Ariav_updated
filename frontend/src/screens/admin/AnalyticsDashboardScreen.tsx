@@ -30,27 +30,27 @@ function riskChip(band: string): StatusChipType {
   return 'within limit';
 }
 
-function kpiStrip(data: SnapshotDashboard): LedgerMetricItem[] {
+function kpiStrip(data: SnapshotDashboard, navigateTo: (id: number) => void): LedgerMetricItem[] {
   const k = data.kpis;
   return [
-    { label: 'Total Sales', value: money(k.total_sales), subValue: `${k.total_invoices} issued invoices` },
-    { label: 'Collections', value: money(k.total_collections), subValue: 'Payment receipts' },
-    { label: 'Outstanding', value: money(k.total_outstanding), subValue: 'Unpaid invoice balance' },
-    { label: 'Overdue', value: money(k.total_overdue), subValue: 'Past due remaining' },
-    { label: 'Advance / Unadjusted', value: money(k.total_advance), subValue: 'Unallocated payments' },
-    { label: 'Bad Debt', value: money(k.bad_debt), subValue: 'Not tracked yet', badge: 'N/A' },
+    { label: 'Total Sales', value: money(k.total_sales), subValue: `${k.total_invoices} issued invoices`, onClick: () => navigateTo(42), hrefLabel: 'Invoices' },
+    { label: 'Collections', value: money(k.total_collections), subValue: 'Payment receipts', onClick: () => navigateTo(43), hrefLabel: 'Payments' },
+    { label: 'Outstanding', value: money(k.total_outstanding), subValue: 'Unpaid invoice balance', onClick: () => navigateTo(44), hrefLabel: 'Customer Ledger' },
+    { label: 'Overdue', value: money(k.total_overdue), subValue: 'Past due remaining', onClick: () => navigateTo(44), hrefLabel: 'Customer Ledger' },
+    { label: 'Advance / Unadjusted', value: money(k.total_advance), subValue: 'Unallocated payments', onClick: () => navigateTo(43), hrefLabel: 'Payments' },
+    { label: 'Bad Debt', value: k.bad_debt == null ? '—' : money(k.bad_debt), subValue: k.bad_debt == null ? 'Not available' : 'Write-off balance', badge: k.bad_debt == null ? 'N/A' : undefined },
   ];
 }
 
-function opsStrip(data: SnapshotDashboard): LedgerMetricItem[] {
+function opsStrip(data: SnapshotDashboard, navigateTo: (id: number) => void): LedgerMetricItem[] {
   const k = data.kpis;
   return [
-    { label: 'Purchase Orders', value: k.total_pos, subValue: `${k.pending_pos} pending` },
-    { label: 'Fully Dispatched', value: k.dispatched_pos, subValue: `${k.partially_dispatched_pos} partial` },
-    { label: 'Active Customers', value: k.active_customers },
-    { label: 'Active Brands', value: k.active_brands },
-    { label: 'Active Products', value: k.active_products },
-    { label: 'Active Entities', value: k.active_entities },
+    { label: 'Purchase Orders', value: k.total_pos, subValue: `${k.pending_pos} pending`, onClick: () => navigateTo(40), hrefLabel: 'Purchase Orders' },
+    { label: 'Fully Dispatched', value: k.dispatched_pos, subValue: `${k.partially_dispatched_pos} partial`, onClick: () => navigateTo(40), hrefLabel: 'Purchase Orders' },
+    { label: 'Active Customers', value: k.active_customers, onClick: () => navigateTo(23), hrefLabel: 'Customer Master' },
+    { label: 'Active Brands', value: k.active_brands, onClick: () => navigateTo(37), hrefLabel: 'Brand Master' },
+    { label: 'Active Products', value: k.active_products, onClick: () => navigateTo(39), hrefLabel: 'Product Catalogue' },
+    { label: 'Active Entities', value: k.active_entities, onClick: () => navigateTo(36), hrefLabel: 'Entity Master' },
   ];
 }
 
@@ -151,8 +151,8 @@ export const AnalyticsDashboardScreen: React.FC = () => {
         <StaffPanels data={staff} navigateTo={navigateTo} />
       ) : isAdmin && snapshot ? (
         <>
-          <LedgerMetricStrip metrics={kpiStrip(snapshot)} />
-          <LedgerMetricStrip metrics={opsStrip(snapshot)} />
+          <LedgerMetricStrip metrics={kpiStrip(snapshot, navigateTo)} />
+          <LedgerMetricStrip metrics={opsStrip(snapshot, navigateTo)} />
           <div className={`grid grid-cols-1 gap-6 ${selectedEntityId === 'all' ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
             {selectedEntityId === 'all' ? (
             <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-5 rounded-[14px]" style={{ boxShadow: 'var(--erp-shadow)' }}>

@@ -4,6 +4,8 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 class DispatchPermission(BasePermission):
     """Authenticated staff may read and create/edit/delete dispatches.
 
+    Operators only reach dispatches on POs of customers_visible_to them (viewset
+    queryset and the create serializer's PO field).
     TODO: tighten create/update/destroy when the roles/permissions module lands.
     Operator = operational staff (same note as PO creation).
     """

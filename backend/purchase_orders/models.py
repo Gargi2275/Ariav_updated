@@ -83,6 +83,50 @@ class PurchaseOrder(models.Model):
         }
 
 
+class PurchaseOrderStatusChange(models.Model):
+    """One row per PO status change, written only by transitions.apply_status_change."""
+
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        DISPATCH_AUTO = "dispatch_auto", "Dispatch (automatic)"
+        IMPORT = "import", "Import"
+        CORRECTION = "correction", "Correction"
+        RATE_FILL = "rate_fill", "Rate filled"
+
+    purchase_order = models.ForeignKey(
+        PurchaseOrder,
+        on_delete=models.CASCADE,
+        related_name="status_changes",
+    )
+    from_status = models.CharField(max_length=32)
+    to_status = models.CharField(max_length=32)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="po_status_changes",
+    )
+    changed_at = models.DateTimeField(auto_now_add=True)
+    source = models.CharField(max_length=16, choices=Source.choices)
+    reason = models.TextField(blank=True)
+    purchase_order_line = models.ForeignKey(
+        "PurchaseOrderLine",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="rate_history",
+    )
+    rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = "purchase_orders_purchaseorderstatuschange"
+        ordering = ["changed_at", "id"]
+
+    def __str__(self):
+        return f"{self.purchase_order_id} {self.from_status} -> {self.to_status}"
+
+
 class PurchaseOrderLine(models.Model):
     purchase_order = models.ForeignKey(
         PurchaseOrder,
@@ -103,7 +147,7 @@ class PurchaseOrderLine(models.Model):
         validators=[MinValueValidator(Decimal("0.01"))],
     )
     rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-    line_total = models.DecimalField(max_digits=14, decimal_places=2)
+    line_total = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = "purchase_orders_purchaseorderline"
@@ -111,8 +155,11 @@ class PurchaseOrderLine(models.Model):
 
     def save(self, *args, **kwargs):
         qty = self.quantity if self.quantity is not None else Decimal("0")
-        rate = self.rate if self.rate is not None else Decimal("0")
-        self.line_total = (qty * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        self.line_total = (
+            (qty * self.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if self.rate is not None
+            else None
+        )
         super().save(*args, **kwargs)
 
     def __str__(self):

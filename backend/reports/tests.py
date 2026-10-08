@@ -323,19 +323,24 @@ class ReportApiTests(TestCase):
         outside = self._get("/api/reports/payment-trend/?from=2025-01-01&to=2025-12-31")
         self.assertTrue(all(r["payment_value"] == "0.00" for r in outside.json()["rows"]))
 
-    def test_operator_reports_scoped_to_own_created_records(self):
+    def test_operator_reports_scoped_to_visible_customers(self):
         jan = date(2026, 1, 15)
         feb = date(2026, 2, 10)
         self._po(self.guj, "RPT-PO-ADM", jan, qty="10.00", rate="10.00", created_by=self.admin)
+        self.client.force_authenticate(self.operator)
+        before = {row["month"]: row for row in self._get(
+            "/api/reports/purchase-sales-trend/?from=2026-01-01&to=2026-02-28"
+        ).json()["rows"]}
+        self.assertEqual(before["2026-01"]["po_value"], "0.00")
+
         po_op = self._po(self.adt, "RPT-PO-OP", feb, qty="5.00", rate="20.00", created_by=self.operator)
         self._invoice(
             po_op, "RPT-INV-OP", feb, feb + timedelta(days=15), qty="5.00", rate="20.00", created_by=self.operator
         )
-        self.client.force_authenticate(self.operator)
         res = self._get("/api/reports/purchase-sales-trend/?from=2026-01-01&to=2026-02-28")
         self.assertEqual(res.status_code, 200, res.content)
         by_month = {row["month"]: row for row in res.json()["rows"]}
-        self.assertEqual(by_month["2026-01"]["po_value"], "0.00")
+        self.assertEqual(by_month["2026-01"]["po_value"], "100.00")
         self.assertEqual(by_month["2026-01"]["sales_value"], "0.00")
         self.assertEqual(by_month["2026-02"]["po_value"], "100.00")
         self.assertEqual(by_month["2026-02"]["sales_value"], "100.00")

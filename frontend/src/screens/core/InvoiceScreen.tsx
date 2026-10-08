@@ -22,6 +22,7 @@ import {
   invoicesApi,
   todayIso,
 } from '../../services/invoicesApi';
+import { InvoiceTraceabilityPanel } from './InvoiceTraceabilityPanel';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
 
@@ -68,6 +69,7 @@ export const InvoiceScreen: React.FC = () => {
   const [customerFilter, setCustomerFilter] = useState<number | ''>(() => readCustomerListFilter());
   const [mode, setMode] = useState<'list' | 'form' | 'detail'>('list');
   const [detail, setDetail] = useState<InvoiceRow | null>(null);
+  const [detailTab, setDetailTab] = useState<'details' | 'trace'>('details');
   const [pendingDelete, setPendingDelete] = useState<InvoiceRow | null>(null);
   const [pendingCancel, setPendingCancel] = useState<InvoiceRow | null>(null);
   const [pickPoOpen, setPickPoOpen] = useState(false);
@@ -162,6 +164,7 @@ export const InvoiceScreen: React.FC = () => {
   const openDetail = useCallback(async (id: number) => {
     try {
       setDetail(await invoicesApi.retrieve(id));
+      setDetailTab('details');
       setMode('detail');
     } catch (e) {
       notifyApiError(e);
@@ -230,6 +233,7 @@ export const InvoiceScreen: React.FC = () => {
         const issued = await invoicesApi.issue(saved.id);
         notifySuccess('Invoice issued.');
         setDetail(issued);
+        setDetailTab('details');
         setMode('detail');
       } else {
         setMode('list');
@@ -472,6 +476,24 @@ export const InvoiceScreen: React.FC = () => {
                 <button type="button" onClick={() => setMode('list')}><X className="w-4 h-4" /></button>
               </div>
             </div>
+            <div className="flex gap-1 border-b border-[var(--erp-hairline)]" role="tablist">
+              {([['details', 'Details'], ['trace', 'Traceability']] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={detailTab === id}
+                  onClick={() => setDetailTab(id)}
+                  className={`px-3 py-1.5 text-xs font-mono uppercase tracking-wider border-b-2 -mb-px cursor-pointer ${detailTab === id ? 'border-[var(--erp-gold)] text-[var(--erp-gold)]' : 'border-transparent text-[var(--erp-muted)] hover:text-[var(--erp-text)]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {detailTab === 'trace' ? (
+              <InvoiceTraceabilityPanel key={`${detail.id}-${detail.status}`} invoiceId={detail.id} />
+            ) : (
+            <>
             <div className="overflow-x-auto border border-[var(--erp-hairline)]">
               <table className="w-full text-left text-xs">
                 <thead className="bg-[var(--erp-surface-2)] font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">
@@ -552,6 +574,8 @@ export const InvoiceScreen: React.FC = () => {
                 <Download className="w-3.5 h-3.5" /> Download PDF
               </button>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}

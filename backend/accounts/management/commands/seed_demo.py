@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 from django.conf import settings
-from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand
 
 from accounts.models import AuditLog, AuthUser, AuthUserMstLogin
@@ -328,7 +327,6 @@ class Command(BaseCommand):
             },
         )
         admin.set_password(settings.DEV_ADMIN_PASSWORD)
-        admin.phone = make_password(str(settings.DEV_ADMIN_PIN))
         admin.role = AuthUser.Role.ADMIN
         admin.display_name = "Bhargav Akshaya"
         admin.branch = branches["AHM-01"]
@@ -468,6 +466,10 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(self.style.SUCCESS("seed_demo completed"))
+        if not admin.phone:
+            self.stdout.write(
+                f"Admin {admin.username} has no PIN yet. Set one with: python manage.py reset_admin_pin {admin.username}"
+            )
         self._print_counts()
 
     def _ledger(self, date, account, debit, credit, narration, vtype, vno, fy):

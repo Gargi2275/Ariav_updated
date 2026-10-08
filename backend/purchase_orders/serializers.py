@@ -10,6 +10,7 @@ from entities.models import Entity
 from products.models import Product
 
 from .models import PurchaseOrder, PurchaseOrderLine
+from .transitions import allowed_transitions_for_user
 
 
 def _order_type_for_brand(brand: Brand) -> str:
@@ -133,8 +134,8 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
     def validate_rate(self, value):
         if value is None:
             return value
-        if value < 0:
-            raise serializers.ValidationError("Rate cannot be negative.")
+        if value <= 0:
+            raise serializers.ValidationError("Rate must be greater than 0 when entered.")
         return value
 
     def validate(self, attrs):
@@ -166,7 +167,11 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     lines = PurchaseOrderLineSerializer(many=True, required=False)
     total_quantity = serializers.SerializerMethodField()
     total_amount = serializers.SerializerMethodField()
+    priced_lines = serializers.SerializerMethodField()
+    unpriced_lines = serializers.SerializerMethodField()
+    has_unpriced_lines = serializers.SerializerMethodField()
     dispatch_progress = serializers.SerializerMethodField()
+    allowed_transitions = serializers.SerializerMethodField()
 
     class Meta:
         model = PurchaseOrder
@@ -191,7 +196,11 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             "lines",
             "total_quantity",
             "total_amount",
+            "priced_lines",
+            "unpriced_lines",
+            "has_unpriced_lines",
             "dispatch_progress",
+            "allowed_transitions",
             "created_at",
             "updated_at",
             "created_by",
@@ -259,8 +268,17 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
 
     def get_total_amount(self, obj):
         lines = obj.lines.all() if hasattr(obj, "lines") else []
-        total = sum((line.line_total for line in lines), Decimal("0"))
+        total = sum((line.line_total for line in lines if line.rate is not None), Decimal("0"))
         return str(total)
+
+    def get_priced_lines(self, obj):
+        return sum(1 for line in obj.lines.all() if line.rate is not None)
+
+    def get_unpriced_lines(self, obj):
+        return sum(1 for line in obj.lines.all() if line.rate is None)
+
+    def get_has_unpriced_lines(self, obj):
+        return any(line.rate is None for line in obj.lines.all())
 
     def get_dispatch_progress(self, obj):
         lines = list(obj.lines.all()) if hasattr(obj, "lines") else []
@@ -283,6 +301,10 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         if all_complete:
             return "Complete"
         return "Partial"
+
+    def get_allowed_transitions(self, obj):
+        request = self.context.get("request")
+        return sorted(allowed_transitions_for_user(obj.status, request.user if request else None))
 
     def validate_po_number(self, value):
         value = (value or "").strip()

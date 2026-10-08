@@ -11,7 +11,33 @@
  * http://localhost:8000 for local work.
  */
 
+import { handleUnauthorizedResponse } from './sessionExpiry';
+
 const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])$/i;
+let authInterceptorInstalled = false;
+
+function hasAuthorizationHeader(input: RequestInfo | URL, init?: RequestInit): boolean {
+  const headers = init?.headers || (input instanceof Request ? input.headers : undefined);
+  if (!headers) return false;
+  if (headers instanceof Headers) return headers.has('Authorization');
+  if (Array.isArray(headers)) return headers.some(([name]) => name.toLowerCase() === 'authorization');
+  return Object.keys(headers).some(name => name.toLowerCase() === 'authorization');
+}
+
+export function installAuthInterceptor(): void {
+  if (authInterceptorInstalled || typeof window === 'undefined') return;
+  authInterceptorInstalled = true;
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const response = await nativeFetch(input, init);
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const isLogout = url.includes('/api/auth/logout');
+    if (response.status === 401 && !isLogout && hasAuthorizationHeader(input, init)) {
+      handleUnauthorizedResponse();
+    }
+    return response;
+  };
+}
 
 function normalizeOrigin(raw: string): string {
   return raw.replace(/\/$/, '').replace(/\/api$/i, '');

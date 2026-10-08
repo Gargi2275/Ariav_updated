@@ -112,6 +112,12 @@ export interface DispatchImportExcluded {
   customer_name: string;
   reason: string;
   line_count: number;
+  source_rows: number[];
+}
+
+export interface DispatchImportSkipped {
+  reason: string;
+  row_numbers: number[];
 }
 
 export interface DispatchImportPreview {
@@ -119,6 +125,7 @@ export interface DispatchImportPreview {
   importable: DispatchImportable[];
   excluded: DispatchImportExcluded[];
   warnings: string[];
+  skipped: DispatchImportSkipped[];
 }
 
 export interface DispatchImportCreated {

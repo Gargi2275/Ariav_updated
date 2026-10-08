@@ -43,6 +43,7 @@ import { EntityMasterScreen } from './screens/masters/EntityMasterScreen';
 import { BrandMasterScreen } from './screens/masters/BrandMasterScreen';
 import { CategoryMasterScreen } from './screens/masters/CategoryMasterScreen';
 import { ProductCatalogueScreen } from './screens/masters/ProductCatalogueScreen';
+import { PriceListScreen } from './screens/masters/PriceListScreen';
 import { CustomerMasterScreen } from './screens/masters/CustomerMasterScreen';
 import { ItemMasterScreen } from './screens/masters/ItemMasterScreen';
 import { GroupProductScreen } from './screens/masters/GroupProductScreen';
@@ -129,6 +130,8 @@ const ScreenDispatcher: React.FC = () => {
       return <CategoryMasterScreen />;
     case 39:
       return <ProductCatalogueScreen />;
+    case 49:
+      return <PriceListScreen />;
     case 21:
       return <ItemMasterScreen />;
     case 22:
@@ -178,19 +181,19 @@ const ErpShell: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--erp-base)] text-[var(--erp-text)] flex flex-col font-sans antialiased select-none">
+    <div className="h-screen min-h-0 bg-[var(--erp-base)] text-[var(--erp-text)] flex flex-col font-sans antialiased select-none">
       {/* Main Layout Container */}
       <div className="flex flex-1 w-full relative">
         {/* Persistent 76px Icon Rail */}
         <IconRail />
 
         {/* Primary Viewport */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[var(--erp-base)]">
+        <div className="flex-1 min-h-0 flex flex-col min-w-0 bg-[var(--erp-base)]">
           {/* Top Bar with Branch, FY, Clock, Approvals, Cmd+K, Theme */}
           <TopBar />
 
           {/* Active Screen Canvas */}
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 min-h-0 flex flex-col overflow-y-auto">
             <ScreenDispatcher />
           </main>
         </div>

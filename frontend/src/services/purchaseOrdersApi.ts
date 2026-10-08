@@ -1,5 +1,5 @@
 /**
- * Purchase Orders — Digital PO and Manual/POR — /api/purchase-orders/
+ * Purchase Orders â€” Digital PO and Manual/POR â€” /api/purchase-orders/
  */
 
 import { apiUrl } from './apiBase';
@@ -45,19 +45,6 @@ export const PO_STATUSES = [
 ] as const;
 export type POStatus = (typeof PO_STATUSES)[number];
 
-export const PO_TRANSITIONS: Record<string, string[]> = {
-  Draft: ['Submitted', 'Cancelled'],
-  Submitted: ['Sent to Brand', 'Rejected', 'Cancelled', 'On Hold'],
-  'Sent to Brand': ['Brand Accepted', 'Rejected', 'Cancelled', 'On Hold'],
-  'Brand Accepted': ['Partially Dispatched', 'Fully Dispatched', 'Cancelled', 'On Hold'],
-  'Partially Dispatched': ['Fully Dispatched', 'Cancelled', 'On Hold'],
-  'Fully Dispatched': ['Closed'],
-  'On Hold': ['Submitted', 'Sent to Brand', 'Brand Accepted', 'Cancelled', 'Rejected'],
-  Closed: [],
-  Rejected: [],
-  Cancelled: [],
-};
-
 export interface PurchaseOrderLineRow {
   id?: number;
   product_id: number | null;
@@ -67,7 +54,7 @@ export interface PurchaseOrderLineRow {
   unit: string;
   quantity: string | number;
   rate: string | number | null;
-  line_total: string | number;
+  line_total: string | number | null;
   total_dispatched?: string | number;
   pending_quantity?: string | number;
   total_invoiced?: string | number;
@@ -97,11 +84,20 @@ export interface PurchaseOrderRow {
   lines: PurchaseOrderLineRow[];
   total_quantity: string | number;
   total_amount: string | number;
+  priced_lines: number;
+  unpriced_lines: number;
+  has_unpriced_lines: boolean;
   dispatch_progress?: string;
   created_at?: string;
   updated_at?: string;
   created_by?: number | null;
   created_by_name?: string;
+  allowed_transitions: string[];
+}
+
+export interface PipelineSummary {
+  type_counts: Record<string, number>;
+  statuses: Record<string, { count: number; total_amount: string }>;
 }
 
 function todayIso(): string {
@@ -122,7 +118,7 @@ export const emptyPurchaseOrder = (): Partial<PurchaseOrderRow> => ({
   handy_form_url: '',
 });
 
-function qs(params: Record<string, string | number | undefined | null>): string {
+function qs(params: Record<string, string | number | boolean | undefined | null>): string {
   const sp = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v === undefined || v === null || v === '') return;
@@ -219,6 +215,9 @@ export const purchaseOrdersApi = {
     brand_id?: number;
     order_type?: string;
     search?: string;
+    limit?: number;
+    offset?: number;
+    has_unpriced?: boolean;
   } = {}) => request<PurchaseOrderRow[]>(`/api/purchase-orders/${qs(params)}`),
   retrieve: (id: number) => request<PurchaseOrderRow>(`/api/purchase-orders/${id}/`),
   create: (body: Record<string, unknown>, file?: File | null) =>
@@ -232,6 +231,19 @@ export const purchaseOrdersApi = {
       method: 'POST',
       body: JSON.stringify({ status: next }),
     }),
+  setRate: (id: number, lineId: number, rate: string | number) =>
+    request<PurchaseOrderRow>(`/api/purchase-orders/${id}/lines/${lineId}/set-rate/`, {
+      method: 'POST',
+      body: JSON.stringify({ rate }),
+    }),
+  pipelineSummary: (params: {
+    entity_id?: number;
+    customer_id?: number;
+    brand_id?: number;
+    order_type?: string;
+    search?: string;
+    has_unpriced?: boolean;
+  } = {}) => request<PipelineSummary>(`/api/purchase-orders/pipeline-summary/${qs(params)}`),
   remove: (id: number) =>
     request<void>(`/api/purchase-orders/${id}/`, { method: 'DELETE' }),
   importPreview: async (args: {
@@ -288,6 +300,19 @@ export const purchaseOrdersApi = {
       (error as Error & { data: unknown; status: number }).data = data;
       (error as Error & { status: number }).status = res.status;
       throw error;
+    }
+    return res.blob();
+  },
+  dispatchExcel: async (id: number): Promise<Blob> => {
+    const token = localStorage.getItem('ariav_auth_token');
+    const res = await fetch(apiUrl(`/api/purchase-orders/${id}/dispatch-excel/`), {
+      headers: token ? { Authorization: 'Bearer ' + token } : {},
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(
+        (data as { detail?: string })?.detail || JSON.stringify(data) || `HTTP ${res.status}`,
+      );
     }
     return res.blob();
   },

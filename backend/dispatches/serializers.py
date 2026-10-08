@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.db import transaction
 from rest_framework import serializers
 
+from accounts.access import scope_to_visible_customers
 from purchase_orders.models import PurchaseOrder, PurchaseOrderLine
 
 from .models import Dispatch, DispatchLine
@@ -128,6 +129,10 @@ class DispatchSerializer(serializers.ModelSerializer):
         if self.instance is not None:
             fields["purchase_order_id"].read_only = True
             fields["lines"].read_only = True
+        elif self.context.get("request") is not None:
+            fields["purchase_order_id"].queryset = scope_to_visible_customers(
+                PurchaseOrder.objects.all(), self.context["request"].user
+            )
         return fields
 
     def get_created_by_name(self, obj):
@@ -204,7 +209,7 @@ class DispatchSerializer(serializers.ModelSerializer):
                     purchase_order_line=row["purchase_order_line"],
                     dispatched_quantity=row["dispatched_quantity"],
                 )
-            sync_purchase_order_dispatch_status(dispatch.purchase_order)
+            sync_purchase_order_dispatch_status(dispatch.purchase_order, user=user)
             dispatch.refresh_from_db()
             dispatch.purchase_order.refresh_from_db()
             from notifications.services import notify_dispatch_created

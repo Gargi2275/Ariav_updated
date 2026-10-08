@@ -23,7 +23,7 @@ import {
 import { authApi } from '../../services/authApi';
 
 export const LoginScreen: React.FC = () => {
-  const { setUserRole, navigateTo, requestOperatorApproval, showFlash, setPendingLoginRequest, pendingLoginRequest, approvalQueue, refreshApprovalQueue } = useErp();
+  const { setUserRole, navigateTo, showFlash, setPendingLoginRequest, pendingLoginRequest, approvalQueue } = useErp();
   const { theme, toggleTheme } = useTheme();
 
   // Internal Component State: 'form' (Username/Password) | 'pin' (Admin only) | 'pending' (Waiting for approval) | 'approved' | 'rejected'
@@ -45,7 +45,7 @@ export const LoginScreen: React.FC = () => {
 
   // Screen 2: 6-Digit Master PIN (Admin only)
   const [pinDigits, setPinDigits] = useState<string[]>(['', '', '', '', '', '']);
-  const [showPinMask, setShowPinMask] = useState(false);
+  const [showPinMask, setShowPinMask] = useState(true);
   const [pinError, setPinError] = useState('');
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -207,24 +207,18 @@ export const LoginScreen: React.FC = () => {
           const opCode = res.operator_code || res.operatorCode || 'OP-04';
           const opBranch = res.branch || 'Surat Ring Road Textile Mkt';
 
-          let reqId = '';
-          try {
-            const reqRes = await authApi.submitLoginRequest({
-              operatorCode: opCode,
-              operatorName: opName,
-              branch: opBranch,
-              actionRequested: 'Staff Session Login'
-            });
-            reqId = reqRes?.requestId || reqRes?.request_id || reqRes?.request?.id || '';
-          } catch {
-            // fallback handled
-          }
+          const reqRes = await authApi.submitLoginRequest({
+            username: res.username || username.trim(),
+            operatorCode: opCode,
+            operatorName: opName,
+            branch: opBranch,
+            actionRequested: 'Staff Session Login'
+          });
+          const reqId = reqRes?.requestId || reqRes?.request_id || reqRes?.request?.id || '';
 
           if (!reqId) {
-            const localReq = await requestOperatorApproval(`Staff ${opCode} (${opName}) session login for ${opBranch}`);
-            reqId = localReq.id;
-          } else {
-            await refreshApprovalQueue();
+            setCredentialError(reqRes?.error || 'Could not send the login request. Please try again.');
+            return;
           }
 
           setPendingLoginRequest({

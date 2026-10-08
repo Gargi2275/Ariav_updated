@@ -8,6 +8,7 @@ interface PageHeaderProps {
   subtitle?: string;
   actions?: React.ReactNode;
   className?: string;
+  compact?: boolean;
 }
 
 export const PageHeader: React.FC<PageHeaderProps> = ({
@@ -16,7 +17,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   title,
   subtitle,
   actions,
-  className = ''
+  className = '',
+  compact = false,
 }) => {
   const { currentScreen } = useErp();
 
@@ -29,8 +31,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   const pageSubtitle = subtitle || currentScreen.subtitle;
 
   return (
-    <div className={`flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[var(--erp-hairline-strong)] pb-5 ${className}`}>
-      <div className="flex flex-col text-left min-w-0">
+    <div className={`${compact ? 'flex items-center justify-between gap-3 border-b border-[var(--erp-hairline-strong)] py-2' : 'flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[var(--erp-hairline-strong)] pb-5'} ${className}`}>
+      <div className={`${compact ? 'flex items-center gap-2' : 'flex flex-col'} text-left min-w-0`}>
         {/* 1. Single breadcrumb line: "06 · Admin · Business Analytics & Position" in --font-body, small, muted */}
         <div className="font-body text-xs text-[var(--erp-muted)] tracking-wide flex items-center gap-2 flex-wrap">
           <span className="font-mono text-[var(--erp-muted)]">{modNum}</span>
@@ -41,12 +43,12 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         </div>
 
         {/* 2. The H1 in --font-display, appears once */}
-        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[var(--erp-text)] mt-2">
+        <h1 className={`${compact ? 'text-lg' : 'text-2xl sm:text-3xl mt-2'} font-display font-bold tracking-tight text-[var(--erp-text)]`}>
           {pageTitle}
         </h1>
 
         {/* 3. The one-line subtitle under it in --font-body */}
-        {pageSubtitle && (
+        {pageSubtitle && !compact && (
           <p className="font-body text-xs sm:text-sm text-[var(--erp-muted)] mt-2 leading-relaxed max-w-4xl">
             {pageSubtitle}
           </p>

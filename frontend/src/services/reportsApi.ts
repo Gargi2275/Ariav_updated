@@ -35,7 +35,8 @@ export type ReportTab =
   | 'outstanding'
   | 'customer'
   | 'brand'
-  | 'entity';
+  | 'entity'
+  | 'party-balance';
 
 export interface ReportFilters {
   from: string;

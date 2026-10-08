@@ -11,6 +11,7 @@ from customers.models import Customer, CustomerEntity
 from entities.models import Entity
 from products.models import Product
 from purchase_orders.models import PurchaseOrder, PurchaseOrderLine
+from purchase_orders.transitions import allowed_transitions_for_user
 
 
 class PurchaseOrderApiTests(TestCase):
@@ -175,6 +176,101 @@ class PurchaseOrderApiTests(TestCase):
         )
         self.assertEqual(res.status_code, 400, res.content)
         self.assertEqual(PurchaseOrder.objects.get(pk=pid).status, "Draft")
+
+    def test_dispatch_statuses_cannot_be_set_manually_by_admin_or_operator(self):
+        pid = self._create().json()["id"]
+        self.client.post(f"/api/purchase-orders/{pid}/submit/", HTTP_HOST="localhost")
+        self.client.post(
+            f"/api/purchase-orders/{pid}/status/",
+            {"status": "Sent to Brand"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        accepted = self.client.post(
+            f"/api/purchase-orders/{pid}/status/",
+            {"status": "Brand Accepted"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.content)
+
+        message = "This status can only be set automatically when a Dispatch is recorded against this PO — it cannot be set manually."
+        admin_attempt = self.client.post(
+            f"/api/purchase-orders/{pid}/status/",
+            {"status": "Fully Dispatched"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(admin_attempt.status_code, 400, admin_attempt.content)
+        self.assertIn(message, str(admin_attempt.json()))
+
+        PurchaseOrder.objects.filter(pk=pid).update(created_by=self.operator)
+        self.client.force_authenticate(self.operator)
+        operator_attempt = self.client.post(
+            f"/api/purchase-orders/{pid}/status/",
+            {"status": "Partially Dispatched"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(operator_attempt.status_code, 400, operator_attempt.content)
+        self.assertIn(message, str(operator_attempt.json()))
+        self.assertEqual(PurchaseOrder.objects.get(pk=pid).status, "Brand Accepted")
+
+    def test_allowed_transitions_are_role_aware_and_never_manual_dispatch(self):
+        expected_admin = {
+            "Draft": {"Submitted", "Cancelled"},
+            "Submitted": {"Sent to Brand", "Rejected", "Cancelled", "On Hold"},
+            "Sent to Brand": {"Brand Accepted", "Rejected", "Cancelled", "On Hold"},
+            "Brand Accepted": {"Cancelled", "On Hold"},
+            "Partially Dispatched": {"Cancelled", "On Hold"},
+            "Fully Dispatched": {"Closed"},
+            "Closed": set(),
+            "Rejected": set(),
+            "Cancelled": set(),
+            "On Hold": {"Submitted", "Sent to Brand", "Brand Accepted", "Cancelled", "Rejected"},
+        }
+        for current, expected in expected_admin.items():
+            admin_allowed = allowed_transitions_for_user(current, self.admin)
+            operator_allowed = allowed_transitions_for_user(current, self.operator)
+            self.assertEqual(admin_allowed, expected)
+            self.assertNotIn("Partially Dispatched", admin_allowed)
+            self.assertNotIn("Fully Dispatched", admin_allowed)
+            self.assertEqual(operator_allowed, {"Submitted"} if current == "Draft" else set())
+
+    def test_pipeline_summary_and_list_are_customer_scoped_and_filtered(self):
+        visible = self._create(po_number="PO-VISIBLE").json()["id"]
+        PurchaseOrder.objects.filter(pk=visible).update(created_by=self.operator)
+        other_customer = Customer.objects.create(customer_code="CUST-02", customer_name="Other Trading")
+        CustomerEntity.objects.create(customer=other_customer, entity=self.entity)
+        hidden = self.client.post(
+            "/api/purchase-orders/",
+            self._payload(po_number="PO-HIDDEN", customer_id=other_customer.id),
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(hidden.status_code, 201, hidden.content)
+
+        self.client.force_authenticate(self.operator)
+        listed = self.client.get("/api/purchase-orders/?limit=20", HTTP_HOST="localhost")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        self.assertEqual([row["po_number"] for row in listed.json()], ["PO-VISIBLE"])
+        summary = self.client.get(
+            "/api/purchase-orders/pipeline-summary/?search=VISIBLE",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(summary.status_code, 200, summary.content)
+        self.assertEqual(summary.json()["statuses"]["Draft"]["count"], 1)
+        self.assertEqual(summary.json()["statuses"]["Draft"]["total_amount"], "1655.00")
+        self.assertEqual(summary.json()["statuses"]["Submitted"]["count"], 0)
+        self.assertEqual(summary.json()["type_counts"]["Digital"], 1)
+        self.assertEqual(summary.json()["type_counts"]["Manual"], 0)
+        selected_manual = self.client.get(
+            "/api/purchase-orders/pipeline-summary/?search=VISIBLE&order_type=Manual",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(selected_manual.status_code, 200, selected_manual.content)
+        self.assertEqual(selected_manual.json()["statuses"]["Draft"]["count"], 0)
+        self.assertEqual(selected_manual.json()["type_counts"]["Digital"], 1)
 
     def test_pdf_for_submitted_po(self):
         pid = self._create().json()["id"]

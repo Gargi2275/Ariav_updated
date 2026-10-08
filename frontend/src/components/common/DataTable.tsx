@@ -22,6 +22,7 @@ interface DataTableProps<T> {
   maxHeight?: string;
   footerRow?: React.ReactNode;
   rowClassName?: (row: T, index: number) => string;
+  density?: 'compact' | 'comfortable';
 }
 
 export function DataTable<T>({
@@ -34,7 +35,8 @@ export function DataTable<T>({
   className = '',
   maxHeight = '650px',
   footerRow,
-  rowClassName
+  rowClassName,
+  density = 'comfortable'
 }: DataTableProps<T>) {
   const [sortCol, setSortCol] = useState<keyof T | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
@@ -81,7 +83,7 @@ export function DataTable<T>({
                     onClick={() => handleSort(col)}
                     data-sortable={col.sortable ? "true" : "false"}
                     style={{ width: col.width }}
-                    className={`px-3.5 py-2.5 font-mono text-[11px] font-semibold tracking-wider uppercase border-r border-[var(--erp-hairline)] last:border-r-0 whitespace-nowrap transition-colors ${
+                    className={`${density === 'compact' ? 'px-2 py-1.5' : 'px-3.5 py-2.5'} font-mono text-[11px] font-semibold tracking-wider uppercase border-r border-[var(--erp-hairline)] last:border-r-0 whitespace-nowrap transition-colors ${
                       isSorted
                         ? 'text-[var(--erp-gold)] bg-[var(--erp-surface)] font-bold'
                         : 'text-[var(--erp-muted)] hover:text-[var(--erp-text)]'
@@ -139,7 +141,7 @@ export function DataTable<T>({
                     return (
                       <td
                         key={cIdx}
-                        className={`px-3.5 py-2 text-xs border-r border-[var(--erp-hairline)] last:border-r-0 whitespace-nowrap text-[var(--erp-text)] ${
+                        className={`${density === 'compact' ? 'px-2 py-1' : 'px-3.5 py-2'} text-xs border-r border-[var(--erp-hairline)] last:border-r-0 whitespace-nowrap text-[var(--erp-text)] ${
                           col.mono ? 'font-mono' : 'font-body'
                         } ${
                           col.align === 'right'

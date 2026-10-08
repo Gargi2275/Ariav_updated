@@ -4,7 +4,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from accounts.access import is_admin_user, operator_notification_filter
+from accounts.access import customers_visible_to, is_admin_user
 
 from .models import Notification
 from .permissions import NotificationPermission
@@ -24,7 +24,10 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         if is_admin_user(user):
             qs = qs.filter(Q(recipient_user__isnull=True) | Q(recipient_user=user))
         else:
-            qs = qs.filter(operator_notification_filter(user))
+            qs = qs.filter(
+                Q(recipient_user=user)
+                | Q(recipient_user__isnull=True, customer_id__in=customers_visible_to(user).values("id"))
+            )
         status_filter = self.request.query_params.get("status")
         notification_type = self.request.query_params.get("notification_type")
         entity_id = self.request.query_params.get("entity_id")

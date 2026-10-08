@@ -21,6 +21,7 @@ import {
 import { authApi, PythonHealthInfo } from '../services/authApi';
 import { EntityRow, entitiesApi } from '../services/entitiesApi';
 import { notifyError, notifyInfo, notifySuccess } from '../services/notify';
+import { isSessionExpiryHandled, subscribeToSessionExpiry } from '../services/sessionExpiry';
 
 interface ErpContextType {
   currentScreenId: number;
@@ -275,6 +276,30 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [quickJumpOpen, setQuickJumpOpen] = useState<boolean>(false);
   const [flashMessage, setFlashMessage] = useState<{ text: string; type: 'positive' | 'negative' | 'gold' } | null>(null);
 
+  const clearAuthenticatedState = useCallback(() => {
+    setBranches([]);
+    setSelectedBranchState(ALL_ENTITIES);
+    setApprovalQueue([]);
+    setApprovalQueueLoaded(false);
+    setParties([]);
+    setItems([]);
+    setAuditLogs([]);
+    setPendingLoginRequest(null);
+    setQuickJumpOpen(false);
+    setPythonStatus(null);
+    setPythonOnline(false);
+    setFlashMessage(null);
+    setSessionUserName('');
+    setUserRole('operator');
+    setCurrentScreenId(1);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSessionExpiry(clearAuthenticatedState);
+    if (isSessionExpiryHandled()) clearAuthenticatedState();
+    return unsubscribe;
+  }, [clearAuthenticatedState]);
+
   // Python Backend status
   const [pythonStatus, setPythonStatus] = useState<PythonHealthInfo | null>(null);
   const [pythonOnline, setPythonOnline] = useState<boolean>(false);
@@ -291,29 +316,36 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Fetch live operator login approvals
   const refreshApprovalQueue = useCallback(async () => {
+    if (userRole !== 'admin' || !localStorage.getItem('ariav_auth_token')) {
+      setApprovalQueueLoaded(true);
+      return;
+    }
     try {
       const res = await authApi.getAdminQueue();
       if (res.success && Array.isArray(res.queue)) {
-        const mapped: OperatorApprovalRequest[] = res.queue.map(q => ({
-          id: q.id,
-          operatorName: q.operator_name,
-          operatorCode: q.operator_code,
-          branch: q.branch,
-          terminalIp: q.terminal_ip,
-          actionRequested: q.action_requested,
-          timestamp: q.timestamp,
-          status: (q.status as any) || 'pending',
-          verbalOtp: q.verbal_otp,
-          expiresInSeconds: q.seconds_remaining ?? 300,
-        }));
-        setApprovalQueue(mapped);
+        setApprovalQueue(prev => {
+          // The server never lists OTPs; keep the one this admin revealed on approve.
+          const revealed = new Map(prev.filter(r => r.verbalOtp).map(r => [r.id, r.verbalOtp]));
+          return res.queue.map(q => ({
+            id: q.id,
+            operatorName: q.operator_name,
+            operatorCode: q.operator_code,
+            branch: q.branch,
+            terminalIp: q.terminal_ip,
+            actionRequested: q.action_requested,
+            timestamp: q.timestamp,
+            status: (q.status as any) || 'pending',
+            verbalOtp: q.status === 'approved' ? revealed.get(q.id) : undefined,
+            expiresInSeconds: q.seconds_remaining ?? 300,
+          }));
+        });
       }
     } catch {
       // Keep last successful snapshot; do not restore mock rows
     } finally {
       setApprovalQueueLoaded(true);
     }
-  }, []);
+  }, [userRole]);
 
   // Periodic polling for health & queue
   useEffect(() => {
@@ -415,17 +447,12 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const approveRequest = async (id: string): Promise<string> => {
-    let generatedOtp = `${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}`;
-    
-    // Call Python backend
-    try {
-      const res = await authApi.approveRequest(id);
-      if (res.success && res.verbalOtp) {
-        generatedOtp = res.verbalOtp;
-      }
-    } catch {
-      // fallback to generatedOtp
+    const res = await authApi.approveRequest(id);
+    if (!res.success || !res.verbalOtp) {
+      showFlash(res.error || `Could not approve request ${id}`, 'negative');
+      return '';
     }
+    const generatedOtp = res.verbalOtp;
 
     setApprovalQueue(prev =>
       prev.map(req => {
@@ -440,16 +467,16 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return req;
       })
     );
-    addAuditLog('Admin approved operator request', 'Security Gate', `Generated Verbal OTP [${generatedOtp}] for request ${id} via Python Backend`, 'notice');
-    showFlash(`Request ${id} approved. Verbal OTP generated: ${generatedOtp}`, 'positive');
+    addAuditLog('Admin approved operator request', 'Security Gate', `Verbal OTP issued for request ${id}`, 'notice');
+    showFlash(`Request ${id} approved. Read the verbal OTP to the operator.`, 'positive');
     return generatedOtp;
   };
 
   const rejectRequest = async (id: string) => {
-    try {
-      await authApi.rejectRequest(id);
-    } catch {
-      // proceed
+    const res = await authApi.rejectRequest(id);
+    if (!res.success) {
+      showFlash(res.error || `Could not reject request ${id}`, 'negative');
+      return;
     }
 
     setApprovalQueue(prev =>

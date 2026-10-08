@@ -135,7 +135,7 @@ export const CustomerMasterScreen: React.FC = () => {
       return;
     }
     void customersApi.advanceBalance(form.id).then(row => {
-      setAdvanceBalance(row.advance_balance);
+      setAdvanceBalance(row ? row.advance_balance : null);
     }).catch(notifyApiError);
   }, [modalOpen, form.id]);
 

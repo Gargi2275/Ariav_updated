@@ -7,6 +7,8 @@ export interface LedgerMetricItem {
   change?: string;
   trend?: 'up' | 'down' | 'neutral';
   badge?: string;
+  onClick?: () => void;
+  hrefLabel?: string;
 }
 
 interface LedgerMetricStripProps {
@@ -38,12 +40,22 @@ export const LedgerMetricStrip: React.FC<LedgerMetricStripProps> = ({ metrics, c
         return (
           <div
             key={idx}
-            className={`p-3.5 transition-colors hover:bg-[var(--erp-surface-2)] flex flex-col justify-between ${semanticBorder}`}
+            className={`p-3.5 transition-colors hover:bg-[var(--erp-surface-2)] flex flex-col justify-between ${semanticBorder} ${metric.onClick ? 'cursor-pointer group/kpi' : ''}`}
             style={{ borderColor: 'var(--erp-hairline)' }}
+            onClick={metric.onClick}
+            onKeyDown={metric.onClick ? event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                metric.onClick?.();
+              }
+            } : undefined}
+            role={metric.onClick ? 'link' : undefined}
+            tabIndex={metric.onClick ? 0 : undefined}
+            title={metric.onClick ? `Open ${metric.hrefLabel || metric.label}` : undefined}
           >
             {/* Header: Micro-Label without truncation and clean line wrap */}
             <div className="flex items-start justify-between gap-1.5 mb-2 min-h-[26px]">
-              <span className="font-body text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-[var(--erp-muted)] leading-tight">
+              <span className={`font-body text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider leading-tight ${metric.onClick ? 'text-[var(--erp-gold)] group-hover/kpi:underline' : 'text-[var(--erp-muted)]'}`}>
                 {metric.label}
               </span>
               {metric.badge && (
@@ -55,7 +67,7 @@ export const LedgerMetricStrip: React.FC<LedgerMetricStripProps> = ({ metrics, c
             
             {/* Hero Number (Large, Bold Monospace) */}
             <div className="my-0.5">
-              <div className="font-mono text-2xl lg:text-[26px] font-bold tracking-tight text-[var(--erp-text)] leading-none">
+              <div className={`font-mono text-2xl lg:text-[26px] font-bold tracking-tight leading-none ${metric.onClick ? 'text-[var(--erp-text)] group-hover/kpi:text-[var(--erp-gold)]' : 'text-[var(--erp-text)]'}`}>
                 {metric.value}
               </div>
               {metric.subValue && (

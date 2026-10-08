@@ -255,7 +255,10 @@ class DispatchApiTests(TestCase):
         )
         self.assertEqual(len(ranged.json()), 1)
 
-        op_po = self._accept_po(self._create_po(po_number="PO-DSP-OP")["id"])
+        self.client.force_authenticate(self.operator)
+        op_po_id = self._create_po(po_number="PO-DSP-OP")["id"]
+        self.client.force_authenticate(self.admin)
+        op_po = self._accept_po(op_po_id)
         self.client.force_authenticate(self.operator)
         created = self._post_dispatch(
             self._dispatch_payload(op_po, lr_number="LR-OP-1", challan_reference="CH-OP")

@@ -4,8 +4,8 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 class PaymentPermission(BasePermission):
     """Authenticated staff may read, create payments, and add allocations.
 
-    Deleting a payment or an allocation is admin-only.
-    TODO: tighten when the roles/permissions module lands.
+    Deleting a payment or an allocation is admin-only. Operators only reach payments
+    of customers_visible_to them (viewset queryset; out-of-scope ids are 404).
     """
 
     STAFF_ACTIONS = {"create", "allocate"}
@@ -27,8 +27,8 @@ class PaymentAdjustmentPermission(BasePermission):
 
     Create is a side effect of POST /api/payments/:id/allocate/ only.
     Unsafe methods are left enabled at the permission layer so DRF returns 405
-    (no handler) rather than 403.
-    TODO: tighten when the roles/permissions module lands.
+    (no handler) rather than 403. Operators only see adjustments on payments of
+    customers_visible_to them.
     """
 
     def has_permission(self, request, view):

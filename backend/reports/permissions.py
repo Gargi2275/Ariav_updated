@@ -4,7 +4,7 @@ from rest_framework.permissions import BasePermission
 class ReportsPermission(BasePermission):
     """Authenticated staff may read live report aggregations.
 
-    Operators receive created_by-scoped rows in the view layer; admins are unscoped.
+    Operators receive rows for customers_visible_to them (view layer); admins are unscoped.
     """
 
     def has_permission(self, request, view):

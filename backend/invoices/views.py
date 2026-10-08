@@ -5,11 +5,15 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from accounts.access import scope_to_visible_customers
+
 from .models import Invoice
 from .pdf import build_invoice_pdf
 from .permissions import InvoicePermission
 from .serializers import InvoiceSerializer
-from .transitions import allowed_next_statuses, validate_transition
+from .services import InvoiceTransitionError, change_invoice_status, issue_invoice
+from .trace import build_invoice_trace, trace_queryset
+from .transitions import allowed_next_statuses
 
 
 class InvoiceViewSet(viewsets.ModelViewSet):
@@ -31,7 +35,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = trace_queryset() if self.action == "trace" else super().get_queryset()
+        qs = scope_to_visible_customers(qs, self.request.user)
         status_filter = self.request.query_params.get("status")
         entity_id = self.request.query_params.get("entity_id")
         customer_id = self.request.query_params.get("customer_id")
@@ -75,16 +80,10 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="issue")
     def issue(self, request, pk=None):
         invoice = self.get_object()
-        err = validate_transition(invoice.status, Invoice.Status.ISSUED)
-        if err:
-            return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
-        if not invoice.lines.exists():
-            return Response(
-                {"detail": "Add at least one line item before issuing."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        invoice.status = Invoice.Status.ISSUED
-        invoice.save(update_fields=["status", "updated_at"])
+        try:
+            issue_invoice(invoice, request.user)
+        except InvoiceTransitionError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(InvoiceSerializer(invoice, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="status")
@@ -101,12 +100,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 {"status": "Invalid status."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        err = validate_transition(invoice.status, target)
-        if err:
-            return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
-        invoice.status = target
-        invoice.save(update_fields=["status", "updated_at"])
+        try:
+            change_invoice_status(invoice, target, request.user)
+        except InvoiceTransitionError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(InvoiceSerializer(invoice, context={"request": request}).data)
+
+    @action(detail=True, methods=["get"], url_path="trace")
+    def trace(self, request, pk=None):
+        return Response(build_invoice_trace(self.get_object(), user=request.user))
 
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):

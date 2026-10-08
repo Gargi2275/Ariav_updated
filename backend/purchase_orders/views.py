@@ -1,4 +1,7 @@
-from django.db.models import Q
+from decimal import Decimal, InvalidOperation
+
+from django.db.models import Count, DecimalField, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -6,6 +9,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
+from accounts.access import scope_to_visible_customers
 from brands.models import Brand
 from entities.models import Entity
 
@@ -15,11 +19,19 @@ from .import_service import (
     public_preview_payload,
     store_preview,
 )
-from .models import PurchaseOrder
+from .models import PurchaseOrder, PurchaseOrderStatusChange
 from .pdf import build_po_pdf
+from .dispatch_export import build_dispatch_workbook
 from .permissions import PurchaseOrderPermission
 from .serializers import PurchaseOrderSerializer
-from .transitions import allowed_next_statuses, validate_transition
+from .transitions import (
+    DISPATCH_STATUSES,
+    MANUAL_DISPATCH_ERROR,
+    allowed_next_statuses,
+    allowed_transitions_for_user,
+    apply_status_change,
+    validate_transition,
+)
 
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
@@ -34,13 +46,14 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
-    def get_queryset(self):
-        qs = super().get_queryset()
+    def get_queryset(self, include_order_type=True):
+        qs = scope_to_visible_customers(super().get_queryset(), self.request.user)
         status_filter = self.request.query_params.get("status")
         entity_id = self.request.query_params.get("entity_id")
         customer_id = self.request.query_params.get("customer_id")
         brand_id = self.request.query_params.get("brand_id")
         order_type = self.request.query_params.get("order_type")
+        has_unpriced = self.request.query_params.get("has_unpriced")
         q = self.request.query_params.get("search")
         if status_filter:
             qs = qs.filter(status__iexact=status_filter)
@@ -50,8 +63,10 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             qs = qs.filter(customer_id=customer_id)
         if brand_id:
             qs = qs.filter(brand_id=brand_id)
-        if order_type:
+        if order_type and include_order_type:
             qs = qs.filter(order_type__iexact=order_type)
+        if has_unpriced == "true":
+            qs = qs.filter(lines__rate__isnull=True).distinct()
         if q:
             qs = qs.filter(
                 Q(po_number__icontains=q)
@@ -59,6 +74,19 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 | Q(brand__brand_name__icontains=q)
             )
         return qs
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        limit_raw = request.query_params.get("limit")
+        if limit_raw:
+            try:
+                limit = max(1, min(int(limit_raw), 100))
+                offset = max(0, int(request.query_params.get("offset", 0)))
+            except ValueError:
+                return Response({"detail": "limit and offset must be integers."}, status=status.HTTP_400_BAD_REQUEST)
+            queryset = queryset[offset:offset + limit]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):
         po = self.get_object()
@@ -81,14 +109,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 {"detail": "Add at least one line item before submitting."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        rate_err = _unpriced_lines_error(po)
-        if rate_err:
-            return Response({"detail": rate_err}, status=status.HTTP_400_BAD_REQUEST)
-        po.status = PurchaseOrder.Status.SUBMITTED
-        po.save(update_fields=["status", "updated_at"])
-        from notifications.services import notify_po_status_changed
-
-        notify_po_status_changed(po)
+        apply_status_change(po, PurchaseOrder.Status.SUBMITTED, user=request.user)
         return Response(PurchaseOrderSerializer(po, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="status")
@@ -105,19 +126,91 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 {"status": "Invalid status."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if target in DISPATCH_STATUSES:
+            return Response({"detail": MANUAL_DISPATCH_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+        if target not in allowed_transitions_for_user(po.status, request.user):
+            return Response(
+                {"detail": "Only administrators can change this status." if not request.user.is_admin_role else f"Cannot change status from {po.status} to {target}."},
+                status=status.HTTP_403_FORBIDDEN if not request.user.is_admin_role else status.HTTP_400_BAD_REQUEST,
+            )
         err = validate_transition(po.status, target)
         if err:
             return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
-        if target == PurchaseOrder.Status.SUBMITTED:
-            rate_err = _unpriced_lines_error(po)
-            if rate_err:
-                return Response({"detail": rate_err}, status=status.HTTP_400_BAD_REQUEST)
-        po.status = target
-        po.save(update_fields=["status", "updated_at"])
-        from notifications.services import notify_po_status_changed
-
-        notify_po_status_changed(po)
+        apply_status_change(po, target, user=request.user)
         return Response(PurchaseOrderSerializer(po, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], url_path=r"lines/(?P<line_id>\d+)/set-rate")
+    def set_rate(self, request, pk=None, line_id=None):
+        if not request.user.is_admin_role:
+            return Response({"detail": "Only administrators can set a purchase order line rate."}, status=status.HTTP_403_FORBIDDEN)
+        po = self.get_object()
+        if po.status in {PurchaseOrder.Status.CLOSED, PurchaseOrder.Status.REJECTED, PurchaseOrder.Status.CANCELLED}:
+            return Response({"detail": "Rates cannot be set on a closed, rejected, or cancelled purchase order."}, status=status.HTTP_400_BAD_REQUEST)
+        line = po.lines.filter(pk=line_id).first()
+        if line is None:
+            return Response({"detail": "Purchase order line not found."}, status=status.HTTP_404_NOT_FOUND)
+        if line.rate is not None:
+            return Response({"detail": "This purchase order line already has a rate."}, status=status.HTTP_400_BAD_REQUEST)
+        if line.invoice_lines.filter(invoice__status__in=["Issued", "Partially Paid", "Paid", "Overdue"]).exists():
+            return Response({"detail": "This line cannot be rated after it has been invoiced."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rate = Decimal(str(request.data.get("rate")))
+        except (TypeError, ValueError, InvalidOperation):
+            return Response({"rate": "Rate must be greater than 0."}, status=status.HTTP_400_BAD_REQUEST)
+        if rate <= 0:
+            return Response({"rate": "Rate must be greater than 0."}, status=status.HTTP_400_BAD_REQUEST)
+        line.rate = rate
+        line.save(update_fields=["rate", "line_total"])
+        PurchaseOrderStatusChange.objects.create(
+            purchase_order=po,
+            from_status=po.status,
+            to_status=po.status,
+            changed_by=request.user,
+            source=PurchaseOrderStatusChange.Source.RATE_FILL,
+            reason=f"Rate filled for line {line.id}: {rate}",
+            purchase_order_line=line,
+            rate=rate,
+        )
+        return Response(PurchaseOrderSerializer(po, context={"request": request}).data)
+
+    @action(detail=False, methods=["get"], url_path="pipeline-summary")
+    def pipeline_summary(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        type_counts = self.filter_queryset(
+            self.get_queryset(include_order_type=False)
+        ).values("order_type").annotate(count=Count("id", distinct=True))
+        total_expression = Coalesce(
+            Sum("lines__line_total"),
+            Value(0),
+            output_field=DecimalField(max_digits=14, decimal_places=2),
+        )
+        summary = queryset.values("status").annotate(
+            count=Count("id", distinct=True),
+            total_amount=total_expression,
+        )
+        by_status = {
+            row["status"]: {
+                "count": row["count"],
+                "total_amount": str(row["total_amount"] or 0),
+            }
+            for row in summary
+        }
+        return Response({
+            "type_counts": {
+                order_type: next(
+                    (row["count"] for row in type_counts if row["order_type"] == order_type),
+                    0,
+                )
+                for order_type in PurchaseOrder.OrderType.values
+            },
+            "statuses": {
+            status_value: {
+                "count": by_status.get(status_value, {}).get("count", 0),
+                "total_amount": by_status.get(status_value, {}).get("total_amount", "0"),
+            }
+            for status_value in PurchaseOrder.Status.values
+            },
+        })
 
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):
@@ -127,6 +220,18 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         response = HttpResponse(payload, content_type="application/pdf")
         prefix = "POR" if po.order_type == PurchaseOrder.OrderType.MANUAL else "PO"
         response["Content-Disposition"] = f'inline; filename="{prefix}-{safe_name}.pdf"'
+        return response
+
+    @action(detail=True, methods=["get"], url_path="dispatch-excel")
+    def dispatch_excel(self, request, pk=None):
+        po = self.get_object()
+        payload = build_dispatch_workbook(po)
+        safe_name = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in po.po_number)
+        response = HttpResponse(
+            payload,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="dispatch-{safe_name}.xlsx"'
         return response
 
     @action(detail=False, methods=["get"], url_path="transitions")
@@ -224,9 +329,4 @@ def _require_import_context(request, *, require_file: bool):
 
 
 def _unpriced_lines_error(po: PurchaseOrder) -> str:
-    if any(line.rate is None for line in po.lines.all()):
-        return (
-            "Every line must have a rate before the purchase order can be submitted. "
-            "Rate is not set on one or more lines."
-        )
     return ""

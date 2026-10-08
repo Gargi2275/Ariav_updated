@@ -5,7 +5,8 @@ class PurchaseOrderPermission(BasePermission):
     """Authenticated staff may read, create/edit/submit Draft POs, and delete Drafts.
 
     Status overrides (Sent to Brand, Reject, Cancel after submit, On Hold, …)
-    are admin-only. Operator = operational staff.
+    are admin-only. Operator = operational staff. Operators only reach POs of
+    customers_visible_to them (viewset queryset; out-of-scope ids are 404).
     """
 
     STAFF_ACTIONS = {
@@ -14,6 +15,7 @@ class PurchaseOrderPermission(BasePermission):
         "partial_update",
         "destroy",
         "submit",
+        "change_status",
         "import_preview",
         "import_commit",
     }

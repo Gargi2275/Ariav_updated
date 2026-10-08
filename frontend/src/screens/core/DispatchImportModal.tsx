@@ -9,6 +9,7 @@ import {
   DispatchImportCommitResult,
   DispatchImportable,
   DispatchImportPreview,
+  DispatchImportSkipped,
   dispatchesApi,
 } from '../../services/dispatchesApi';
 
@@ -31,6 +32,29 @@ function groupByPo(rows: DispatchImportable[]): { po_number: string; rows: Dispa
     map.get(key)!.push(row);
   }
   return order.map(po_number => ({ po_number, rows: map.get(po_number)! }));
+}
+
+function groupExcludedByReason(rows: DispatchImportPreview['excluded']) {
+  const groups = new Map<string, number[]>();
+  for (const row of rows) {
+    const existing = groups.get(row.reason) || [];
+    groups.set(row.reason, existing.concat(row.source_rows));
+  }
+  return Array.from(groups, ([reason, rowNumbers]) => ({
+    reason,
+    rowNumbers: Array.from(new Set(rowNumbers)).sort((a, b) => a - b),
+    groupCount: rows.filter(row => row.reason === reason).length,
+  }));
+}
+
+function formatRows(rowNumbers: number[]): string {
+  const visible = rowNumbers.slice(0, 20).join(', ');
+  const remaining = rowNumbers.length - Math.min(rowNumbers.length, 20);
+  return remaining > 0 ? `${visible} and ${remaining} more` : visible;
+}
+
+function skippedRowCount(rows: DispatchImportSkipped[]): number {
+  return rows.reduce((total, row) => total + row.row_numbers.length, 0);
 }
 
 export const DispatchImportModal: React.FC<DispatchImportModalProps> = ({ onClose, onImported }) => {
@@ -87,6 +111,7 @@ export const DispatchImportModal: React.FC<DispatchImportModalProps> = ({ onClos
   };
 
   const byPo = preview ? groupByPo(preview.importable) : [];
+  const excludedByReason = preview ? groupExcludedByReason(preview.excluded) : [];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
@@ -138,9 +163,9 @@ export const DispatchImportModal: React.FC<DispatchImportModalProps> = ({ onClos
 
         {step === 'preview' && preview && (
           <div className="space-y-5">
-            {preview.warnings.length ? (
-              <p className="text-xs font-mono text-[var(--erp-muted)]">{preview.warnings.join(' ')}</p>
-            ) : null}
+            <p className="text-sm font-mono text-[var(--erp-muted)]">
+              {preview.importable.length} dispatches importable, {preview.excluded.length} groups excluded, {skippedRowCount(preview.skipped)} rows skipped.
+            </p>
 
             <section>
               <h4 className="text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3">
@@ -216,34 +241,42 @@ export const DispatchImportModal: React.FC<DispatchImportModalProps> = ({ onClos
               )}
             </section>
 
-            {preview.excluded.length > 0 ? (
+            {preview.excluded.length > 0 || preview.skipped.length > 0 ? (
               <section className="border border-[rgba(217,99,90,0.45)] bg-[rgba(217,99,90,0.08)] p-3">
                 <h4 className="text-[11px] font-mono uppercase tracking-wider text-[var(--erp-negative)] border-b border-[rgba(217,99,90,0.35)] pb-1 mb-3 flex items-center gap-2">
-                  <AlertTriangle className="w-3.5 h-3.5" /> Will NOT Import ({preview.excluded.length})
+                  <AlertTriangle className="w-3.5 h-3.5" /> Excluded and skipped rows
                 </h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-negative)]">
-                      <tr>
-                        <th className="px-2 py-2">Order Code</th>
-                        <th className="px-2 py-2">Invoice</th>
-                        <th className="px-2 py-2">Customer</th>
-                        <th className="px-2 py-2">Reason</th>
-                        <th className="px-2 py-2 text-right">Lines</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.excluded.map(row => (
-                        <tr key={row.group_key} className="border-t border-[rgba(217,99,90,0.25)]">
-                          <td className="px-2 py-2 font-mono">{row.order_code}</td>
-                          <td className="px-2 py-2 font-mono">{row.invoice_no}</td>
-                          <td className="px-2 py-2">{row.customer_name} <span className="font-mono">({row.customer_code})</span></td>
-                          <td className="px-2 py-2 text-[var(--erp-negative)]">{row.reason}</td>
-                          <td className="px-2 py-2 text-right font-mono">{row.line_count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-2 text-xs">
+                  {[...preview.skipped.map(row => ({
+                    reason: row.reason,
+                    rowNumbers: row.row_numbers,
+                    label: 'skipped',
+                  })), ...excludedByReason.map(row => ({
+                    reason: row.reason,
+                    rowNumbers: row.rowNumbers,
+                    label: 'groups excluded',
+                    count: row.groupCount,
+                  }))].map(row => {
+                    const key = `${row.label}-${row.reason}`;
+                    const count = 'count' in row ? row.count : row.rowNumbers.length;
+                    return (
+                      <div key={key} className="border-t border-[rgba(217,99,90,0.25)] pt-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[var(--erp-negative)]">
+                            {count} {row.label}: {row.reason}
+                          </span>
+                          <button type="button" onClick={() => toggle(key)} className="font-mono text-[var(--erp-negative)] whitespace-nowrap">
+                            {expanded[key] ? 'Hide rows' : 'Show rows'}
+                          </button>
+                        </div>
+                        {expanded[key] ? (
+                          <p className="mt-1 font-mono text-[var(--erp-muted)]">
+                            Rows {formatRows(row.rowNumbers)}
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             ) : null}

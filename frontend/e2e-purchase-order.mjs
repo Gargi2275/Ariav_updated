@@ -147,7 +147,7 @@ async function main() {
   const productSelects = form.locator('tbody select');
   await productSelects.first().selectOption(String(fx.products[0].id));
   await form.locator('tbody input').nth(0).fill('10');
-  await form.getByRole('button', { name: '+ Add line' }).click();
+  await form.getByRole('button', { name: 'Add line' }).click();
   await productSelects.nth(1).selectOption(String(fx.products[1].id));
   await form.locator('tbody tr').nth(1).locator('input').first().fill('4');
   await form.screenshot({ path: path.join(outDir, 'po-create-form.png') });
@@ -234,7 +234,7 @@ async function main() {
   const catalogueSelect = porForm.locator('tbody select').first();
   await catalogueSelect.selectOption(String(fx.manualProduct.id), { timeout: 8000 });
   await porForm.locator('tbody input').nth(0).fill('2');
-  await porForm.getByRole('button', { name: '+ Add line' }).click();
+  await porForm.getByRole('button', { name: 'Add line' }).click();
   await porForm.getByRole('button', { name: /Enter manually/i }).last().click();
   await porForm.getByPlaceholder('Item from handy form…').fill('Grey 60s from handy form');
   const lastRow = porForm.locator('tbody tr').nth(1);

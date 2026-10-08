@@ -9,7 +9,7 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function fileMatchesAccept(file: File, accept?: string): boolean {
+export function fileMatchesAccept(file: File, accept?: string): boolean {
   if (!accept) return true;
   const tokens = accept.split(',').map(part => part.trim().toLowerCase()).filter(Boolean);
   if (!tokens.length) return true;
@@ -36,6 +36,8 @@ export interface FileDropZoneProps {
   emptyTitle?: string;
   disabled?: boolean;
   existingHint?: React.ReactNode;
+  onFileRejected?: (message: string) => void;
+  rejectionMessage?: string;
 }
 
 export const FileDropZone: React.FC<FileDropZoneProps> = ({
@@ -52,13 +54,18 @@ export const FileDropZone: React.FC<FileDropZoneProps> = ({
   emptyTitle = 'Click to upload or drag and drop',
   disabled = false,
   existingHint,
+  onFileRejected,
+  rejectionMessage = 'This file type is not allowed.',
 }) => {
   const inputId = htmlFor || id;
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
   const applyFile = (next: File | null) => {
-    if (next && accept && !fileMatchesAccept(next, accept)) return;
+    if (next && accept && !fileMatchesAccept(next, accept)) {
+      onFileRejected?.(rejectionMessage);
+      return;
+    }
     onChange(next);
     if (!next && inputRef.current) inputRef.current.value = '';
   };

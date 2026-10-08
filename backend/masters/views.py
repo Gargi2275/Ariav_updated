@@ -1,13 +1,11 @@
 from django.db.models import ProtectedError, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .permissions import IsAuthenticatedAdminOrReadOnly
 
 from .models import (
-    AccountMaster,
     BrokerMaster,
     ChartAccount,
     GroupProduct,
@@ -24,13 +22,12 @@ from .serializers import (
     GroupProductSerializer,
     ItemSerializer,
     ParameterSerializer,
-    PartySerializer,
     TaxSlabSerializer,
 )
 
 
 class MastersViewSet(viewsets.ModelViewSet):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedAdminOrReadOnly]
     pagination_class = None
 
     def destroy(self, request, *args, **kwargs):
@@ -48,7 +45,6 @@ class MastersViewSet(viewsets.ModelViewSet):
 class BranchViewSet(MastersViewSet):
     queryset = MasterBranch.objects.all().order_by("code")
     serializer_class = BranchSerializer
-    permission_classes = [IsAuthenticatedAdminOrReadOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -95,31 +91,6 @@ class ItemViewSet(MastersViewSet):
             qs = qs.filter(category__iexact=category)
         if q:
             qs = qs.filter(Q(sku__icontains=q) | Q(description__icontains=q) | Q(hsn__icontains=q) | Q(construction__icontains=q))
-        return qs
-
-
-class PartyViewSet(MastersViewSet):
-    queryset = (
-        AccountMaster.objects.select_related("broker_ref")
-        .prefetch_related("linked_branches")
-        .all()
-        .order_by("code")
-    )
-    serializer_class = PartySerializer
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        group = self.request.query_params.get("group")
-        q = self.request.query_params.get("search")
-        parties_only = self.request.query_params.get("parties")
-        if parties_only in ("1", "true", "yes"):
-            qs = qs.exclude(group__in=["Income", "Expense", "Capital"])
-        if group and group.lower() != "all":
-            qs = qs.filter(group__iexact=group)
-        if q:
-            qs = qs.filter(
-                Q(name__icontains=q) | Q(code__icontains=q) | Q(gstin__icontains=q) | Q(broker__icontains=q) | Q(city__icontains=q)
-            )
         return qs
 
 

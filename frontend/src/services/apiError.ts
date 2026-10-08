@@ -174,6 +174,11 @@ export function parseApiErrorDetails(err: unknown, fallback = GENERIC): ParsedAp
 
   for (const [key, val] of Object.entries(data)) {
     if (SKIP_KEYS.has(key) || key === 'detail' || key === 'non_field_errors') continue;
+    if (key === 'detected_headers' && Array.isArray(val)) {
+      const headers = val.map(item => String(item));
+      if (headers.length) sentences.push(`Detected columns in your file: ${headers.join(', ')}`);
+      continue;
+    }
     const lines = asLines(val);
     if (!lines.length) continue;
     fields.push(key);

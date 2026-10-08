@@ -201,7 +201,8 @@ def build_po_pdf(po: PurchaseOrder) -> bytes:
     amt_total = 0
     for i, row in enumerate(po.lines.all(), start=1):
         qty_total += row.quantity
-        amt_total += row.line_total
+        if row.line_total is not None:
+            amt_total += row.line_total
         if row.product_id:
             code = row.product.product_code
             name = row.product.product_name
@@ -218,10 +219,10 @@ def build_po_pdf(po: PurchaseOrder) -> bytes:
                 f"{row.quantity:.2f}",
                 unit,
                 f"{row.rate:.2f}" if row.rate is not None else "—",
-                f"{row.line_total:.2f}",
+                f"{row.line_total:.2f}" if row.line_total is not None else "—",
             ]
         )
-    data.append(["", "", "Total", f"{qty_total:.2f}", "", "", f"{amt_total:.2f}"])
+    data.append(["", "", "Total", f"{qty_total:.2f}", "", "", "Rates not set" if any(row.rate is None for row in po.lines.all()) else f"{amt_total:.2f}"])
     col_w = [10 * mm, 28 * mm, 52 * mm, 20 * mm, 18 * mm, 22 * mm, 26 * mm]
     table = Table(data, colWidths=col_w, repeatRows=1)
     table.setStyle(

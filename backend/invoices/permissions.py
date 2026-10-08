@@ -4,8 +4,8 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 class InvoicePermission(BasePermission):
     """Authenticated staff may read, create/edit Draft invoices, and issue them.
 
-    Cancel and other status stubs are admin-only.
-    TODO: tighten when the roles/permissions module lands.
+    Cancel and other status stubs are admin-only. Operators only reach invoices of
+    customers_visible_to them (viewset queryset; out-of-scope ids are 404).
     """
 
     STAFF_ACTIONS = {"create", "update", "partial_update", "destroy", "issue"}

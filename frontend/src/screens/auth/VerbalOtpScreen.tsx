@@ -37,8 +37,14 @@ export const VerbalOtpScreen: React.FC = () => {
     }
 
     const cleaned = otpCode.replace(/[^0-9]/g, '');
-    if (cleaned.length < 4) {
+    if (cleaned.length !== 6) {
       setErrorMessage('Please enter the 6-digit verbal OTP provided by admin (e.g. 530-535).');
+      return;
+    }
+
+    const requestId = pendingLoginRequest?.id;
+    if (!requestId) {
+      setErrorMessage('No login request found for this terminal. Go back and sign in again.');
       return;
     }
 
@@ -46,11 +52,12 @@ export const VerbalOtpScreen: React.FC = () => {
     setErrorMessage('');
 
     try {
-      const res = await authApi.verifyVerbalOtp(otpCode);
+      const res = await authApi.verifyVerbalOtp(requestId, cleaned);
       if (res.success) {
         setIsVerified(true);
-        setUserRole(res.user?.role === 'admin' || res.role === 'admin' ? 'admin' : 'operator');
-        addAuditLog('Verbal OTP Successfully Cleared', 'Security Gate', `Operator verified code ${otpCode}`, 'notice');
+        setUserRole('operator');
+        setPendingLoginRequest(null);
+        addAuditLog('Verbal OTP Successfully Cleared', 'Security Gate', `Operator session opened for request ${requestId}`, 'notice');
         showFlash(res.message || 'Verbal OTP validated. Operator session active.', 'positive');
         setTimeout(() => {
           navigateTo(6); // Only now reach /dashboard

@@ -1,7 +1,8 @@
 """Shared admin/operator access helpers.
 
 This is not the full roles/permissions module — only the existing
-AuthUser.role admin vs operator split.
+AuthUser.role admin vs operator split, plus the one rule for which
+Customers' transactions an operator may see.
 """
 
 from django.db.models import Q
@@ -11,42 +12,46 @@ def is_admin_user(user) -> bool:
     return bool(user and getattr(user, "is_authenticated", False) and getattr(user, "is_admin_role", False))
 
 
-def operator_related_customer_ids(user) -> set[int]:
-    from invoices.models import Invoice
-    from payments.models import Payment
-    from purchase_orders.models import PurchaseOrder
+def customers_visible_to(user):
+    """Customers whose Purchase Orders, Dispatches, Invoices and Payments this user may see.
 
-    ids = set()
-    ids.update(PurchaseOrder.objects.filter(created_by=user).values_list("customer_id", flat=True))
-    ids.update(Invoice.objects.filter(created_by=user).values_list("customer_id", flat=True))
-    ids.update(Payment.objects.filter(created_by=user).values_list("customer_id", flat=True))
-    return {cid for cid in ids if cid}
-
-
-def operator_can_view_customer(user, customer) -> bool:
-    if is_admin_user(user):
-        return True
-    return customer.pk in operator_related_customer_ids(user)
-
-
-def operator_notification_filter(user) -> Q:
-    """Notifications for records this operator created, or addressed to them."""
+    Admin: every Customer. Operator: Customers on at least one Purchase Order,
+    Invoice, Payment or Dispatch the operator created. Anyone else: none.
+    Returns a lazy Customer queryset so callers can use it as a subquery.
+    """
+    from customers.models import Customer
     from dispatches.models import Dispatch
     from invoices.models import Invoice
     from payments.models import Payment
     from purchase_orders.models import PurchaseOrder
 
-    q = Q(recipient_user=user)
-    po_ids = list(PurchaseOrder.objects.filter(created_by=user).values_list("id", flat=True))
-    inv_ids = list(Invoice.objects.filter(created_by=user).values_list("id", flat=True))
-    dsp_ids = list(Dispatch.objects.filter(created_by=user).values_list("id", flat=True))
-    pay_ids = list(Payment.objects.filter(created_by=user).values_list("id", flat=True))
-    if po_ids:
-        q |= Q(reference_type="PurchaseOrder", reference_id__in=po_ids)
-    if inv_ids:
-        q |= Q(reference_type="Invoice", reference_id__in=inv_ids)
-    if dsp_ids:
-        q |= Q(reference_type="Dispatch", reference_id__in=dsp_ids)
-    if pay_ids:
-        q |= Q(reference_type="Payment", reference_id__in=pay_ids)
-    return q
+    if not (user and getattr(user, "is_authenticated", False)):
+        return Customer.objects.none()
+    if is_admin_user(user):
+        return Customer.objects.all()
+    return Customer.objects.filter(
+        Q(id__in=PurchaseOrder.objects.filter(created_by=user).values("customer_id"))
+        | Q(id__in=Invoice.objects.filter(created_by=user).values("customer_id"))
+        | Q(id__in=Payment.objects.filter(created_by=user).values("customer_id"))
+        | Q(id__in=Dispatch.objects.filter(created_by=user).values("purchase_order__customer_id"))
+    )
+
+
+def scope_to_visible_customers(qs, user, field: str = "customer_id"):
+    """Filter any queryset by `field` ∈ customers_visible_to(user). Admins are unfiltered."""
+    if is_admin_user(user):
+        return qs
+    return qs.filter(**{f"{field}__in": customers_visible_to(user).values("id")})
+
+
+def visible_customer_ids(user) -> set[int] | None:
+    """Materialised form for in-Python checks. None means unrestricted (admin)."""
+    if is_admin_user(user):
+        return None
+    return set(customers_visible_to(user).values_list("id", flat=True))
+
+
+def can_view_customer(user, customer_id) -> bool:
+    if is_admin_user(user):
+        return True
+    return customers_visible_to(user).filter(pk=customer_id).exists()

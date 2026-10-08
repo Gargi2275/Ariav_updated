@@ -20,6 +20,9 @@ from .services import (
 )
 
 
+INVOICE_NOT_FOUND = "Invoice not found."
+
+
 def _user_display_name(user):
     if user is None:
         return ""
@@ -192,9 +195,26 @@ class PaymentSerializer(serializers.ModelSerializer):
             attrs["customer_code"] = customer.customer_code
         allocations = attrs.get("allocations")
         if allocations:
+            self._hide_out_of_scope_invoices(customer, allocations)
             amount = attrs.get("amount", getattr(self.instance, "amount", None))
             _validate_allocation_batch(customer, amount, allocations)
         return attrs
+
+    def _hide_out_of_scope_invoices(self, customer, allocations):
+        """Invoices of this payment's customer are allowed (a first payment starts the
+        relationship); any other invoice must belong to a customer the user can see."""
+        from accounts.access import visible_customer_ids
+
+        request = self.context.get("request")
+        visible = visible_customer_ids(getattr(request, "user", None))
+        if visible is None:
+            return
+        for index, row in enumerate(allocations):
+            invoice_customer = row["invoice"].customer_id
+            if (customer is None or invoice_customer != customer.id) and invoice_customer not in visible:
+                raise serializers.ValidationError(
+                    {"allocations": {index: {"invoice_id": INVOICE_NOT_FOUND}}}
+                )
 
     def create(self, validated_data):
         allocations = validated_data.pop("allocations", [])

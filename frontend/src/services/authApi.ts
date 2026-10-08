@@ -3,6 +3,7 @@
  */
 
 import { apiUrl } from './apiBase';
+import { markSessionAuthenticated } from './sessionExpiry';
 
 function persistAuthSession(
   data: {
@@ -13,44 +14,25 @@ function persistAuthSession(
   fallbackRole: 'admin' | 'operator',
 ) {
   if (data.token) localStorage.setItem('ariav_auth_token', data.token);
+  markSessionAuthenticated();
   const raw = data.user?.role || data.role || fallbackRole;
   const role = raw === 'admin' ? 'admin' : 'operator';
   localStorage.setItem('ariav_auth_role', role);
   if (data.user?.name) localStorage.setItem('ariav_auth_name', data.user.name);
 }
 
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem('ariav_auth_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 export interface PythonHealthInfo {
   status: string;
   service: string;
-  runtime: string;
-  port: number;
-  uptime_seconds: number;
-  database: string;
-  db_path: string;
-  stats: {
-    users: number;
-    operator_requests: number;
-    audit_records: number;
-  };
   timestamp: string;
-}
-
-export interface AdminLoginResponse {
-  success: boolean;
-  token?: string;
-  role?: 'admin';
-  user?: {
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-    branch: string;
-    branch_id?: number | null;
-    branch_code?: string;
-  };
-  expires_at?: number;
-  message?: string;
-  error?: string;
 }
 
 export interface CheckCredentialsResponse {
@@ -90,27 +72,14 @@ export interface VerifyPinResponse {
   remaining_attempts?: number;
 }
 
-export interface PinStatusResponse {
-  locked: boolean;
-  lockout_remaining_seconds: number;
-  failed_attempts: number;
-}
-
 export interface OperatorRequestResponse {
   success: boolean;
   requestId?: string;
   request_id?: string;
   request?: {
     id: string;
-    operatorCode: string;
-    operatorName: string;
-    branch: string;
-    terminalIp: string;
-    actionRequested: string;
     timestamp: string;
     status: 'pending' | 'approved' | 'rejected' | 'completed' | 'expired';
-    verbalOtp?: string;
-    seconds_remaining?: number;
   };
   message?: string;
   error?: string;
@@ -125,55 +94,47 @@ export interface AdminQueueItem {
   action_requested: string;
   timestamp: string;
   status: 'pending' | 'approved' | 'rejected' | 'completed' | 'expired';
-  verbal_otp?: string;
   expires_at?: number;
   seconds_remaining?: number;
   created_at: number;
 }
 
+type OperatorRequestPayload = {
+  username?: string;
+  operatorCode?: string;
+  operatorName?: string;
+  branch?: string;
+  actionRequested?: string;
+  terminalIp?: string;
+};
+
+async function postOperatorRequest(payload: OperatorRequestPayload, fallbackError: string): Promise<OperatorRequestResponse> {
+  try {
+    const res = await fetch(apiUrl('/api/login/'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  } catch (e: any) {
+    return { success: false, error: e.message || fallbackError };
+  }
+}
+
 export const authApi = {
-  // Check backend health & python service details
+  // Backend liveness only (no counts)
   async getHealth(): Promise<PythonHealthInfo | null> {
     try {
       const res = await fetch(apiUrl('/api/auth/health'));
       if (!res.ok) return null;
       return await res.json();
     } catch (e) {
-      console.warn('Python Auth API ping failed:', e);
+      console.warn('Auth API ping failed:', e);
       return null;
     }
   },
 
-  async getDashboardSummary(): Promise<{
-    success: boolean;
-    metrics?: {
-      turnover: string;
-      debtors: string;
-      creditors: string;
-      banks: string;
-      orders: number;
-      invoices: number;
-      items: number;
-      branches: number;
-    };
-    overdue?: Array<{
-      name: string;
-      city: string;
-      broker: string;
-      opening_balance: string;
-      credit_days: number;
-    }>;
-  } | null> {
-    try {
-      const res = await fetch(apiUrl('/api/dashboard/summary/'));
-      if (!res.ok) return null;
-      return await res.json();
-    } catch {
-      return null;
-    }
-  },
-
-  // Step 1: Admin Credentials Check (Username + Password)
+  // Step 1: Credentials check (Username + Password)
   async checkCredentials(username: string, password: string): Promise<CheckCredentialsResponse> {
     try {
       const res = await fetch(apiUrl('/api/check-credentials/'), {
@@ -188,12 +149,8 @@ export const authApi = {
     }
   },
 
-  // Step 2: Dedicated 6-Digit Master PIN Verification (Screen 2)
-  async verifyAdminPin(payload: {
-    username: string;
-    pin: string;
-    temp_token?: string;
-  }): Promise<VerifyPinResponse> {
+  // Step 2: 6-digit Master PIN. Requires the temp_token from step 1.
+  async verifyAdminPin(payload: { username?: string; pin: string; temp_token: string }): Promise<VerifyPinResponse> {
     try {
       const res = await fetch(apiUrl('/api/admin-login/'), {
         method: 'POST',
@@ -210,82 +167,38 @@ export const authApi = {
     }
   },
 
-  // Check Lockout Status & Countdown
-  async getPinStatus(username: string = 'admin'): Promise<PinStatusResponse> {
+  // Signed-in admin changes their own PIN
+  async changePin(currentPin: string, newPin: string): Promise<{ success: boolean; error?: string; message?: string }> {
     try {
-      const res = await fetch(apiUrl(`/api/admin/pin-status?username=${encodeURIComponent(username)}`));
-      if (!res.ok) return { locked: false, lockout_remaining_seconds: 0, failed_attempts: 0 };
-      return await res.json();
-    } catch {
-      return { locked: false, lockout_remaining_seconds: 0, failed_attempts: 0 };
-    }
-  },
-
-  // Authenticate Admin with PIN (legacy fallback)
-  async loginAdmin(pin: string): Promise<AdminLoginResponse> {
-    try {
-      const res = await fetch(apiUrl('/api/admin-login/'), {
+      const res = await fetch(apiUrl('/api/auth/admin/change-pin'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
+        headers: authHeaders(),
+        body: JSON.stringify({ current_pin: currentPin, new_pin: newPin }),
       });
-      const data = await res.json();
-      if (res.ok && data.success && data.token) {
-        persistAuthSession(data, 'admin');
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 403) {
+        return { success: false, error: data.detail || 'Sign in as an admin to change the PIN.' };
       }
       return data;
     } catch (e: any) {
-      return { success: false, error: e.message || 'Network connection failed' };
+      return { success: false, error: e.message || 'PIN change failed' };
     }
   },
 
   // Dispatch operator authorization ticket (Login Request)
-  async submitLoginRequest(payload: {
-    operatorCode?: string;
-    operatorName?: string;
-    branch?: string;
-    actionRequested?: string;
-    terminalIp?: string;
-  }): Promise<OperatorRequestResponse> {
-    try {
-      const res = await fetch(apiUrl('/api/login/'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      return await res.json();
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Login request submission failed' };
-    }
+  async submitLoginRequest(payload: OperatorRequestPayload): Promise<OperatorRequestResponse> {
+    return postOperatorRequest(payload, 'Login request submission failed');
   },
 
   // Legacy alias for dispatch operator authorization ticket
-  async requestOperator(payload: {
-    operatorCode: string;
-    operatorName: string;
-    branch: string;
-    actionRequested: string;
-    terminalIp?: string;
-  }): Promise<OperatorRequestResponse> {
-    try {
-      const res = await fetch(apiUrl('/api/login/'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      return await res.json();
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Request dispatch failed' };
-    }
+  async requestOperator(payload: OperatorRequestPayload): Promise<OperatorRequestResponse> {
+    return postOperatorRequest(payload, 'Request dispatch failed');
   },
 
-  // Poll operator request status via /api/check-request-status/
+  // Poll operator request status (status only)
   async checkRequestStatus(requestId: string): Promise<{
     success: boolean;
     status: 'pending' | 'approved' | 'rejected' | 'completed' | 'expired' | 'not_found';
-    verbal_otp?: string;
-    verbalOtp?: string;
-    request?: any;
     error?: string;
   }> {
     try {
@@ -296,27 +209,18 @@ export const authApi = {
     }
   },
 
-  // Poll operator request status (legacy alias)
-  async getOperatorStatus(requestId: string): Promise<OperatorRequestResponse> {
-    try {
-      const res = await fetch(apiUrl(`/api/check-request-status/?request_id=${encodeURIComponent(requestId)}`));
-      return await res.json();
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Status poll failed' };
-    }
-  },
-
-  // Admin: Get live authorization queue
+  // Admin: live authorization queue (never contains OTPs)
   async getAdminQueue(): Promise<{ success: boolean; queue: AdminQueueItem[]; error?: string }> {
     try {
-      const res = await fetch(apiUrl('/api/auth/admin/queue'));
+      const res = await fetch(apiUrl('/api/auth/admin/queue'), { headers: authHeaders() });
+      if (!res.ok) return { success: false, queue: [], error: `HTTP ${res.status}` };
       return await res.json();
     } catch (e: any) {
       return { success: false, queue: [], error: e.message };
     }
   },
 
-  // Admin: Approve operator request and issue 6-digit verbal OTP
+  // Admin: approve operator request. The verbal OTP is returned only in this response.
   async approveRequest(requestId: string): Promise<{
     success: boolean;
     requestId?: string;
@@ -327,10 +231,12 @@ export const authApi = {
     try {
       const res = await fetch(apiUrl(`/api/admin/approve/${encodeURIComponent(requestId)}/`), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ requestId }),
       });
-      return await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, error: data.error || data.detail || `HTTP ${res.status}` };
+      return data;
     } catch (e: any) {
       return { success: false, error: e.message };
     }
@@ -345,21 +251,23 @@ export const authApi = {
     try {
       const res = await fetch(apiUrl(`/api/admin/reject/${encodeURIComponent(requestId)}/`), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ requestId, reason }),
       });
-      return await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, error: data.error || data.detail || `HTTP ${res.status}` };
+      return data;
     } catch (e: any) {
       return { success: false, error: e.message };
     }
   },
 
-  // Operator: Verify Verbal OTP entered at terminal
-  async verifyVerbalOtp(otpCode: string): Promise<{
+  // Operator: Verify Verbal OTP for a specific login request
+  async verifyVerbalOtp(requestId: string, otpCode: string): Promise<{
     success: boolean;
     token?: string;
     role?: 'operator';
-    user?: { operatorCode: string; name: string; branch: string };
+    user?: { operatorCode: string; name: string; branch: string; role?: string };
     error?: string;
     message?: string;
   }> {
@@ -367,7 +275,7 @@ export const authApi = {
       const res = await fetch(apiUrl('/api/verify-otp/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ otpCode }),
+        body: JSON.stringify({ request_id: requestId, otpCode }),
       });
       const data = await res.json();
       if (res.ok && data.success && data.token) {
@@ -376,55 +284,6 @@ export const authApi = {
       return data;
     } catch (e: any) {
       return { success: false, error: e.message || 'Verification failed' };
-    }
-  },
-
-  // Admin: Initiate PIN recovery challenge
-  async requestPinResetChallenge(email?: string): Promise<{
-    success: boolean;
-    challengeId?: string;
-    codePreview?: string;
-    error?: string;
-    message?: string;
-  }> {
-    try {
-      const res = await fetch(apiUrl('/api/auth/admin/pin-reset/request'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      return await res.json();
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
-  },
-
-  // Admin: Confirm PIN challenge and set new master PIN
-  async confirmPinReset(challengeId: string, code: string, newPin: string): Promise<{
-    success: boolean;
-    error?: string;
-    message?: string;
-  }> {
-    try {
-      const res = await fetch(apiUrl('/api/auth/admin/pin-reset/confirm'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeId, code, newPin }),
-      });
-      return await res.json();
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
-  },
-
-  // Fetch security audit records from Python SQLite
-  async getAuditTrail(): Promise<any[]> {
-    try {
-      const res = await fetch(apiUrl('/api/auth/audit-trail'));
-      const data = await res.json();
-      return data.logs || [];
-    } catch {
-      return [];
     }
   },
 

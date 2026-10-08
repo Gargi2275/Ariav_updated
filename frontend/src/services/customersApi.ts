@@ -203,6 +203,62 @@ export interface CustomerLedgerPayload {
   entries: CustomerLedgerEntry[];
 }
 
+export interface BrandStatementEntry {
+  post_date: string;
+  doc_type: string;
+  doc_no: string;
+  text: string;
+  debit: string | number;
+  credit: string | number;
+  balance_amount: string | number;
+  balance_dc: 'DR' | 'CR' | string;
+  reference: string;
+  due_date: string | null;
+  tds_amount: string | number;
+}
+
+export interface BrandStatementPayload {
+  customer_id: number;
+  customer_code: string;
+  customer_name: string;
+  period_from: string;
+  period_to: string;
+  ledger_code: string;
+  ledger_description: string;
+  opening_amount: string | number;
+  opening_dc: 'DR' | 'CR' | string;
+  total_debit: string | number;
+  total_credit: string | number;
+  closing_amount: string | number;
+  closing_dc: 'DR' | 'CR' | string;
+  entries: BrandStatementEntry[];
+}
+
+export interface CustomerStatementSummary {
+  closing_amount: string | number;
+  closing_dc: 'DR' | 'CR' | string;
+  period_to: string;
+}
+
+export interface BrandStatementReportRow {
+  customer_id: number;
+  customer_code: string;
+  customer_name: string;
+  period_from: string;
+  period_to: string;
+  opening_debit: string | number;
+  opening_credit: string | number;
+  period_debit: string | number;
+  period_credit: string | number;
+  closing_debit: string | number;
+  closing_credit: string | number;
+}
+
+export interface BrandStatementReportPayload {
+  rows: BrandStatementReportRow[];
+  count: number;
+}
+
 export interface Customer360EntityLink {
   entity_id: number;
   short_code: string;
@@ -323,11 +379,23 @@ export function writeCustomerListFilter(id: number) {
 }
 
 export const customersApi = {
-  list: (params: { status?: string; search?: string; entity_id?: number | string } = {}) =>
+  /** `scope: 'visible'` limits operators to Customers they have a PO, Dispatch, Invoice or Payment with. */
+  list: (params: { status?: string; search?: string; entity_id?: number | string; scope?: 'visible' } = {}) =>
     request<CustomerRow[]>(`/api/customers/${qs(params)}`),
   retrieve: (id: number) => request<CustomerRow>(`/api/customers/${id}/`),
   ledger: (id: number, params: { from?: string; to?: string } = {}) =>
     request<CustomerLedgerPayload>(`/api/customers/${id}/ledger/${qs(params)}`),
+  statement: (id: number, params: { entity_id: number; period_to?: string }) =>
+    request<BrandStatementPayload>(`/api/customers/${id}/statement/${qs(params)}`),
+  statementSummary: (id: number, params: { entity_id: number; period_to?: string }) =>
+    request<CustomerStatementSummary>(`/api/customers/${id}/statement-summary/${qs(params)}`),
+  statementReport: (params: {
+    entity_id: number;
+    customer_code?: string;
+    customer_name?: string;
+    period_from?: string;
+    period_to?: string;
+  }) => request<BrandStatementReportPayload>(`/api/customers/statement-report/${qs(params)}`),
   profile360: (id: number, params: { from?: string; to?: string } = {}) =>
     request<Customer360Payload>(`/api/customers/${id}/360/${qs(params)}`),
   ledgerPdf: async (id: number, params: { from?: string; to?: string } = {}): Promise<Blob> => {
@@ -346,10 +414,14 @@ export const customersApi = {
     }
     return res.blob();
   },
+  /** Resolves to null when the operator has no relationship with the Customer yet (404). */
   advanceBalance: (id: number) =>
     request<{ customer_id: number; customer_code: string; advance_balance: string }>(
       `/api/customers/${id}/advance-balance/`,
-    ),
+    ).catch(err => {
+      if ((err as { status?: number }).status === 404) return null;
+      throw err;
+    }),
   create: (body: unknown) => request<CustomerRow>('/api/customers/', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: number, body: unknown) =>
     request<CustomerRow>(`/api/customers/${id}/`, { method: 'PUT', body: JSON.stringify(body) }),

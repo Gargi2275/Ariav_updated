@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from accounts.access import is_admin_user
+from accounts.access import customers_visible_to, is_admin_user
 from entities.models import Entity
 
 from .permissions import ReportsPermission
@@ -54,10 +54,10 @@ def _parse_filters(request):
     return date_from, date_to, entity_id
 
 
-def _created_by_id(request):
+def _customer_ids(request):
     if is_admin_user(request.user):
         return None
-    return request.user.pk
+    return customers_visible_to(request.user).values("id")
 
 
 def _ok(request, payload):
@@ -65,7 +65,7 @@ def _ok(request, payload):
     if isinstance(parsed, Response):
         return parsed
     date_from, date_to, entity_id = parsed
-    body = payload(date_from, date_to, entity_id, _created_by_id(request))
+    body = payload(date_from, date_to, entity_id, _customer_ids(request))
     if isinstance(body, dict):
         body.setdefault("from", date_from.isoformat())
         body.setdefault("to", date_to.isoformat())
@@ -123,7 +123,7 @@ def outstanding_report(request):
             "from": date_from.isoformat(),
             "to": date_to.isoformat(),
             "entity_id": entity_id or "all",
-            "rows": services.outstanding_report(entity_id, _created_by_id(request)),
+            "rows": services.outstanding_report(entity_id, _customer_ids(request)),
         }
     )
 

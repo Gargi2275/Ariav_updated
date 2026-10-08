@@ -10,6 +10,7 @@ urlpatterns = [
     path("", include("brands.urls")),
     path("", include("categories.urls")),
     path("", include("products.urls")),
+    path("", include("price_lists.urls")),
     path("", include("customers.urls")),
     path("", include("purchase_orders.urls")),
     path("", include("dispatches.urls")),
@@ -19,8 +20,6 @@ urlpatterns = [
     path("", include("dashboards.urls")),
     path("", include("reports.urls")),
     path("api/", include("masters.urls")),
-    path("api/", include("transactions.urls")),
-    path("api/", include("ledger.urls")),
 ]
 
 if settings.DEBUG:

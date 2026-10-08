@@ -4,9 +4,12 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from accounts.access import can_view_customer, scope_to_visible_customers
+
 from .models import Payment, PaymentAllocation, PaymentAdjustment
 from .permissions import PaymentAdjustmentPermission, PaymentPermission
 from .serializers import (
+    INVOICE_NOT_FOUND,
     AllocateSerializer,
     PaymentAdjustmentSerializer,
     PaymentSerializer,
@@ -38,7 +41,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "delete", "head", "options"]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = scope_to_visible_customers(super().get_queryset(), self.request.user)
         customer_id = self.request.query_params.get("customer_id")
         entity_id = self.request.query_params.get("entity_id")
         payment_mode = self.request.query_params.get("payment_mode")
@@ -98,6 +101,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
         serializer = AllocateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         invoice = serializer.validated_data["invoice_id"]
+        if invoice.customer_id != payment.customer_id and not can_view_customer(request.user, invoice.customer_id):
+            return Response({"invoice_id": [INVOICE_NOT_FOUND]}, status=status.HTTP_400_BAD_REQUEST)
         amount = serializer.validated_data["allocated_amount"]
         reason = serializer.validated_data["reason"]
         reference = serializer.validated_data.get("reference") or ""
@@ -160,7 +165,7 @@ class PaymentAdjustmentViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = scope_to_visible_customers(super().get_queryset(), self.request.user, "payment__customer_id")
         payment_id = self.request.query_params.get("payment_id")
         invoice_id = self.request.query_params.get("invoice_id")
         customer_id = self.request.query_params.get("customer_id")

@@ -34,7 +34,7 @@ export interface DashboardKpis {
   total_overdue: string;
   total_advance: string;
   unadjusted_payments: string;
-  bad_debt: string;
+  bad_debt: string | null;
   total_pos: number;
   pending_pos: number;
   dispatched_pos: number;

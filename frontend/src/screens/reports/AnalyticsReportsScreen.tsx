@@ -7,6 +7,7 @@ import { ReportChart } from '../../components/common/ReportChart';
 import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterStatus';
 import { num } from '../../services/mastersApi';
 import { notifyApiError } from '../../services/notify';
+import { BrandStatementReport } from './BrandStatementReport';
 import {
   BrandPerfRow,
   CustomerPerfRow,
@@ -16,18 +17,6 @@ import {
   ReportTab,
   reportsApi,
 } from '../../services/reportsApi';
-
-const TABS: { id: ReportTab; label: string }[] = [
-  { id: 'purchase-sales', label: 'Purchase/Sales Trend' },
-  { id: 'payment', label: 'Payment Trend' },
-  { id: 'product', label: 'Product Trend' },
-  { id: 'seasonal', label: 'Seasonal Trend' },
-  { id: 'bad-debt', label: 'Bad Debt Trend' },
-  { id: 'outstanding', label: 'Outstanding Report' },
-  { id: 'customer', label: 'Customer Performance' },
-  { id: 'brand', label: 'Brand Performance' },
-  { id: 'entity', label: 'Entity Performance' },
-];
 
 const COLORS = ['var(--erp-gold)', 'var(--erp-positive)', 'var(--erp-muted)', '#7aa2c8', '#c9a24e', '#8f6b4a', '#d9635a', '#6b8f71', '#b07c9e', '#5c7a8a'];
 
@@ -68,7 +57,7 @@ function allZero(values: number[]): boolean {
 export const AnalyticsReportsScreen: React.FC = () => {
   const { selectedEntityId, selectedBranch } = useErp();
   const initial = defaultRange();
-  const [tab, setTab] = useState<ReportTab>('purchase-sales');
+  const tab: ReportTab = 'party-balance';
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
   const [loading, setLoading] = useState(true);
@@ -94,6 +83,7 @@ export const AnalyticsReportsScreen: React.FC = () => {
         customer: () => reportsApi.customer(filters),
         brand: () => reportsApi.brand(filters),
         entity: () => reportsApi.entity(filters),
+        'party-balance': () => Promise.resolve({}),
       };
       setPayload(await loaders[tab]());
     } catch (e) {
@@ -107,13 +97,6 @@ export const AnalyticsReportsScreen: React.FC = () => {
 
   useEffect(() => { void load(); }, [load]);
 
-  const tabClass = (id: ReportTab) =>
-    `px-2.5 py-1.5 text-[11px] font-mono cursor-pointer border whitespace-nowrap ${
-      tab === id
-        ? 'bg-[var(--erp-gold)] text-[#0F141B] border-[var(--erp-gold)] font-semibold'
-        : 'bg-[var(--erp-surface-2)] text-[var(--erp-text)] border-[var(--erp-hairline)] hover:border-[var(--erp-gold)]'
-    }`;
-
   return (
     <div className="p-6 flex flex-col gap-5 text-left">
       <PageHeader
@@ -122,18 +105,18 @@ export const AnalyticsReportsScreen: React.FC = () => {
         title="Reports & Analytics"
         subtitle={`Trend analysis over time — scoped to ${selectedBranch.name}`}
         actions={
-          <button
+          tab !== 'party-balance' ? <button
             type="button"
             onClick={() => exportCurrent(tab, payload)}
             className="px-3 py-1.5 text-xs font-mono border border-[var(--erp-hairline)] hover:border-[var(--erp-gold)] cursor-pointer flex items-center gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
             Export
-          </button>
+          </button> : undefined
         }
       />
 
-      <div className="flex flex-wrap items-end gap-3">
+      {tab !== 'party-balance' && <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-[11px] font-mono text-[var(--erp-muted)]">
           From
           <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="px-2 py-1.5 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]" />
@@ -146,18 +129,10 @@ export const AnalyticsReportsScreen: React.FC = () => {
           Entity: <span className="text-[var(--erp-text)]">{selectedBranch.name}</span>
           <span className="text-[var(--erp-muted)]"> (header)</span>
         </p>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {TABS.map(item => (
-          <button key={item.id} type="button" className={tabClass(item.id)} onClick={() => setTab(item.id)}>
-            {item.label}
-          </button>
-        ))}
-      </div>
+      </div>}
 
       {error && <MasterError message={error} onRetry={() => void load()} />}
-      {loading ? <MasterLoading label="Loading report…" /> : <ReportBody tab={tab} payload={payload} />}
+      {tab === 'party-balance' ? <BrandStatementReport /> : loading ? <MasterLoading label="Loading report…" /> : <ReportBody tab={tab} payload={payload} />}
     </div>
   );
 };

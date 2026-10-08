@@ -4,7 +4,8 @@ from rest_framework.permissions import BasePermission
 class NotificationPermission(BasePermission):
     """Authenticated staff may read and mark notifications.
 
-    Operators are queryset-scoped to their own records in the view.
+    Operators see notifications addressed to them, plus unaddressed ones for
+    customers_visible_to them (queryset-scoped in the view).
     """
 
     def has_permission(self, request, view):

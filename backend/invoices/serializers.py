@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from accounts.access import scope_to_visible_customers
 from products.models import Product
 from purchase_orders.models import PurchaseOrder, PurchaseOrderLine
 
@@ -193,6 +194,15 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "other_charges": {"required": False},
         }
 
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get("request")
+        if request is not None:
+            fields["purchase_order_id"].queryset = scope_to_visible_customers(
+                PurchaseOrder.objects.all(), request.user
+            )
+        return fields
+
     def get_created_by_name(self, obj):
         if not obj.created_by_id:
             return ""
@@ -265,6 +275,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"lines": "Add at least one invoice line."})
         else:
             lines = []
+        invoice_date = attrs.get("invoice_date") or getattr(self.instance, "invoice_date", None) or timezone.localdate()
 
         incoming = defaultdict(Decimal)
         for index, row in enumerate(lines):
@@ -281,6 +292,12 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 )
             if row.get("rate") is None:
                 row["rate"] = po_line.rate
+            if row.get("rate") is None and po_line.product_id:
+                from price_lists.services import get_current_price
+
+                entry = get_current_price(po_line.product_id, invoice_date)
+                if entry is not None:
+                    row["rate"] = entry.price_per_meter
             if not row.get("product") and not (row.get("product_description") or "").strip():
                 row["product"] = po_line.product
                 row["product_description"] = po_line.product_description
@@ -309,7 +326,6 @@ class InvoiceSerializer(serializers.ModelSerializer):
         attrs["customer"] = po.customer
         attrs["brand"] = po.brand
         attrs["customer_code"] = po.customer.customer_code
-        invoice_date = attrs.get("invoice_date") or getattr(self.instance, "invoice_date", None) or timezone.localdate()
         if not attrs.get("invoice_date") and not self.instance:
             attrs["invoice_date"] = invoice_date
         if not attrs.get("due_date"):

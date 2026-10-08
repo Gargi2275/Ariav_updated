@@ -59,12 +59,15 @@ DISPATCH_STATUS_LOCK = {
 }
 
 
-def sync_purchase_order_dispatch_status(po: PurchaseOrder) -> str:
+def sync_purchase_order_dispatch_status(po: PurchaseOrder, *, user=None, source=None) -> str:
     """Set Partially/Fully Dispatched or revert to Brand Accepted from live totals.
 
     Only touches Brand Accepted / Partially Dispatched / Fully Dispatched.
     Closed, Rejected, Cancelled, and On Hold are left alone.
+    ``user`` is whoever recorded or deleted the dispatch; history source defaults to dispatch_auto.
     """
+    from purchase_orders.transitions import Source, apply_status_change
+
     po = PurchaseOrder.objects.prefetch_related("lines__dispatch_lines").get(pk=po.pk)
     if po.status not in DISPATCH_STATUS_LOCK:
         return po.status
@@ -77,10 +80,5 @@ def sync_purchase_order_dispatch_status(po: PurchaseOrder) -> str:
     else:
         next_status = PurchaseOrder.Status.BRAND_ACCEPTED
 
-    if po.status != next_status:
-        po.status = next_status
-        po.save(update_fields=["status", "updated_at"])
-        from notifications.services import notify_po_status_changed
-
-        notify_po_status_changed(po)
+    apply_status_change(po, next_status, user=user, source=source or Source.DISPATCH_AUTO)
     return po.status

@@ -214,57 +214,21 @@ class PurchaseOrderImportApiTests(TestCase):
         for line in po.lines.all():
             self.assertIsNone(line.rate)
             self.assertIsNone(line.product_id)
-            self.assertEqual(line.line_total, Decimal("0.00"))
+            self.assertIsNone(line.line_total)
 
-    def test_submit_imported_draft_blocked_until_rate_set(self):
+    def test_submit_imported_draft_allows_blank_rates(self):
         preview = self._preview(self.aditi).json()
         created = self._commit(self.aditi, preview, order_nos=["O1"]).json()["created"][0]
         blocked = self.client.post(
             f"/api/purchase-orders/{created['id']}/submit/",
             HTTP_HOST="localhost",
         )
-        self.assertEqual(blocked.status_code, 400, blocked.content)
-        self.assertIn("rate", blocked.json()["detail"].lower())
+        self.assertEqual(blocked.status_code, 200, blocked.content)
         self.assertEqual(
             PurchaseOrder.objects.get(pk=created["id"]).status,
-            PurchaseOrder.Status.DRAFT,
+            PurchaseOrder.Status.SUBMITTED,
         )
 
-        line = PurchaseOrderLine.objects.get(purchase_order_id=created["id"], product_description="C1-X-Y-T1-M")
-        other = PurchaseOrderLine.objects.get(purchase_order_id=created["id"], product_description="C1-X-Y-T1-L")
-        update = self.client.put(
-            f"/api/purchase-orders/{created['id']}/",
-            {
-                "po_number": "O1",
-                "entity_id": self.aditi.id,
-                "customer_id": self.aditi_customers[0].id,
-                "brand_id": self.manual.id,
-                "po_date": "2026-09-16",
-                "lines": [
-                    {
-                        "product_id": None,
-                        "product_description": line.product_description,
-                        "quantity": str(line.quantity),
-                        "rate": "12.50",
-                    },
-                    {
-                        "product_id": None,
-                        "product_description": other.product_description,
-                        "quantity": str(other.quantity),
-                        "rate": "8.00",
-                    },
-                ],
-            },
-            format="json",
-            HTTP_HOST="localhost",
-        )
-        self.assertEqual(update.status_code, 200, update.content)
-        submitted = self.client.post(
-            f"/api/purchase-orders/{created['id']}/submit/",
-            HTTP_HOST="localhost",
-        )
-        self.assertEqual(submitted.status_code, 200, submitted.content)
-        self.assertEqual(submitted.json()["status"], "Submitted")
 
     def test_repreview_after_commit_flags_existing_po_numbers(self):
         preview = self._preview(self.aditi).json()

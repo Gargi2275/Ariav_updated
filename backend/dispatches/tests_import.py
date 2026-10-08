@@ -309,6 +309,7 @@ class DispatchImportApiTests(TestCase):
 
     def test_operator_can_preview_and_commit(self):
         self._create_po("ATN-OP", status="Brand Accepted", qty="5.00")
+        PurchaseOrder.objects.filter(po_number="ATN-OP").update(created_by=self.operator)
         preview = self._preview([_row("ATN-OP", "INV-1", qty=5)], auth=self.operator)
         self.assertEqual(preview.status_code, 200, preview.content)
         token = preview.json()["preview_token"]

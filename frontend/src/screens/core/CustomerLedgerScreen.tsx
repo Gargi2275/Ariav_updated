@@ -36,10 +36,6 @@ export const CustomerLedgerScreen: React.FC = () => {
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [customerId, setCustomerId] = useState<number | ''>('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [appliedFrom, setAppliedFrom] = useState('');
-  const [appliedTo, setAppliedTo] = useState('');
   const [payload, setPayload] = useState<CustomerLedgerPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,7 +43,7 @@ export const CustomerLedgerScreen: React.FC = () => {
   const loadCustomers = useCallback(async () => {
     setListLoading(true);
     try {
-      const rows = await customersApi.list({ status: 'Active' });
+      const rows = await customersApi.list({ status: 'Active', scope: 'visible' });
       setCustomers(Array.isArray(rows) ? rows : []);
     } catch (e) {
       notifyApiError(e, 'Could not load customers.');
@@ -59,11 +55,11 @@ export const CustomerLedgerScreen: React.FC = () => {
 
   useEffect(() => { void loadCustomers(); }, [loadCustomers]);
 
-  const loadLedger = useCallback(async (id: number, from?: string, to?: string) => {
+  const loadLedger = useCallback(async (id: number) => {
     setLoading(true);
     setError('');
     try {
-      const data = await customersApi.ledger(id, { from: from || undefined, to: to || undefined });
+      const data = await customersApi.ledger(id);
       setPayload(data);
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load customer ledger.');
@@ -84,20 +80,10 @@ export const CustomerLedgerScreen: React.FC = () => {
     void loadLedger(id);
   }, [loadLedger]);
 
-  const applyRange = () => {
-    if (!customerId) return;
-    setAppliedFrom(dateFrom);
-    setAppliedTo(dateTo);
-    void loadLedger(Number(customerId), dateFrom, dateTo);
-  };
-
   const openPdf = async () => {
     if (!customerId) return;
     try {
-      const blob = await customersApi.ledgerPdf(Number(customerId), {
-        from: appliedFrom || undefined,
-        to: appliedTo || undefined,
-      });
+      const blob = await customersApi.ledgerPdf(Number(customerId));
       window.open(URL.createObjectURL(blob), '_blank', 'noopener');
     } catch (err) {
       notifyApiError(err, 'Could not generate statement PDF.');
@@ -192,7 +178,7 @@ export const CustomerLedgerScreen: React.FC = () => {
                 const id = e.target.value ? Number(e.target.value) : '';
                 setCustomerId(id);
                 setPayload(null);
-                if (id) void loadLedger(id, dateFrom, dateTo);
+                if (id) void loadLedger(id);
               }}
               className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none disabled:opacity-60"
             >
@@ -208,38 +194,6 @@ export const CustomerLedgerScreen: React.FC = () => {
               )}
             </select>
           </label>
-          <label htmlFor="ledger-from" className="flex flex-col gap-1 text-xs font-normal text-[var(--erp-muted)] font-sans">
-            From
-            <input
-              id="ledger-from"
-              type="date"
-              value={dateFrom}
-              onChange={e => setDateFrom(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none"
-            />
-          </label>
-          <label htmlFor="ledger-to" className="flex flex-col gap-1 text-xs font-normal text-[var(--erp-muted)] font-sans">
-            To
-            <input
-              id="ledger-to"
-              type="date"
-              value={dateTo}
-              onChange={e => setDateTo(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none"
-            />
-          </label>
-          <button
-            type="button"
-            disabled={!customerId}
-            onClick={applyRange}
-            className={
-              customerId
-                ? `${GOLD_BTN} h-[34px]`
-                : 'h-[34px] px-4 py-1.5 border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface-2)] text-[var(--erp-muted)] font-body text-xs font-semibold flex items-center justify-center cursor-not-allowed'
-            }
-          >
-            Apply dates
-          </button>
         </div>
         {noCustomers ? (
           <p className="text-[11px] font-mono text-[var(--erp-muted)]">
@@ -252,8 +206,6 @@ export const CustomerLedgerScreen: React.FC = () => {
         ) : null}
       </div>
 
-      {error && <MasterError message={error} onRetry={() => customerId && void loadLedger(Number(customerId), appliedFrom, appliedTo)} />}
-
       {listLoading ? (
         <MasterLoading label="Loading customers…" rows={4} />
       ) : !customerId ? (
@@ -262,26 +214,17 @@ export const CustomerLedgerScreen: React.FC = () => {
             <BookCopy className="w-5 h-5 text-[var(--erp-gold)] stroke-[1.75]" />
           </div>
           <p className="text-xs font-mono text-[var(--erp-muted)] text-center max-w-md">
-            {noCustomers
-              ? 'No customers found — add one in Customer Master'
-              : 'Select a customer to view their ledger.'}
+            {noCustomers ? 'No customers found — add one in Customer Master' : 'Select a customer to view their ledger.'}
           </p>
-          {noCustomers ? (
-            <button type="button" onClick={() => navigateTo(23)} className={GOLD_BTN}>
-              Open Customer Master
-            </button>
-          ) : null}
+          {noCustomers ? <button type="button" onClick={() => navigateTo(23)} className={GOLD_BTN}>Open Customer Master</button> : null}
         </div>
       ) : loading ? (
         <MasterLoading label="Loading customer ledger…" />
       ) : payload ? (
         <>
-          {payload.customer_code ? (
-            <p className="text-xs font-mono text-[var(--erp-muted)]">
-              {payload.customer_code} · {payload.customer_name}
-              {appliedFrom || appliedTo ? ` · ${appliedFrom || '…'} to ${appliedTo || '…'} · opening ${money(payload.opening_balance)}` : ''}
-            </p>
-          ) : null}
+          <p className="text-xs font-mono text-[var(--erp-muted)]">
+            {payload.customer_code} · {payload.customer_name} · opening {money(payload.opening_balance)}
+          </p>
           {kpiMetrics.length ? (
             <LedgerMetricStrip metrics={kpiMetrics} className="lg:!grid-cols-5" />
           ) : null}
