@@ -13,6 +13,7 @@ export interface EntitySelectorProps {
   label?: string;
   disabled?: boolean;
   status?: EntityStatus | '';
+  compact?: boolean;
 }
 
 export const EntitySelector: React.FC<EntitySelectorProps> = ({
@@ -27,6 +28,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   label = 'Entity',
   disabled = false,
   status = 'Active',
+  compact = false,
 }) => {
   const [rows, setRows] = useState<EntityRow[]>([]);
   const [query, setQuery] = useState('');
@@ -59,7 +61,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         type="button"
         disabled={disabled}
         onClick={() => setOpen(o => !o)}
-        className="w-full px-3 py-2 text-sm text-left bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] disabled:opacity-50"
+        className={`w-full ${compact ? 'h-8 px-2 text-xs' : 'px-3 py-2 text-sm'} text-left bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] disabled:opacity-50`}
       >
         {selected ? (
           <span><span className="font-mono text-[var(--erp-gold)]">{selected.short_code}</span> · {selected.entity_name}</span>

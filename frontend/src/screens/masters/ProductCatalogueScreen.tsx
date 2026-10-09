@@ -166,6 +166,7 @@ export const ProductCatalogueScreen: React.FC = () => {
     setFieldErrors([]);
     const body = {
       product_code: (form.product_code || '').trim().toUpperCase(),
+      client_item_code: (form.client_item_code || '').trim(),
       product_name: (form.product_name || '').trim(),
       brand_id: form.brand_id,
       category_id: form.category_id,
@@ -359,6 +360,12 @@ export const ProductCatalogueScreen: React.FC = () => {
                     setFieldErrors(prev => prev.filter(f => f !== 'product_name'));
                     setFieldMessages(prev => clearFieldMessage(prev, 'product_name'));
                   }}
+                />
+                <TextInput
+                  label="Client item code"
+                  mono
+                  value={form.client_item_code || ''}
+                  onChange={e => setForm({ ...form, client_item_code: e.target.value })}
                 />
                 <div className="sm:col-span-2">
                   <TextInput

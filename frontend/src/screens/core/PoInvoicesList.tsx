@@ -34,6 +34,8 @@ export const PoInvoicesList: React.FC<{ purchaseOrderId: number }> = ({ purchase
             <th className="px-3 py-2">Status</th>
             <th className="px-3 py-2 text-right">Net</th>
             <th className="px-3 py-2 text-right">Balance</th>
+            <th className="px-3 py-2 text-right">Debit</th>
+            <th className="px-3 py-2 text-right">Credit</th>
           </tr>
         </thead>
         <tbody>
@@ -53,6 +55,12 @@ export const PoInvoicesList: React.FC<{ purchaseOrderId: number }> = ({ purchase
               <td className="px-3 py-2 text-right font-mono">₹{num(row.net_amount).toFixed(2)}</td>
               <td className="px-3 py-2 text-right font-mono">
                 {row.status === 'Cancelled' ? '—' : `₹${num(row.remaining_balance ?? row.net_amount).toFixed(2)}`}
+              </td>
+              <td className="px-3 py-2 text-right font-mono text-[var(--erp-negative)]">
+                {row.status === 'Cancelled' ? '—' : `₹${num(row.debit_amount).toFixed(2)}`}
+              </td>
+              <td className="px-3 py-2 text-right font-mono text-[var(--erp-positive)]">
+                {row.status === 'Cancelled' ? '—' : `₹${num(row.credit_amount).toFixed(2)}`}
               </td>
             </tr>
           ))}

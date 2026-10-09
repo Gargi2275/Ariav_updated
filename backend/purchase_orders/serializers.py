@@ -7,6 +7,7 @@ from rest_framework import serializers
 from brands.models import Brand
 from customers.models import Customer, CustomerEntity
 from entities.models import Entity
+from invoices.services import money
 from products.models import Product
 
 from .models import PurchaseOrder, PurchaseOrderLine
@@ -171,13 +172,21 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     unpriced_lines = serializers.SerializerMethodField()
     has_unpriced_lines = serializers.SerializerMethodField()
     dispatch_progress = serializers.SerializerMethodField()
+    financial_status = serializers.SerializerMethodField()
+    dispatched_amount = serializers.SerializerMethodField()
+    invoiced_amount = serializers.SerializerMethodField()
+    paid_amount = serializers.SerializerMethodField()
+    debit_amount = serializers.SerializerMethodField()
+    credit_amount = serializers.SerializerMethodField()
     allowed_transitions = serializers.SerializerMethodField()
 
     class Meta:
         model = PurchaseOrder
+        validators = []
         fields = (
             "id",
             "po_number",
+            "brand_order_code",
             "order_type",
             "entity_id",
             "entity_code",
@@ -200,6 +209,12 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             "unpriced_lines",
             "has_unpriced_lines",
             "dispatch_progress",
+            "financial_status",
+            "dispatched_amount",
+            "invoiced_amount",
+            "paid_amount",
+            "debit_amount",
+            "credit_amount",
             "allowed_transitions",
             "created_at",
             "updated_at",
@@ -219,6 +234,12 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             "total_quantity",
             "total_amount",
             "dispatch_progress",
+            "financial_status",
+            "dispatched_amount",
+            "invoiced_amount",
+            "paid_amount",
+            "debit_amount",
+            "credit_amount",
             "created_at",
             "updated_at",
             "created_by",
@@ -226,6 +247,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         )
         extra_kwargs = {
             "po_number": {"validators": []},
+            "brand_order_code": {"required": False, "allow_null": True, "allow_blank": True, "default": None},
             "order_type": {"required": False},
             "handy_form_upload": {"required": False, "allow_null": True, "write_only": True},
         }
@@ -302,6 +324,55 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             return "Complete"
         return "Partial"
 
+    def _financial_summary(self, obj):
+        from invoices.models import Invoice
+        from payments.models import PaymentAllocation
+        from payments.services import balance_breakdown
+
+        dispatched = Decimal("0")
+        for line in obj.lines.all():
+            dispatched += sum(
+                (row.dispatched_quantity * (line.rate or Decimal("0")) for row in line.dispatch_lines.all()),
+                Decimal("0"),
+            )
+        invoices = list(obj.invoices.exclude(status=Invoice.Status.CANCELLED))
+        invoiced = sum((invoice.net_amount for invoice in invoices), Decimal("0"))
+        paid = sum(
+            (
+                row.allocated_amount
+                for row in PaymentAllocation.objects.filter(invoice__in=invoices)
+            ),
+            Decimal("0"),
+        )
+        breakdown = balance_breakdown(invoiced - paid)
+        return {
+            "dispatched": str(money(dispatched)),
+            "invoiced": str(money(invoiced)),
+            "paid": str(money(paid)),
+            **breakdown,
+        }
+
+    def get_financial_status(self, obj):
+        summary = self._financial_summary(obj)
+        if obj.status == PurchaseOrder.Status.FULLY_DISPATCHED and Decimal(summary["balance"]) <= 0:
+            return "Clear"
+        return "Pending"
+
+    def get_dispatched_amount(self, obj):
+        return self._financial_summary(obj)["dispatched"]
+
+    def get_invoiced_amount(self, obj):
+        return self._financial_summary(obj)["invoiced"]
+
+    def get_paid_amount(self, obj):
+        return self._financial_summary(obj)["paid"]
+
+    def get_debit_amount(self, obj):
+        return self._financial_summary(obj)["debit"]
+
+    def get_credit_amount(self, obj):
+        return self._financial_summary(obj)["credit"]
+
     def get_allowed_transitions(self, obj):
         request = self.context.get("request")
         return sorted(allowed_transitions_for_user(obj.status, request.user if request else None))
@@ -344,6 +415,19 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"customer_id": "Customer is required."})
         if brand is None:
             raise serializers.ValidationError({"brand_id": "Brand is required."})
+
+        code = (attrs.get("brand_order_code") or "").strip()
+        if code:
+            query = PurchaseOrder.objects.filter(brand=brand, brand_order_code=code)
+            if self.instance:
+                query = query.exclude(pk=self.instance.pk)
+            if query.exists():
+                raise serializers.ValidationError(
+                    {"brand_order_code": "This brand order code is already used for this brand."}
+                )
+            attrs["brand_order_code"] = code
+        elif "brand_order_code" in attrs:
+            attrs["brand_order_code"] = None
 
         derived = _order_type_for_brand(brand)
         if requested_type and requested_type != derived:

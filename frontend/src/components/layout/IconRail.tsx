@@ -38,8 +38,8 @@ export const IconRail: React.FC = () => {
   }, []);
 
   // Reorganized operational order as requested:
-  // 1. Dashboard, 2. Orders, 3. Sales Invoice, 4. Vouchers, 5. Journal & Ledgers,
-  // 6. Masters, 7. Reports, 8. Admin, and 9. Security & Audit (fixed at bottom with divider)
+  // 1. Dashboard, 2. Orders, 3. Sales Invoice, 4. Journal & Ledgers,
+  // 5. Masters, 6. Reports, 7. Vouchers, 8. Admin, and 9. Security & Audit (fixed at bottom with divider)
   const operationalGroups: NavGroup[] = [
     {
       id: 'dashboard',
@@ -66,14 +66,6 @@ export const IconRail: React.FC = () => {
       primaryScreenId: 42
     },
     {
-      id: 'vouchers',
-      label: 'Vouchers',
-      title: 'Receipts & Payments',
-      icon: <Layers className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: [13, 14, 15, 17, 18, 19, 20],
-      primaryScreenId: 13
-    },
-    {
       id: 'journal-ledgers',
       label: 'Ledgers',
       title: 'Customer Ledger & Journals',
@@ -96,6 +88,14 @@ export const IconRail: React.FC = () => {
       icon: <FileText className="w-5 h-5 stroke-[1.75]" />,
       screenIds: [47],
       primaryScreenId: 47
+    },
+    {
+      id: 'vouchers',
+      label: 'Vouchers',
+      title: 'Receipts & Payments',
+      icon: <Layers className="w-5 h-5 stroke-[1.75]" />,
+      screenIds: [13, 14, 15, 17, 18, 19, 20],
+      primaryScreenId: 13
     },
     {
       id: 'admin',

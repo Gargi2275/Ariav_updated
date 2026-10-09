@@ -95,6 +95,10 @@ export interface InvoiceRow {
   net_amount: string | number;
   total_paid?: string | number;
   remaining_balance?: string | number;
+  signed_balance?: string | number;
+  debit_amount?: string | number;
+  credit_amount?: string | number;
+  balance_type?: 'Debit' | 'Credit' | 'Clear' | string;
   payment_allocations?: Array<{
     id: number;
     payment_id: number;

@@ -7,6 +7,7 @@ from .models import Product
 class ProductAdmin(admin.ModelAdmin):
     list_display = (
         "product_code",
+        "client_item_code",
         "product_name",
         "brand",
         "category",
@@ -15,4 +16,4 @@ class ProductAdmin(admin.ModelAdmin):
         "rate",
     )
     list_filter = ("status", "availability", "brand")
-    search_fields = ("product_code", "product_name", "print_name", "design", "colour", "product_type", "group")
+    search_fields = ("product_code", "client_item_code", "product_name", "print_name", "design", "colour", "product_type", "group")

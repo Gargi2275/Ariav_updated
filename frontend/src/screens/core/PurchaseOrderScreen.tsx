@@ -130,7 +130,6 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [orderTypeFilter, setOrderTypeFilter] = useState(() => (
     localStorage.getItem(`po-type:${sessionUserName || userRole}`) || ''
   ));
-  const [density] = useState<'compact'>('compact');
   const pipelineRef = useRef<PurchaseOrderPipelineHandle>(null);
   const [viewMode, setViewMode] = useState<'list' | 'pipeline'>(() => (
     localStorage.getItem(`po-view:${sessionUserName || userRole}`) === 'pipeline' ? 'pipeline' : 'list'
@@ -450,6 +449,7 @@ export const PurchaseOrderScreen: React.FC = () => {
 
   const buildPayload = () => ({
     po_number: (form.po_number || '').trim(),
+    brand_order_code: (form.brand_order_code || '').trim() || null,
     entity_id: form.entity_id,
     customer_id: form.customer_id,
     brand_id: form.brand_id,
@@ -865,10 +865,7 @@ export const PurchaseOrderScreen: React.FC = () => {
         <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs">
           <div className="flex border border-[var(--erp-hairline)]">
             <button type="button" onClick={() => setPurchaseOrderView('list')} className={`px-2 py-1 flex items-center gap-1 ${viewMode === 'list' ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}><Table2 className="w-3.5 h-3.5" /> Table</button>
-            <button type="button" onClick={() => setPurchaseOrderView('pipeline')} className={`px-2 py-1 flex items-center gap-1 ${viewMode === 'pipeline' ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}><Kanban className="w-3.5 h-3.5" /> Pipeline</button>
-          </div>
-          <div className="flex border border-[var(--erp-hairline)]">
-            <button type="button" title="Compact density" aria-label="Compact density" className="h-7 w-7 bg-[var(--erp-gold)] text-[#0F141B]">≡</button>
+            <button type="button" onClick={() => setPurchaseOrderView('pipeline')} className={`px-2 py-1 flex items-center gap-1 ${viewMode === 'pipeline' ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}><Kanban className="w-3.5 h-3.5" /> Purchase Order Pipeline</button>
           </div>
           <div className="flex items-center gap-1 border border-[var(--erp-hairline)] p-0.5" aria-label="Purchase order type">
             {[
@@ -926,7 +923,6 @@ export const PurchaseOrderScreen: React.FC = () => {
           onLoadMore={status => void loadPipelineMore(status)}
           onOpen={id => void openDetail(id)}
           onRefresh={loadPipeline}
-          density={density}
         />
       ) : loading ? (
         <MasterLoading label="Loading purchase orders…" />
@@ -943,7 +939,7 @@ export const PurchaseOrderScreen: React.FC = () => {
             canDraftWrite ? 'Create first PO' : '',
             canDraftWrite ? openCreate : () => undefined,
           )}
-          density={density}
+          density="compact"
         />
       )}
 
@@ -1010,6 +1006,12 @@ export const PurchaseOrderScreen: React.FC = () => {
                       setForm({ ...form, po_number: e.target.value });
                       setFieldMessages(prev => clearFieldMessage(prev, 'po_number'));
                     }}
+                  />
+                  <TextInput
+                    label="Brand order code"
+                    mono
+                    value={form.brand_order_code || ''}
+                    onChange={e => setForm({ ...form, brand_order_code: e.target.value })}
                   />
                   <TextInput
                     label="PO date"

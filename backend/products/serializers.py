@@ -34,6 +34,7 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "product_code",
+            "client_item_code",
             "product_name",
             "brand_id",
             "brand_code",
@@ -85,6 +86,7 @@ class ProductSerializer(serializers.ModelSerializer):
         )
         extra_kwargs = {
             "product_code": {"validators": []},
+            "client_item_code": {"required": False, "allow_null": True, "allow_blank": True},
             "image": {"required": False, "allow_null": True, "write_only": True},
         }
 

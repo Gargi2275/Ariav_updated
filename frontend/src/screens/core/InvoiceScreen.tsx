@@ -264,6 +264,8 @@ export const InvoiceScreen: React.FC = () => {
     { header: 'Invoice Date', accessorKey: 'invoice_date', mono: true, width: '110px' },
     { header: 'Due Date', accessorKey: 'due_date', mono: true, width: '110px' },
     { header: 'Net', align: 'right', mono: true, width: '110px', render: r => money(r.net_amount) },
+    { header: 'Debit', align: 'right', mono: true, width: '110px', render: r => money(r.debit_amount) },
+    { header: 'Credit', align: 'right', mono: true, width: '110px', render: r => money(r.credit_amount) },
     {
       header: 'Status',
       width: '150px',
@@ -556,6 +558,8 @@ export const InvoiceScreen: React.FC = () => {
               <div className="mt-3 flex flex-wrap justify-end gap-6 font-mono text-sm">
                 <div>Paid {money(detail.total_paid)}</div>
                 <div className="text-[var(--erp-gold)]">Balance due {money(detail.remaining_balance ?? detail.net_amount)}</div>
+                <div className="text-[var(--erp-negative)]">Debit {money(detail.debit_amount)}</div>
+                <div className="text-[var(--erp-positive)]">Credit {money(detail.credit_amount)}</div>
               </div>
             </section>
             <div className="flex flex-wrap justify-between gap-3 pt-3 border-t border-[var(--erp-hairline)]">

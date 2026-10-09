@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, Building, Boxes, FileText } from 'lucide-react';
+import { AlertCircle, Building, Boxes, FileText, PieChart } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LedgerMetricStrip, LedgerMetricItem } from '../../components/common/LedgerMetricStrip';
@@ -47,6 +47,7 @@ function opsStrip(data: SnapshotDashboard, navigateTo: (id: number) => void): Le
   return [
     { label: 'Purchase Orders', value: k.total_pos, subValue: `${k.pending_pos} pending`, onClick: () => navigateTo(40), hrefLabel: 'Purchase Orders' },
     { label: 'Fully Dispatched', value: k.dispatched_pos, subValue: `${k.partially_dispatched_pos} partial`, onClick: () => navigateTo(40), hrefLabel: 'Purchase Orders' },
+    { label: 'PO Balance', value: k.pending_financial_pos, subValue: `${k.clear_pos} clear`, onClick: () => navigateTo(40), hrefLabel: 'Purchase Orders' },
     { label: 'Active Customers', value: k.active_customers, onClick: () => navigateTo(23), hrefLabel: 'Customer Master' },
     { label: 'Active Brands', value: k.active_brands, onClick: () => navigateTo(37), hrefLabel: 'Brand Master' },
     { label: 'Active Products', value: k.active_products, onClick: () => navigateTo(39), hrefLabel: 'Product Catalogue' },
@@ -55,6 +56,40 @@ function opsStrip(data: SnapshotDashboard, navigateTo: (id: number) => void): Le
 }
 
 const barColors = ['var(--erp-gold)', 'var(--erp-positive)', 'var(--erp-muted)', 'var(--erp-text)'];
+
+function DashboardPanel({
+  title,
+  icon,
+  badge,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  badge: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-3.5 min-h-[150px]" style={{ boxShadow: 'var(--erp-shadow)' }}>
+      <div className="flex items-center justify-between gap-2 pb-2 mb-3 border-b border-[var(--erp-hairline)]">
+        <span className="font-display text-sm font-bold text-[var(--erp-text)] flex items-center gap-2 min-w-0">
+          {icon}
+          <span className="truncate">{title}</span>
+        </span>
+        <span className="erp-badge erp-badge-neutral text-[10px] whitespace-nowrap">{badge}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function CompactEmptyState({ message }: { message: string }) {
+  return (
+    <div className="min-h-[92px] flex flex-col items-center justify-center gap-1.5 text-center">
+      <PieChart className="w-5 h-5 text-[var(--erp-muted)] opacity-60" />
+      <p className="text-[11px] font-mono text-[var(--erp-muted)]">{message}</p>
+    </div>
+  );
+}
 
 export const AnalyticsDashboardScreen: React.FC = () => {
   const { navigateTo, userRole, selectedEntityId, selectedBranch } = useErp();
@@ -132,11 +167,12 @@ export const AnalyticsDashboardScreen: React.FC = () => {
   ];
 
   return (
-    <div className="p-6 flex flex-col gap-6 text-left">
+    <div className="p-4 lg:p-5 flex flex-col gap-4 text-left">
       <PageHeader
         moduleNumber="06"
         section={isAdmin ? 'Dashboard' : 'Staff'}
         title={isAdmin ? 'Business Analytics & Position' : 'Staff Activity'}
+        compact
         subtitle={
           isAdmin
             ? `Live totals scoped to ${selectedBranch.name} from the header entity dropdown`
@@ -151,91 +187,69 @@ export const AnalyticsDashboardScreen: React.FC = () => {
         <StaffPanels data={staff} navigateTo={navigateTo} />
       ) : isAdmin && snapshot ? (
         <>
-          <LedgerMetricStrip metrics={kpiStrip(snapshot, navigateTo)} />
-          <LedgerMetricStrip metrics={opsStrip(snapshot, navigateTo)} />
-          <div className={`grid grid-cols-1 gap-6 ${selectedEntityId === 'all' ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
+          <LedgerMetricStrip compact metrics={kpiStrip(snapshot, navigateTo)} />
+          <LedgerMetricStrip compact metrics={opsStrip(snapshot, navigateTo)} className="lg:grid-cols-7" />
+          <div className={`grid grid-cols-1 gap-4 ${selectedEntityId === 'all' ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
             {selectedEntityId === 'all' ? (
-            <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-5 rounded-[14px]" style={{ boxShadow: 'var(--erp-shadow)' }}>
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--erp-hairline)]">
-                <span className="font-display text-sm font-bold text-[var(--erp-text)] flex items-center gap-2">
-                  <Building className="w-4 h-4 stroke-[1.75] text-[var(--erp-gold)]" />
-                  Entity Turnover Distribution
-                </span>
-                <span className="erp-badge erp-badge-gold text-[10px]">{snapshot.entity_turnover.length} entities</span>
-              </div>
+            <DashboardPanel title="Entity Turnover Distribution" icon={<Building className="w-4 h-4 stroke-[1.75] text-[var(--erp-gold)]" />} badge={`${snapshot.entity_turnover.length} entities`}>
               {snapshot.entity_turnover.length ? (
-                <div className="space-y-4 font-mono text-xs">
+                <div className="space-y-3 font-mono text-xs">
                   {snapshot.entity_turnover.map((row, idx) => (
                     <div key={row.entity_id}>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="font-body text-[var(--erp-text)]">{row.short_code} · {row.entity_name}</span>
-                        <span className="font-mono text-[var(--erp-gold)] font-semibold">{money(row.total_sales)} ({num(row.percent).toFixed(1)}%)</span>
+                      <div className="flex justify-between gap-2 text-[11px] mb-1">
+                        <span className="font-body text-[var(--erp-text)] truncate">{row.short_code} · {row.entity_name}</span>
+                        <span className="font-mono text-[var(--erp-gold)] font-semibold whitespace-nowrap">{num(row.percent).toFixed(1)}%</span>
                       </div>
-                      <div className="w-full h-2 bg-[var(--erp-surface-2)] overflow-hidden">
+                      <div className="w-full h-1.5 bg-[var(--erp-surface-2)] overflow-hidden">
                         <div className="h-full" style={{ width: `${Math.min(100, num(row.percent))}%`, background: barColors[idx % barColors.length] }} />
                       </div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="text-xs font-mono text-[var(--erp-muted)]">No issued invoices yet.</p>
-              )}
-            </div>
+              ) : <CompactEmptyState message="No issued invoices yet." />}
+            </DashboardPanel>
             ) : null}
 
-            <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-5 rounded-[14px]" style={{ boxShadow: 'var(--erp-shadow)' }}>
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--erp-hairline)]">
-                <span className="font-display text-sm font-bold text-[var(--erp-text)] flex items-center gap-2">
-                  <Boxes className="w-4 h-4 stroke-[1.75] text-[var(--erp-gold)]" />
-                  Category Share
-                </span>
-                <span className="erp-badge erp-badge-neutral text-[10px]">Invoiced qty</span>
-              </div>
+            <DashboardPanel title="Category Share" icon={<Boxes className="w-4 h-4 stroke-[1.75] text-[var(--erp-gold)]" />} badge="Invoiced qty">
               {snapshot.category_share.length ? (
-                <div className="space-y-2.5 font-mono text-xs">
+                <div className="space-y-2 font-mono text-xs">
                   {snapshot.category_share.map(row => (
                     <div key={row.category_name} className="flex items-center justify-between">
-                      <span className="font-body text-[var(--erp-text)]">{row.category_name}</span>
-                      <span className="font-mono text-[var(--erp-text)] font-semibold">{num(row.percent).toFixed(1)}% · {num(row.quantity).toFixed(2)}</span>
+                      <span className="font-body text-[var(--erp-text)] truncate">{row.category_name}</span>
+                      <span className="font-mono text-[var(--erp-text)] font-semibold whitespace-nowrap">{num(row.percent).toFixed(1)}%</span>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="text-xs font-mono text-[var(--erp-muted)]">No invoiced product quantities yet.</p>
-              )}
-            </div>
+              ) : <CompactEmptyState message="No invoiced product quantities yet." />}
+            </DashboardPanel>
 
-            <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-5 rounded-[14px]" style={{ boxShadow: 'var(--erp-shadow)' }}>
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--erp-hairline)]">
-                <span className="font-display text-sm font-bold text-[var(--erp-text)] flex items-center gap-2">
-                  <FileText className="w-4 h-4 stroke-[1.75] text-[var(--erp-gold)]" />
-                  Top 5 Products
-                </span>
-                <span className="erp-badge erp-badge-neutral text-[10px]">By quantity</span>
-              </div>
+            <DashboardPanel title="Top 5 Products" icon={<FileText className="w-4 h-4 stroke-[1.75] text-[var(--erp-gold)]" />} badge="By quantity">
               {snapshot.top_products.length ? (
-                <div className="space-y-2.5 font-mono text-xs">
+                <div className="space-y-2 font-mono text-xs">
                   {snapshot.top_products.map(row => (
-                    <div key={row.product_id} className="flex items-center justify-between">
-                      <span className="font-body text-[var(--erp-text)]">{row.product_code} · {row.product_name}</span>
-                      <span className="font-mono font-semibold">{num(row.quantity).toFixed(2)}</span>
+                    <div key={row.product_id}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-body text-[var(--erp-text)] truncate">{row.product_code} · {row.product_name}</span>
+                        <span className="font-mono font-semibold whitespace-nowrap">{num(row.quantity).toFixed(2)}</span>
+                      </div>
+                      <div className="mt-1 h-1 bg-[var(--erp-surface-2)]">
+                        <div className="h-full bg-[var(--erp-gold)]" style={{ width: `${Math.min(100, num(row.quantity) / Math.max(num(snapshot.top_products[0]?.quantity), 1) * 100)}%` }} />
+                      </div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="text-xs font-mono text-[var(--erp-muted)]">No invoiced products yet.</p>
-              )}
-            </div>
+              ) : <CompactEmptyState message="No invoiced products yet." />}
+            </DashboardPanel>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-serif text-lg font-bold text-[var(--erp-text)] flex items-center gap-2">
+                <h3 className="font-display text-sm font-bold text-[var(--erp-text)] flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-[var(--erp-negative)]" />
                   Debtor Outstanding & Credit Aging
                 </h3>
-                <p className="text-xs text-[var(--erp-muted)] font-sans">
+                <p className="text-[11px] text-[var(--erp-muted)] font-sans">
                   Customers with unpaid issued invoices, sorted by outstanding descending.
                 </p>
               </div>
@@ -247,6 +261,8 @@ export const AnalyticsDashboardScreen: React.FC = () => {
               columns={debtorColumns}
               data={snapshot.debtors}
               keyExtractor={r => r.customer_id}
+              density="compact"
+              maxHeight="420px"
               {...emptyTableProps(snapshot.debtors.length, snapshot.debtors.length, 'No outstanding customers.', 'No outstanding customers.', '', () => undefined)}
               rowClassName={r =>
                 r.risk_band === 'Overdue'

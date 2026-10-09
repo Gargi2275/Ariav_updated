@@ -69,6 +69,8 @@ export interface DispatchRow {
   id: number;
   purchase_order_id: number;
   po_number: string;
+  po_entity_code: string;
+  po_entity_name: string;
   purchase_order_status: string;
   dispatch_date: string;
   lr_number: string;
@@ -94,6 +96,8 @@ export interface DispatchImportable {
   invoice_no: string;
   po_id: number;
   po_number: string;
+  po_entity_code: string;
+  po_entity_name: string;
   customer_code: string;
   customer_name: string;
   lr_number: string;
@@ -101,6 +105,8 @@ export interface DispatchImportable {
   transporter: string;
   challan_reference: string;
   line_count: number;
+  opening_pending_quantity: string | number;
+  closing_pending_quantity: string | number;
   lines: DispatchImportLine[];
 }
 

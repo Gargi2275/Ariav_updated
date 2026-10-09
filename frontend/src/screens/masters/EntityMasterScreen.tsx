@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Edit2, GitBranch, Plus, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit2, Eye, GitBranch, Plus, Search, Trash2, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { TextInput, RequiredLegend } from '../../components/common/FormControls';
@@ -51,6 +51,15 @@ function activeChildrenBlockMessage(name: string, count: number): string {
   return `Cannot deactivate ${name}: it has ${count} active ${noun}. Deactivate or re-parent them first.`;
 }
 
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">{label}</div>
+      <div className="mt-1 min-h-5 text-[var(--erp-text)]">{value || '—'}</div>
+    </div>
+  );
+}
+
 export const EntityMasterScreen: React.FC = () => {
   const { userRole } = useErp();
   const canWrite = userRole === 'admin';
@@ -68,6 +77,7 @@ export const EntityMasterScreen: React.FC = () => {
   const [pendingDelete, setPendingDelete] = useState<EntityTreeNode | null>(null);
   const [deleteBlockDetail, setDeleteBlockDetail] = useState<string | null>(null);
   const [pendingDeactivate, setPendingDeactivate] = useState<Partial<EntityRow> | null>(null);
+  const [detail, setDetail] = useState<import('../../services/entitiesApi').EntityDetail | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
   const savingLock = useRef(false);
 
@@ -138,6 +148,14 @@ export const EntityMasterScreen: React.FC = () => {
       setModalOpen(true);
     } catch (e) {
       notifyApiError(e, 'Could not load entity.');
+    }
+  };
+
+  const openDetails = async (id: number) => {
+    try {
+      setDetail(await entitiesApi.retrieve(id));
+    } catch (e) {
+      notifyApiError(e, 'Could not load entity details.');
     }
   };
 
@@ -228,7 +246,7 @@ export const EntityMasterScreen: React.FC = () => {
             <div className="flex items-center gap-8">
               <span className="w-24">TYPE</span>
               <span className="w-20">STATUS</span>
-              <span className="w-14" />
+              <span className="w-20" />
             </div>
           </div>
           {visible.length === 0 ? (
@@ -266,10 +284,13 @@ export const EntityMasterScreen: React.FC = () => {
                     <span className="w-20">
                       <span className={`font-mono text-[10px] ${contextOnly || node.status !== 'Active' ? 'text-[var(--erp-muted)]' : 'text-[var(--erp-positive)]'}`}>{node.status.toUpperCase()}</span>
                     </span>
-                    {canWrite && !contextOnly && (
-                      <div className="w-14 flex justify-end gap-1">
+                    {!contextOnly && (
+                      <div className={`${canWrite ? 'w-20' : 'w-8'} flex justify-end gap-1`}>
+                        <button type="button" aria-label={`View ${node.entity_name} details`} title="View details" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" onClick={() => void openDetails(node.id)}><Eye className="w-3.5 h-3.5" /></button>
+                        {canWrite && (
                         <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" onClick={() => void openEdit(node.id)}><Edit2 className="w-3.5 h-3.5" /></button>
-                        {node.status === 'Active' && (
+                        )}
+                        {canWrite && node.status === 'Active' && (
                           <button
                             type="button"
                             className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] cursor-pointer"
@@ -284,7 +305,7 @@ export const EntityMasterScreen: React.FC = () => {
                         )}
                       </div>
                     )}
-                    {canWrite && contextOnly && <div className="w-14" />}
+                    {contextOnly && <div className="w-20" />}
                   </div>
                 );
               })}
@@ -416,6 +437,46 @@ export const EntityMasterScreen: React.FC = () => {
               <button type="submit" disabled={saving} className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">{saving ? 'Saving…' : 'Save Entity'}</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {detail && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-5">
+            <div className="flex items-start justify-between border-b border-[var(--erp-hairline)] pb-3">
+              <div>
+                <h3 className="font-display text-lg font-bold text-[var(--erp-text)]">{detail.entity_name}</h3>
+                <p className="font-mono text-xs text-[var(--erp-muted)]">{detail.short_code} · {detail.entity_type} · {detail.status}</p>
+              </div>
+              <button type="button" aria-label="Close entity details" onClick={() => setDetail(null)}><X className="w-4 h-4" /></button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-xs">
+              <DetailField label="Parent entity" value={detail.parent ? `${detail.parent.short_code} · ${detail.parent.entity_name}` : 'None'} />
+              <DetailField label="Cash code" value={detail.cash_code} />
+              <DetailField label="Invoice series" value={detail.invoice_series} />
+              <DetailField label="Contact person" value={detail.contact_person} />
+              <DetailField label="Phone / Mobile" value={[detail.phone, detail.mobile].filter(Boolean).join(' / ')} />
+              <DetailField label="Email" value={detail.email} />
+              <DetailField label="Website" value={detail.website} />
+              <DetailField label="Address" value={[detail.address_line_1, detail.street, detail.area, detail.city, detail.district, detail.state, detail.pin_code].filter(Boolean).join(', ')} />
+              <DetailField label="GST No." value={detail.gst_no} />
+              <DetailField label="PAN No." value={detail.pan_no} />
+              <DetailField label="CST TIN" value={detail.cst_tin} />
+              <DetailField label="Licence No." value={detail.licence_no} />
+            </div>
+            {detail.children.length > 0 && (
+              <div className="border-t border-[var(--erp-hairline)] pt-4">
+                <h4 className={sectionTitle}>Child entities</h4>
+                <div className="flex flex-wrap gap-2">
+                  {detail.children.map(child => (
+                    <span key={child.id} className="px-2 py-1 border border-[var(--erp-hairline)] font-mono text-[11px]">
+                      {child.short_code} · {child.entity_name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

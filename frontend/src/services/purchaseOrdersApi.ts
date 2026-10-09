@@ -66,6 +66,7 @@ export type POOrderType = 'Digital' | 'Manual';
 export interface PurchaseOrderRow {
   id: number;
   po_number: string;
+  brand_order_code: string | null;
   order_type: POOrderType | string;
   entity_id: number;
   entity_code: string;
@@ -88,6 +89,12 @@ export interface PurchaseOrderRow {
   unpriced_lines: number;
   has_unpriced_lines: boolean;
   dispatch_progress?: string;
+  financial_status?: 'Pending' | 'Clear' | string;
+  dispatched_amount?: string | number;
+  invoiced_amount?: string | number;
+  paid_amount?: string | number;
+  debit_amount?: string | number;
+  credit_amount?: string | number;
   created_at?: string;
   updated_at?: string;
   created_by?: number | null;
@@ -107,6 +114,7 @@ function todayIso(): string {
 
 export const emptyPurchaseOrder = (): Partial<PurchaseOrderRow> => ({
   po_number: '',
+  brand_order_code: '',
   entity_id: undefined,
   customer_id: undefined,
   brand_id: undefined,

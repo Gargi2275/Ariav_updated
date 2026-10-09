@@ -29,6 +29,7 @@ class PurchaseOrder(models.Model):
         MANUAL = "Manual", "Manual"
 
     po_number = models.CharField(max_length=40, unique=True)
+    brand_order_code = models.CharField(max_length=80, null=True, blank=True, db_index=True)
     order_type = models.CharField(
         max_length=16,
         choices=OrderType.choices,
@@ -66,6 +67,17 @@ class PurchaseOrder(models.Model):
     class Meta:
         db_table = "purchase_orders_purchaseorder"
         ordering = ["-po_date", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["brand", "brand_order_code"],
+                name="purchase_order_brand_order_code_unique",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.brand_order_code is not None and not self.brand_order_code.strip():
+            self.brand_order_code = None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.po_number} {self.order_type} {self.status}"

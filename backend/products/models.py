@@ -26,6 +26,7 @@ class Product(models.Model):
         ROLL = "Roll", "Roll"
 
     product_code = models.CharField(max_length=40, unique=True)
+    client_item_code = models.CharField(max_length=120, null=True, blank=True, db_index=True)
     product_name = models.CharField(max_length=200)
     brand = models.ForeignKey(
         "brands.Brand",

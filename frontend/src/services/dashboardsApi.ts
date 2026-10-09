@@ -37,6 +37,8 @@ export interface DashboardKpis {
   bad_debt: string | null;
   total_pos: number;
   pending_pos: number;
+  pending_financial_pos: number;
+  clear_pos: number;
   dispatched_pos: number;
   partially_dispatched_pos: number;
   active_customers: number;

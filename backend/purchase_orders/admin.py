@@ -10,7 +10,7 @@ class PurchaseOrderLineInline(admin.TabularInline):
 
 @admin.register(PurchaseOrder)
 class PurchaseOrderAdmin(admin.ModelAdmin):
-    list_display = ("po_number", "order_type", "entity", "customer", "brand", "po_date", "status")
+    list_display = ("po_number", "brand_order_code", "order_type", "entity", "customer", "brand", "po_date", "status")
     list_filter = ("status", "order_type", "brand", "entity")
-    search_fields = ("po_number",)
+    search_fields = ("po_number", "brand_order_code")
     inlines = [PurchaseOrderLineInline]

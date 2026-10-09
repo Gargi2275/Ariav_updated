@@ -98,12 +98,13 @@ export const AnalyticsReportsScreen: React.FC = () => {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <div className="p-6 flex flex-col gap-5 text-left">
+    <div className={`flex min-h-0 flex-col text-left ${tab === 'party-balance' ? 'gap-2 p-3' : 'gap-5 p-6'}`}>
       <PageHeader
         moduleNumber="47"
         section="Reports"
         title="Reports & Analytics"
         subtitle={`Trend analysis over time — scoped to ${selectedBranch.name}`}
+        compact={tab === 'party-balance'}
         actions={
           tab !== 'party-balance' ? <button
             type="button"

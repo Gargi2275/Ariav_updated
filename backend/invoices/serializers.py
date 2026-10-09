@@ -117,6 +117,10 @@ class InvoiceSerializer(serializers.ModelSerializer):
     display_status = serializers.SerializerMethodField()
     total_paid = serializers.SerializerMethodField()
     remaining_balance = serializers.SerializerMethodField()
+    signed_balance = serializers.SerializerMethodField()
+    debit_amount = serializers.SerializerMethodField()
+    credit_amount = serializers.SerializerMethodField()
+    balance_type = serializers.SerializerMethodField()
     payment_allocations = serializers.SerializerMethodField()
     lines = InvoiceLineSerializer(many=True, required=False)
     due_date = serializers.DateField(required=False)
@@ -151,6 +155,10 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "net_amount",
             "total_paid",
             "remaining_balance",
+            "signed_balance",
+            "debit_amount",
+            "credit_amount",
+            "balance_type",
             "payment_allocations",
             "payment_terms",
             "remarks",
@@ -180,6 +188,10 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "net_amount",
             "total_paid",
             "remaining_balance",
+            "signed_balance",
+            "debit_amount",
+            "credit_amount",
+            "balance_type",
             "payment_allocations",
             "created_at",
             "updated_at",
@@ -223,6 +235,26 @@ class InvoiceSerializer(serializers.ModelSerializer):
         from payments.services import invoice_remaining_balance
 
         return str(invoice_remaining_balance(obj))
+
+    def get_signed_balance(self, obj):
+        from payments.services import invoice_signed_balance
+
+        return str(invoice_signed_balance(obj))
+
+    def get_debit_amount(self, obj):
+        from payments.services import balance_breakdown, invoice_signed_balance
+
+        return balance_breakdown(invoice_signed_balance(obj))["debit"]
+
+    def get_credit_amount(self, obj):
+        from payments.services import balance_breakdown, invoice_signed_balance
+
+        return balance_breakdown(invoice_signed_balance(obj))["credit"]
+
+    def get_balance_type(self, obj):
+        from payments.services import balance_breakdown, invoice_signed_balance
+
+        return balance_breakdown(invoice_signed_balance(obj))["balance_type"]
 
     def get_payment_allocations(self, obj):
         from payments.services import money

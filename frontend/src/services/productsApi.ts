@@ -38,6 +38,7 @@ export type ProductStatus = 'Active' | 'Inactive';
 export interface ProductRow {
   id: number;
   product_code: string;
+  client_item_code: string | null;
   product_name: string;
   brand_id: number;
   brand_code: string;
@@ -76,6 +77,7 @@ export interface ProductRow {
 
 export const emptyProduct = (): Partial<ProductRow> => ({
   product_code: '',
+  client_item_code: '',
   product_name: '',
   brand_id: undefined,
   category_id: undefined,

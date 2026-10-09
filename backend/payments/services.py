@@ -54,10 +54,24 @@ def invoice_total_paid(invoice, exclude_allocation_id=None) -> Decimal:
 
 
 def invoice_remaining_balance(invoice, exclude_allocation_id=None) -> Decimal:
-    remaining = money(invoice.net_amount) - invoice_total_paid(invoice, exclude_allocation_id)
-    if remaining < 0:
-        return Decimal("0.00")
-    return money(remaining)
+    remaining = invoice_signed_balance(invoice, exclude_allocation_id)
+    return max(remaining, Decimal("0.00"))
+
+
+def invoice_signed_balance(invoice, exclude_allocation_id=None) -> Decimal:
+    """Return the live balance: positive is debit, negative is credit."""
+    return money(invoice.net_amount) - invoice_total_paid(invoice, exclude_allocation_id)
+
+
+def balance_breakdown(amount) -> dict[str, str]:
+    """Expose a signed balance as mutually exclusive debit and credit amounts."""
+    signed = money(amount)
+    return {
+        "balance": str(signed),
+        "debit": str(max(signed, Decimal("0.00"))),
+        "credit": str(max(-signed, Decimal("0.00"))),
+        "balance_type": "Debit" if signed > 0 else "Credit" if signed < 0 else "Clear",
+    }
 
 
 def customer_advance_credit(customer_id: int) -> Decimal:
