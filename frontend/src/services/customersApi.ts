@@ -30,11 +30,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-export const PARTY_TYPES = ['Company', 'Individual', 'Distributor'] as const;
-export type PartyTypeName = (typeof PARTY_TYPES)[number];
-export type PartyStatus = 'Active' | 'Inactive';
+export const CUSTOMER_TYPES = ['Company', 'Individual', 'Distributor'] as const;
+export type CustomerTypeName = (typeof CUSTOMER_TYPES)[number];
+export type CustomerStatus = 'Active' | 'Inactive';
 
-export interface PartyEntityLink {
+export interface CustomerEntityLink {
   entity_id: number;
   short_code?: string;
   entity_name?: string;
@@ -45,13 +45,13 @@ export interface CustomerRow {
   id: number;
   customer_code: string;
   customer_name: string;
-  customer_type: PartyTypeName | string;
-  status: PartyStatus;
+  customer_type: CustomerTypeName | string;
+  status: CustomerStatus;
   created_at?: string;
   updated_at?: string;
   created_by?: number | null;
   created_by_name?: string;
-  entities: PartyEntityLink[];
+  entities: CustomerEntityLink[];
   primary_entity_id: number | null;
   primary_entity_code: string;
   primary_entity_name: string;
@@ -112,7 +112,7 @@ export interface CustomerRow {
   other_2: string;
 }
 
-export const emptyParty = (): Partial<CustomerRow> => ({
+export const emptyCustomer = (): Partial<CustomerRow> => ({
   customer_code: '',
   customer_name: '',
   customer_type: 'Company',
@@ -188,13 +188,13 @@ function qs(params: Record<string, string | number | undefined | null>): string 
   return s ? `?${s}` : '';
 }
 
-export const PARTY_LEDGER_KEY = 'ariav_customer_ledger';
-export const PARTY_360_KEY = 'ariav_customer_360';
-export const PARTY_LIST_FILTER_KEY = 'ariav_customer_list_filter';
+export const CUSTOMER_LEDGER_KEY = 'ariav_customer_ledger';
+export const CUSTOMER_360_KEY = 'ariav_customer_360';
+export const CUSTOMER_LIST_FILTER_KEY = 'ariav_customer_list_filter';
 
 export type LedgerEntryType = 'Invoice' | 'Payment' | 'Adjustment';
 
-export interface PartyLedgerEntry {
+export interface CustomerLedgerEntry {
   date: string;
   type: LedgerEntryType | string;
   reference: string;
@@ -204,7 +204,7 @@ export interface PartyLedgerEntry {
   running_balance: string | number;
 }
 
-export interface PartyLedgerSummary {
+export interface CustomerLedgerSummary {
   total_invoiced: string | number;
   total_paid: string | number;
   outstanding_balance: string | number;
@@ -212,15 +212,15 @@ export interface PartyLedgerSummary {
   overdue_amount: string | number;
 }
 
-export interface PartyLedgerPayload {
+export interface CustomerLedgerPayload {
   customer_id: number;
   customer_code: string;
   customer_name: string;
   date_from: string | null;
   date_to: string | null;
   opening_balance: string | number;
-  summary: PartyLedgerSummary;
-  entries: PartyLedgerEntry[];
+  summary: CustomerLedgerSummary;
+  entries: CustomerLedgerEntry[];
 }
 
 export interface BrandStatementEntry {
@@ -279,14 +279,14 @@ export interface BrandStatementReportPayload {
   count: number;
 }
 
-export interface Party360EntityLink {
+export interface Customer360EntityLink {
   entity_id: number;
   short_code: string;
   entity_name: string;
   primary_entity: boolean;
 }
 
-export interface Party360BasicInfo {
+export interface Customer360BasicInfo {
   customer_code: string;
   customer_name: string;
   customer_type: string;
@@ -303,15 +303,15 @@ export interface Party360BasicInfo {
   pan_no: string;
   credit_days: number;
   credit_limit: string | number;
-  entities: Party360EntityLink[];
+  entities: Customer360EntityLink[];
 }
 
-export interface Party360History<T> {
+export interface Customer360History<T> {
   total_count: number;
   rows: T[];
 }
 
-export interface Party360PurchaseRow {
+export interface Customer360PurchaseRow {
   id: number;
   po_number: string;
   po_date: string;
@@ -321,7 +321,7 @@ export interface Party360PurchaseRow {
   total_amount: string | number;
 }
 
-export interface Party360DispatchRow {
+export interface Customer360DispatchRow {
   id: number;
   dispatch_date: string;
   lr_number: string;
@@ -331,7 +331,7 @@ export interface Party360DispatchRow {
   purchase_order_id: number;
 }
 
-export interface Party360InvoiceRow {
+export interface Customer360InvoiceRow {
   id: number;
   invoice_number: string;
   invoice_date: string;
@@ -343,7 +343,7 @@ export interface Party360InvoiceRow {
   remaining_balance: string | number;
 }
 
-export interface Party360PaymentRow {
+export interface Customer360PaymentRow {
   id: number;
   payment_number: string;
   payment_date: string;
@@ -352,7 +352,7 @@ export interface Party360PaymentRow {
   payment_mode: string;
 }
 
-export interface Party360TrendRow {
+export interface Customer360TrendRow {
   rank: number;
   product_id: number;
   product_code: string;
@@ -361,41 +361,41 @@ export interface Party360TrendRow {
   total_value: string | number;
 }
 
-export interface Party360Behaviour {
+export interface Customer360Behaviour {
   average_days_to_pay: string | number | null;
   on_time_payment_rate: string | number | null;
   total_payment_count: number;
   paid_invoice_count: number;
 }
 
-export interface Party360Payload {
+export interface Customer360Payload {
   customer_id: number;
   date_from: string | null;
   date_to: string | null;
-  basic_info: Party360BasicInfo;
+  basic_info: Customer360BasicInfo;
   outstanding: string | number;
   advance: string | number;
   overdue: string | number;
-  summary: PartyLedgerSummary;
-  purchase_history: Party360History<Party360PurchaseRow>;
-  dispatch_history: Party360History<Party360DispatchRow>;
-  invoice_history: Party360History<Party360InvoiceRow>;
-  payment_history: Party360History<Party360PaymentRow>;
-  ledger_preview: PartyLedgerEntry[];
-  product_purchase_trends: Party360TrendRow[];
-  payment_behaviour: Party360Behaviour;
+  summary: CustomerLedgerSummary;
+  purchase_history: Customer360History<Customer360PurchaseRow>;
+  dispatch_history: Customer360History<Customer360DispatchRow>;
+  invoice_history: Customer360History<Customer360InvoiceRow>;
+  payment_history: Customer360History<Customer360PaymentRow>;
+  ledger_preview: CustomerLedgerEntry[];
+  product_purchase_trends: Customer360TrendRow[];
+  payment_behaviour: Customer360Behaviour;
 }
 
 export function readCustomerListFilter(): number | '' {
-  const raw = sessionStorage.getItem(PARTY_LIST_FILTER_KEY);
+  const raw = sessionStorage.getItem(CUSTOMER_LIST_FILTER_KEY);
   if (!raw) return '';
-  sessionStorage.removeItem(PARTY_LIST_FILTER_KEY);
+  sessionStorage.removeItem(CUSTOMER_LIST_FILTER_KEY);
   const id = Number(raw);
   return id || '';
 }
 
-export function writePartyListFilter(id: number) {
-  sessionStorage.setItem(PARTY_LIST_FILTER_KEY, String(id));
+export function writeCustomerListFilter(id: number) {
+  sessionStorage.setItem(CUSTOMER_LIST_FILTER_KEY, String(id));
 }
 
 export const customersApi = {
@@ -404,7 +404,7 @@ export const customersApi = {
     request<CustomerRow[]>(`/api/customers/${qs(params)}`),
   retrieve: (id: number) => request<CustomerRow>(`/api/customers/${id}/`),
   ledger: (id: number, params: { from?: string; to?: string } = {}) =>
-    request<PartyLedgerPayload>(`/api/customers/${id}/ledger/${qs(params)}`),
+    request<CustomerLedgerPayload>(`/api/customers/${id}/ledger/${qs(params)}`),
   statement: (id: number, params: { entity_id: number; period_to?: string }) =>
     request<BrandStatementPayload>(`/api/customers/${id}/statement/${qs(params)}`),
   statementSummary: (id: number, params: { entity_id: number; period_to?: string }) =>
@@ -417,7 +417,7 @@ export const customersApi = {
     period_to?: string;
   }) => request<BrandStatementReportPayload>(`/api/customers/statement-report/${qs(params)}`),
   profile360: (id: number, params: { from?: string; to?: string } = {}) =>
-    request<Party360Payload>(`/api/customers/${id}/360/${qs(params)}`),
+    request<Customer360Payload>(`/api/customers/${id}/360/${qs(params)}`),
   ledgerPdf: async (id: number, params: { from?: string; to?: string } = {}): Promise<Blob> => {
     const token = localStorage.getItem('ariav_auth_token');
     const res = await fetch(apiUrl(`/api/customers/${id}/ledger/pdf/${qs(params)}`), {

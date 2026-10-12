@@ -550,8 +550,8 @@ class CustomerScopeTests(TestCase):
         self.assertIn("PAY-SC-Y", {r["payment_number"] for r in admin_body["payments"]["allocations"]})
 
         results = dict(run_checks())
-        self.assertIn(x_inv, results["Invoices: Customer differs from the PO's Customer"])
-        self.assertTrue(results["Payment allocations: payment Customer differs from invoice Customer"])
+        self.assertIn(x_inv, results["Invoices: Party differs from the PO's Party"])
+        self.assertTrue(results["Payment allocations: payment Party differs from invoice Party"])
 
     def test_deactivated_revoked_and_expired_sessions_are_refused(self):
         paths = [

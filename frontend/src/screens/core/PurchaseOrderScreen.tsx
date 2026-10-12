@@ -117,7 +117,7 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [entities, setEntities] = useState<EntityRow[]>([]);
   const [brands, setBrands] = useState<BrandRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [listCustomers, setListPartys] = useState<CustomerRow[]>([]);
+  const [listCustomers, setListCustomers] = useState<CustomerRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -308,7 +308,7 @@ export const PurchaseOrderScreen: React.FC = () => {
       status: 'Active',
       entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
       scope: 'visible',
-    }).then(setListPartys).catch(notifyApiError);
+    }).then(setListCustomers).catch(notifyApiError);
   }, [selectedEntityId]);
 
   const filtered = rows.filter(r => {

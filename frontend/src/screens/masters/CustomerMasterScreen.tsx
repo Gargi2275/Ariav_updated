@@ -14,13 +14,13 @@ import { acquireSaveLock, releaseSaveLock } from '../../services/saveLock';
 import { clearFieldMessage, collectRequired } from '../../services/requiredFields';
 import { EntityRow, entitiesApi } from '../../services/entitiesApi';
 import {
-  PARTY_360_KEY,
-  PARTY_LEDGER_KEY,
-  PARTY_TYPES,
-  PartyEntityLink,
+  CUSTOMER_360_KEY,
+  CUSTOMER_LEDGER_KEY,
+  CUSTOMER_TYPES,
+  CustomerEntityLink,
   CustomerRow,
   customersApi,
-  emptyParty,
+  emptyCustomer,
 } from '../../services/customersApi';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
@@ -37,10 +37,10 @@ function dateOrNull(value: string | null | undefined): string | null {
   return v || null;
 }
 
-function toggleEntity(links: PartyEntityLink[], entity: EntityRow, checked: boolean): PartyEntityLink[] {
+function toggleEntity(links: CustomerEntityLink[], entity: EntityRow, checked: boolean): CustomerEntityLink[] {
   if (checked) {
     if (links.some(l => l.entity_id === entity.id)) return links;
-    const next: PartyEntityLink = {
+    const next: CustomerEntityLink = {
       entity_id: entity.id,
       short_code: entity.short_code,
       entity_name: entity.entity_name,
@@ -55,18 +55,18 @@ function toggleEntity(links: PartyEntityLink[], entity: EntityRow, checked: bool
   return remaining;
 }
 
-function markPrimary(links: PartyEntityLink[], entityId: number): PartyEntityLink[] {
+function markPrimary(links: CustomerEntityLink[], entityId: number): CustomerEntityLink[] {
   return links.map(l => ({ ...l, primary_entity: l.entity_id === entityId }));
 }
 
-function entitiesGroupError(links: PartyEntityLink[]): string | undefined {
+function entitiesGroupError(links: CustomerEntityLink[]): string | undefined {
   if (!links.length) return 'Select at least one branch and mark exactly one as primary.';
   const primaries = links.filter(l => l.primary_entity).length;
   if (primaries !== 1) return 'Mark exactly one branch as primary.';
   return undefined;
 }
 
-export const PartyMasterScreen: React.FC = () => {
+export const CustomerMasterScreen: React.FC = () => {
   const { userRole, navigateTo, selectedEntityId } = useErp();
   const canWrite = userRole === 'admin';
   const [rows, setRows] = useState<CustomerRow[]>([]);
@@ -76,7 +76,7 @@ export const PartyMasterScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState<Partial<CustomerRow>>(emptyParty());
+  const [form, setForm] = useState<Partial<CustomerRow>>(emptyCustomer());
   const [fieldErrors, setFieldErrors] = useState<string[]>([]);
   const [fieldMessages, setFieldMessages] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -148,7 +148,7 @@ export const PartyMasterScreen: React.FC = () => {
   });
 
   const openCreate = () => {
-    setForm(emptyParty());
+    setForm(emptyCustomer());
     setFieldErrors([]);
     setFieldMessages({});
     setModalOpen(true);
@@ -244,7 +244,7 @@ export const PartyMasterScreen: React.FC = () => {
             className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer"
             title="View 360°"
             onClick={() => {
-              sessionStorage.setItem(PARTY_360_KEY, String(r.id));
+              sessionStorage.setItem(CUSTOMER_360_KEY, String(r.id));
               navigateTo(48);
             }}
           >
@@ -255,7 +255,7 @@ export const PartyMasterScreen: React.FC = () => {
             className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer"
             title="View Ledger"
             onClick={() => {
-              sessionStorage.setItem(PARTY_LEDGER_KEY, String(r.id));
+              sessionStorage.setItem(CUSTOMER_LEDGER_KEY, String(r.id));
               navigateTo(44);
             }}
           >
@@ -437,7 +437,7 @@ export const PartyMasterScreen: React.FC = () => {
                 />
                 <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Type
                   <select value={form.customer_type || 'Company'} onChange={e => setField({ customer_type: e.target.value })} className={selectClass}>
-                    {PARTY_TYPES.map(t => <option key={t}>{t}</option>)}
+                    {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Status

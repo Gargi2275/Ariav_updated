@@ -9,9 +9,9 @@ import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterSt
 import { num } from '../../services/mastersApi';
 import { notifyApiError } from '../../services/notify';
 import {
-  PARTY_LEDGER_KEY,
-  PartyLedgerEntry,
-  PartyLedgerPayload,
+  CUSTOMER_LEDGER_KEY,
+  CustomerLedgerEntry,
+  CustomerLedgerPayload,
   CustomerRow,
   customersApi,
 } from '../../services/customersApi';
@@ -31,12 +31,12 @@ function typeChip(type: string): StatusChipType | string {
 const GOLD_BTN =
   'px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer hover:bg-[var(--erp-gold-soft)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--erp-gold)]';
 
-export const PartyLedgerScreen: React.FC = () => {
+export const CustomerLedgerScreen: React.FC = () => {
   const { navigateTo } = useErp();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [customerId, setCustomerId] = useState<number | ''>('');
-  const [payload, setPayload] = useState<PartyLedgerPayload | null>(null);
+  const [payload, setPayload] = useState<CustomerLedgerPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -62,7 +62,7 @@ export const PartyLedgerScreen: React.FC = () => {
       const data = await customersApi.ledger(id);
       setPayload(data);
     } catch (e) {
-      const parsed = notifyApiError(e, 'Could not load customer ledger.');
+      const parsed = notifyApiError(e, 'Could not load party ledger.');
       setError(parsed.message);
       setPayload(null);
     } finally {
@@ -71,9 +71,9 @@ export const PartyLedgerScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(PARTY_LEDGER_KEY);
+    const raw = sessionStorage.getItem(CUSTOMER_LEDGER_KEY);
     if (!raw) return;
-    sessionStorage.removeItem(PARTY_LEDGER_KEY);
+    sessionStorage.removeItem(CUSTOMER_LEDGER_KEY);
     const id = Number(raw);
     if (!id) return;
     setCustomerId(id);
@@ -90,7 +90,7 @@ export const PartyLedgerScreen: React.FC = () => {
     }
   };
 
-  const openReference = (row: PartyLedgerEntry) => {
+  const openReference = (row: CustomerLedgerEntry) => {
     if (row.type === 'Invoice') {
       sessionStorage.setItem(LEDGER_OPEN_INVOICE_KEY, String(row.source_id));
       navigateTo(42);
@@ -122,7 +122,7 @@ export const PartyLedgerScreen: React.FC = () => {
       ]
     : [];
 
-  const columns: Column<PartyLedgerEntry>[] = [
+  const columns: Column<CustomerLedgerEntry>[] = [
     { header: 'Date', accessorKey: 'date', mono: true, width: '110px' },
     {
       header: 'Type',
@@ -156,7 +156,7 @@ export const PartyLedgerScreen: React.FC = () => {
         moduleNumber="44"
         section="Ledgers"
         title="Party Ledger"
-        subtitle="Running statement of invoices and payments for a customer"
+        subtitle="Running statement of invoices and payments for a party"
         actions={
           customerId ? (
             <button type="button" onClick={() => void openPdf()} className={GOLD_BTN}>
@@ -169,7 +169,7 @@ export const PartyLedgerScreen: React.FC = () => {
       <div className="flex flex-col gap-2 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
           <label htmlFor="ledger-customer" className="flex flex-col gap-1 text-xs font-normal text-[var(--erp-muted)] font-sans">
-            Customer
+            Party
             <select
               id="ledger-customer"
               value={customerId}
@@ -199,7 +199,7 @@ export const PartyLedgerScreen: React.FC = () => {
           <p className="text-[11px] font-mono text-[var(--erp-muted)]">
             No parties found — add one in{' '}
             <button type="button" onClick={() => navigateTo(23)} className="text-[var(--erp-gold)] hover:underline cursor-pointer">
-              Customer Master
+              Party Master
             </button>
             .
           </p>
@@ -207,19 +207,19 @@ export const PartyLedgerScreen: React.FC = () => {
       </div>
 
       {listLoading ? (
-        <MasterLoading label="Loading customers…" rows={4} />
+        <MasterLoading label="Loading parties…" rows={4} />
       ) : !customerId ? (
         <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] py-14 px-6 flex flex-col items-center justify-center gap-3">
           <div className="w-12 h-12 border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface-2)] flex items-center justify-center">
             <BookCopy className="w-5 h-5 text-[var(--erp-gold)] stroke-[1.75]" />
           </div>
           <p className="text-xs font-mono text-[var(--erp-muted)] text-center max-w-md">
-            {noCustomers ? 'No parties found — add one in Party Master' : 'Select a customer to view their ledger.'}
+            {noCustomers ? 'No parties found — add one in Party Master' : 'Select a party to view their ledger.'}
           </p>
           {noCustomers ? <button type="button" onClick={() => navigateTo(23)} className={GOLD_BTN}>Open Party Master</button> : null}
         </div>
       ) : loading ? (
-        <MasterLoading label="Loading customer ledger…" />
+        <MasterLoading label="Loading party ledger…" />
       ) : payload ? (
         <>
           <p className="text-xs font-mono text-[var(--erp-muted)]">

@@ -8,7 +8,7 @@ import { StatusChip, StatusChipType } from '../../components/common/StatusChip';
 import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterStatus';
 import { num } from '../../services/mastersApi';
 import { notifyApiError } from '../../services/notify';
-import { PARTY_LEDGER_KEY } from '../../services/customersApi';
+import { CUSTOMER_LEDGER_KEY } from '../../services/customersApi';
 import { LEDGER_OPEN_INVOICE_KEY } from '../../services/invoicesApi';
 import { LEDGER_OPEN_PAYMENT_KEY } from '../../services/paymentsApi';
 import { OPEN_PO_KEY } from '../../services/purchaseOrdersApi';
@@ -94,7 +94,7 @@ export const AnalyticsDashboardScreen: React.FC = () => {
   useEffect(() => { void load(); }, [load]);
 
   const openLedger = (customerId: number) => {
-    sessionStorage.setItem(PARTY_LEDGER_KEY, String(customerId));
+    sessionStorage.setItem(CUSTOMER_LEDGER_KEY, String(customerId));
     navigateTo(44);
   };
 
@@ -176,7 +176,7 @@ export const AnalyticsDashboardScreen: React.FC = () => {
                 </p>
               </div>
               <button type="button" onClick={() => navigateTo(44)} className="text-xs font-mono text-[var(--erp-gold)] hover:underline cursor-pointer">
-                Open Customer Ledger →
+                Open Party Ledger →
               </button>
             </div>
             <DataTable

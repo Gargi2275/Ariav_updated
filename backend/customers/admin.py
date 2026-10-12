@@ -9,7 +9,7 @@ class CustomerEntityInline(admin.TabularInline):
 
 
 @admin.register(Customer)
-class PartyAdmin(admin.ModelAdmin):
+class CustomerAdmin(admin.ModelAdmin):
     list_display = ("customer_code", "customer_name", "customer_type", "city", "status")
     list_filter = ("status", "customer_type")
     search_fields = ("customer_code", "customer_name", "gst_no", "city")
