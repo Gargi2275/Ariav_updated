@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, RefreshCw, Search, SlidersHorizontal, Users, X } from 'lucide-react';
+import { Download, SlidersHorizontal, Users, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
-import { EntitySelector } from '../../components/common/EntitySelector';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { LedgerMetricStrip, LedgerMetricItem } from '../../components/common/LedgerMetricStrip';
 import { MasterLoading, emptyTableProps } from '../masters/MasterStatus';
@@ -15,9 +14,7 @@ function money(value: string | number | null | undefined): string {
 
 export const BrandStatementReport: React.FC = () => {
   const { selectedEntityId } = useErp();
-  const [entityId, setEntityId] = useState<number | null>(
-    selectedEntityId === 'all' ? null : selectedEntityId,
-  );
+  const entityId = selectedEntityId === 'all' ? null : selectedEntityId;
   const [rows, setRows] = useState<BrandStatementReportRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,10 +23,6 @@ export const BrandStatementReport: React.FC = () => {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [filter, setFilter] = useState<'all' | 'nonzero' | 'zero' | 'opening_debit' | 'opening_credit'>('all');
-
-  useEffect(() => {
-    setEntityId(selectedEntityId === 'all' ? null : selectedEntityId);
-  }, [selectedEntityId]);
 
   const load = useCallback(async () => {
     if (!entityId) return;
@@ -53,9 +46,13 @@ export const BrandStatementReport: React.FC = () => {
   }, [code, entityId, from, name, to]);
 
   useEffect(() => {
-    setLoaded(false);
-    setRows([]);
-  }, [entityId]);
+    if (!entityId) {
+      setLoaded(false);
+      setRows([]);
+      return;
+    }
+    void load();
+  }, [entityId, load]);
 
   const visibleRows = useMemo(() => rows.filter(row => {
     const openingDebit = num(row.opening_debit);
@@ -142,7 +139,7 @@ export const BrandStatementReport: React.FC = () => {
             </div>
             <div>
               <h2 className="font-display text-xl font-bold leading-none text-[var(--erp-text)]">Party Balance</h2>
-              <p className="hidden text-[10px] font-mono text-[var(--erp-muted)] sm:block">Opening, movement and closing balances by customer</p>
+              <p className="hidden text-[10px] font-mono text-[var(--erp-muted)] sm:block">Opening, movement and closing balances by party</p>
             </div>
           </div>
         </div>
@@ -163,14 +160,10 @@ export const BrandStatementReport: React.FC = () => {
           {loaded && <span className="ml-auto text-[10px] font-mono text-[var(--erp-muted)]">{visibleRows.length} of {rows.length} parties</span>}
         </div>
         <div className="grid grid-cols-1 items-end gap-2 p-2 sm:grid-cols-2 lg:grid-cols-[minmax(170px,1.2fr)_minmax(130px,.8fr)_minmax(180px,1.2fr)_minmax(135px,.8fr)_minmax(135px,.8fr)_auto]">
-          <div><EntitySelector compact value={entityId} onChange={setEntityId} allowEmpty={false} label="Branch" emptyLabel="Select branch…" /></div>
           <label className="flex flex-col gap-1 text-[10px] font-mono text-[var(--erp-muted)]">Party code<input value={code} onChange={e => setCode(e.target.value)} placeholder="Search code…" className="h-8 w-full px-2 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none" /></label>
           <label className="flex flex-col gap-1 text-[10px] font-mono text-[var(--erp-muted)]">Party name<input value={name} onChange={e => setName(e.target.value)} placeholder="Search name…" className="h-8 w-full px-2 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none" /></label>
           <label className="flex flex-col gap-1 text-[10px] font-mono text-[var(--erp-muted)]">Date from<input type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 w-full px-2 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none" /></label>
           <label className="flex flex-col gap-1 text-[10px] font-mono text-[var(--erp-muted)]">Date to<input type="date" value={to} onChange={e => setTo(e.target.value)} className="h-8 w-full px-2 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none" /></label>
-          <button type="button" disabled={!entityId || loading} onClick={() => void load()} className="inline-flex h-[34px] items-center gap-2 bg-[var(--erp-gold)] px-4 text-xs font-semibold text-[#0F141B] hover:bg-[var(--erp-gold-soft)] disabled:cursor-not-allowed disabled:opacity-50">
-            {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />} {loading ? 'Loading…' : 'Load balances'}
-          </button>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 px-3 py-1.5 text-[10px] font-mono text-[var(--erp-muted)]">
           <span className="uppercase tracking-wider text-[10px] text-[var(--erp-faint)]">Show</span>
@@ -183,7 +176,7 @@ export const BrandStatementReport: React.FC = () => {
         </div>
       </div>
       {loading ? <MasterLoading label="Loading party balances…" /> : !loaded ? (
-        <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] py-12 text-center text-xs font-mono text-[var(--erp-muted)]">Select a branch and click Load balances.</div>
+        <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] py-12 text-center text-xs font-mono text-[var(--erp-muted)]">Select a branch from the header to view party balances.</div>
       ) : (
         <>
           <LedgerMetricStrip metrics={metrics} compact className="lg:!grid-cols-7" />

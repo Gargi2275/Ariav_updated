@@ -1,0 +1,37 @@
+from .base import ImportProfile, decimal_parser, normalize_header, text_parser
+
+
+PROFILE = ImportProfile(
+    id="ocm_po",
+    display_name="OCM PO",
+    brand_codes=("OCM",),
+    signature=("code1", "code5", "code6", "ordqty"),
+    aliases={
+        "agent_code": ("agentcode",),
+        "customer_code": ("customercode",),
+        "customer_name": ("customername",),
+        "order_no": ("orderno", "ordernumber"),
+        "code1": ("code1",),
+        "code5": ("code5",),
+        "code6": ("code6",),
+        "template": ("template",),
+        "size": ("size",),
+        "qty": ("ordqty", "orderqty", "qty", "quantity"),
+    },
+    field_parsers={"customer_code": text_parser, "customer_name": text_parser, "order_no": text_parser, "qty": decimal_parser},
+    header_fields=("agent_code", "customer_code", "customer_name", "order_no"),
+    line_fields=("code1", "code5", "code6", "template", "size", "qty"),
+    required_fields=("customer_code", "order_no", "qty"),
+    order_field="order_no",
+    customer_code_field="customer_code",
+    customer_name_field="customer_name",
+    description_field="ocm_description",
+    line_key_field="ocm_description",
+    quantity_field="qty",
+    rate_field=None,
+    date_field=None,
+    remarks_field=None,
+    source_extra_fields=(),
+    line_extra_fields=(),
+    allow_duplicate_line_keys=True,
+)

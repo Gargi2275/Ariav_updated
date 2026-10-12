@@ -243,7 +243,8 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     def import_preview(self, request):
         try:
             entity, brand, upload = _require_import_context(request, require_file=True)
-            preview = build_preview(upload.read(), entity, brand)
+            format_id = (request.data.get("format_id") or "").strip() or None
+            preview = build_preview(upload.read(), entity, brand, format_id)
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
         token = store_preview(request.user.id, preview)
@@ -291,7 +292,7 @@ def _require_import_context(request, *, require_file: bool):
     entity_raw = request.data.get("entity_id")
     brand_raw = request.data.get("brand_id")
     if entity_raw in (None, ""):
-        errors["entity_id"] = "Entity is required."
+        errors["entity_id"] = "Branch is required."
     if brand_raw in (None, ""):
         errors["brand_id"] = "Brand is required."
 
@@ -320,7 +321,7 @@ def _require_import_context(request, *, require_file: bool):
     brand = Brand.objects.filter(pk=brand_id).first()
     lookup = {}
     if entity is None:
-        lookup["entity_id"] = "Entity was not found."
+        lookup["entity_id"] = "Branch was not found."
     if brand is None:
         lookup["brand_id"] = "Brand was not found."
     if lookup:

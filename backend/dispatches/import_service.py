@@ -15,6 +15,7 @@ from io import BytesIO
 
 from django.core.cache import cache
 from django.db import transaction
+from django.db.models import Q
 from openpyxl import load_workbook
 from rest_framework.exceptions import ValidationError
 
@@ -353,14 +354,26 @@ def _customer_item_exclusion_reason(
     item_keys: list[str],
     pos: dict[str, list[PurchaseOrder]],
     order_code: str,
+    user,
 ) -> str:
-    customer = Customer.objects.filter(customer_code__iexact=customer_code.strip()).first()
     all_pos = {
         po.id: po
         for matches in pos.values()
         for po in matches
         if (po.customer.customer_code or "").strip().casefold() == customer_code.strip().casefold()
     }
+    visible_customers = scope_to_visible_customers(
+        Customer.objects.all(), user, field="id"
+    )
+    customer = visible_customers.filter(
+        customer_code__iexact=customer_code.strip()
+    ).first()
+    if customer is None:
+        return f"No matching Purchase Order found for Order Code {order_code}"
+
+    # This customer and its POs came from the scope-filtered index. Do not
+    # consult the global Customer table here: doing so leaks existence and
+    # diagnostics for records the operator cannot see.
     open_statuses = {
         PurchaseOrder.Status.BRAND_ACCEPTED,
         PurchaseOrder.Status.PARTIALLY_DISPATCHED,
@@ -391,7 +404,7 @@ def _customer_item_exclusion_reason(
     ) or "none"
     return (
         f"No customer + item PO match for Order Code {order_code}; "
-        f"customer in master: {'yes' if customer else 'no'}; "
+        f"customer in master: yes; "
         f"POs for this customer: {len(all_pos)}; "
         f"customer PO statuses: {statuses}; "
         f"item keys missing from customer's open POs: {missing}"
@@ -413,6 +426,16 @@ def _resolve_po(order_code: str, pos: dict[str, list[PurchaseOrder]]) -> tuple[P
     if po_matches:
         return po_matches[0], None
     return None, None
+
+
+def _order_code_exists_outside_scope(order_code: str, pos: dict[str, list[PurchaseOrder]]) -> bool:
+    key = _cell_str(order_code).strip().casefold()
+    visible = pos.get(f"po:{key}", []) + pos.get(f"brand:{key}", [])
+    if visible:
+        return False
+    return PurchaseOrder.objects.filter(
+        Q(po_number__iexact=key) | Q(brand_order_code__iexact=key)
+    ).exists()
 
 
 def _file_keys(line: dict) -> set[str]:
@@ -553,7 +576,7 @@ def _customer_mismatch_reason(po: PurchaseOrder, file_code: str) -> str:
     )
 
 
-def evaluate_group(group: dict, pos: dict[str, list[PurchaseOrder]]) -> tuple[dict | None, dict | None]:
+def evaluate_group(group: dict, pos: dict[str, list[PurchaseOrder]], user) -> tuple[dict | None, dict | None]:
     """Return (importable_row, excluded_row) — exactly one is set."""
     order_code = group["order_code"]
     invoice_no = group["invoice_no"]
@@ -586,6 +609,11 @@ def evaluate_group(group: dict, pos: dict[str, list[PurchaseOrder]]) -> tuple[di
     if resolve_err:
         return None, {**base_excluded, "reason": resolve_err}
     if po is None:
+        if _order_code_exists_outside_scope(order_code, pos):
+            return None, {
+                **base_excluded,
+                "reason": f"No matching Purchase Order found for Order Code {order_code}",
+            }
         item_quantities: dict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
         for line in group["lines"]:
             item_quantities[_norm_match(line["client_item_key"])] += Decimal(line["quantity"])
@@ -601,6 +629,7 @@ def evaluate_group(group: dict, pos: dict[str, list[PurchaseOrder]]) -> tuple[di
                     list(item_quantities),
                     pos,
                     order_code,
+                    user=user,
                 ),
             }
         po = candidates[0]
@@ -685,7 +714,7 @@ def build_preview(file_bytes: bytes, *, user) -> dict:
     warnings = list(parse_warnings)
 
     for group in groups:
-        row, skip = evaluate_group(group, pos)
+        row, skip = evaluate_group(group, pos, user)
         if skip:
             excluded.append(skip)
         else:

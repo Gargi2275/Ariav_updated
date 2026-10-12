@@ -128,7 +128,7 @@ def _event(at, kind: str, label: str, actor, link_type: str, link_id: int, **ext
 
 def build_invoice_trace(invoice: Invoice, *, user=None) -> dict:
     """The invoice itself is already scoped by the viewset queryset. Nested records
-    are re-checked so a cross-customer link can never surface another Customer's data."""
+    are re-checked so a cross-customer link can never surface another Party's data."""
     from accounts.access import visible_customer_ids
     from payments.services import invoice_remaining_balance, invoice_total_paid, rupee_label
 

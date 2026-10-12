@@ -77,12 +77,12 @@ export const InvoiceTraceabilityPanel: React.FC<{ invoiceId: number }> = ({ invo
     <div className="space-y-5 text-left">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-[var(--erp-hairline)] border border-[var(--erp-hairline)]">
         <div className="bg-[var(--erp-surface)] p-3">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--erp-muted)]">Customer</p>
+          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--erp-muted)]">Party</p>
           <RefLink type="customer" id={customer.id}>{customer.customer_code}</RefLink>
           <p className="text-xs truncate">{customer.customer_name}</p>
         </div>
         <div className="bg-[var(--erp-surface)] p-3">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--erp-muted)]">Entity</p>
+          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--erp-muted)]">Branch</p>
           <p className="font-mono">{entity.short_code}</p>
           <p className="text-xs truncate">{entity.entity_name}</p>
         </div>

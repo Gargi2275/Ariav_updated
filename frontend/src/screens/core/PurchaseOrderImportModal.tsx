@@ -38,6 +38,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
   const [step, setStep] = useState<Step>('setup');
   const [entityId, setEntityId] = useState<number | ''>('');
   const [brandId, setBrandId] = useState<number | ''>('');
+  const [formatId, setFormatId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [fieldMessages, setFieldMessages] = useState<Record<string, string>>({});
@@ -49,7 +50,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
 
   const runPreview = async () => {
     const messages: Record<string, string> = {};
-    if (!entityId) messages.entity_id = 'Select an entity.';
+    if (!entityId) messages.entity_id = 'Select a branch.';
     if (!brandId) messages.brand_id = 'Select a brand.';
     if (!file) messages.file = REQUIRED_MSG;
     setFieldMessages(messages);
@@ -60,12 +61,34 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
         entityId: Number(entityId),
         brandId: Number(brandId),
         file: file as File,
+        formatId: formatId || undefined,
       });
       setPreview(result);
+      setFormatId(result.format_id);
       setExpanded({});
       setStep('preview');
     } catch (err) {
       notifyApiError(err, 'Could not preview the import file.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const overrideFormat = async (nextFormat: string) => {
+    if (!entityId || !brandId || !file || !nextFormat) return;
+    setBusy(true);
+    try {
+      const result = await purchaseOrdersApi.importPreview({
+        entityId: Number(entityId),
+        brandId: Number(brandId),
+        file,
+        formatId: nextFormat,
+      });
+      setPreview(result);
+      setFormatId(result.format_id);
+      setExpanded({});
+    } catch (err) {
+      notifyApiError(err, 'Could not apply the selected import format.');
     } finally {
       setBusy(false);
     }
@@ -108,7 +131,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
               <Upload className="w-4 h-4 text-[var(--erp-gold)]" /> Import Purchase Orders
             </h3>
             <p className="text-xs font-mono text-[var(--erp-muted)] mt-1">
-              {step === 'setup' ? 'Step 1 of 2 — Entity, brand and file' : 'Step 2 of 2 — Preview before commit'}
+              {step === 'setup' ? 'Step 1 of 2 — Branch, brand and file' : 'Step 2 of 2 — Preview before commit'}
             </p>
           </div>
           <button type="button" onClick={onClose}><X className="w-4 h-4" /></button>
@@ -121,7 +144,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
               Customer codes are matched only under the entity you select. Nothing is saved until you confirm the preview.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Entity" htmlFor="po-import-entity" required error={fieldMessages.entity_id}>
+              <FormField label="Branch" htmlFor="po-import-entity" required error={fieldMessages.entity_id}>
                 <select
                   id="po-import-entity"
                   value={entityId}
@@ -130,7 +153,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
                     fieldMessages.entity_id ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'
                   }`}
                 >
-                  <option value="">Select entity…</option>
+                  <option value="">Select branch…</option>
                   {entities.map(ent => (
                     <option key={ent.id} value={ent.id}>{ent.short_code} · {ent.entity_name}</option>
                   ))}
@@ -183,6 +206,33 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
 
         {step === 'preview' && preview && (
           <div className="space-y-5">
+            <div className="flex flex-wrap items-end gap-4 border border-[var(--erp-hairline)] p-3">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--erp-muted)]">Detected format</p>
+                <p className="font-semibold text-[var(--erp-gold)]">{preview.format_name}</p>
+              </div>
+              <label className="text-xs text-[var(--erp-muted)]">
+                Override format
+                <select
+                  value={formatId}
+                  disabled={busy}
+                  onChange={e => void overrideFormat(e.target.value)}
+                  className="block mt-1 px-2 py-1.5 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]"
+                >
+                  {preview.allowed_formats.map(format => (
+                    <option key={format.id} value={format.id}>{format.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {preview.errors.length > 0 ? (
+              <div className="border border-[rgba(217,99,90,0.45)] bg-[rgba(217,99,90,0.08)] p-3">
+                <p className="font-mono uppercase tracking-wider text-[var(--erp-negative)] mb-1">Errors</p>
+                <ul className="space-y-1 text-xs text-[var(--erp-negative)]">
+                  {preview.errors.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                </ul>
+              </div>
+            ) : null}
             <div className="border border-[rgba(201,162,78,0.45)] bg-[rgba(201,162,78,0.08)] p-3 text-xs">
               <p className="font-mono uppercase tracking-wider text-[var(--erp-gold)] mb-1">Warnings</p>
               <ul className="space-y-1 text-[var(--erp-text)]">
@@ -200,7 +250,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
                 Will Import ({preview.importable.length})
               </h4>
               {preview.importable.length === 0 ? (
-                <p className="text-sm text-[var(--erp-muted)]">No purchase orders can be imported for this entity and file.</p>
+                <p className="text-sm text-[var(--erp-muted)]">No purchase orders can be imported for this branch and file.</p>
               ) : (
                 <div className="overflow-x-auto border border-[var(--erp-hairline)]">
                   <table className="w-full text-left text-xs">
@@ -208,7 +258,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
                       <tr>
                         <th className="px-3 py-2 w-8" />
                         <th className="px-3 py-2">Order No</th>
-                        <th className="px-3 py-2">Customer</th>
+                        <th className="px-3 py-2">Party</th>
                         <th className="px-3 py-2 text-right">Line count</th>
                       </tr>
                     </thead>
@@ -234,6 +284,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
                                     <tr className="font-mono text-[10px] uppercase text-[var(--erp-muted)]">
                                       <th className="text-left py-1">Description</th>
                                       <th className="text-right py-1 w-24">Qty</th>
+                                      <th className="text-right py-1 w-24">Rate</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -241,6 +292,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
                                       <tr key={`${row.order_no}-${index}`}>
                                         <td className="py-0.5 font-mono">{line.description}</td>
                                         <td className="py-0.5 text-right font-mono">{num(line.quantity).toFixed(2)}</td>
+                                        <td className="py-0.5 text-right font-mono">{line.rate == null ? '—' : num(line.rate).toFixed(2)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -266,7 +318,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
                   <thead className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-negative)]">
                     <tr>
                       <th className="px-2 py-2">Order No</th>
-                      <th className="px-2 py-2">Customer</th>
+                      <th className="px-2 py-2">Party</th>
                       <th className="px-2 py-2">Reason</th>
                       <th className="px-2 py-2 text-right">Lines</th>
                     </tr>
@@ -301,7 +353,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
             </div>
             {selectedEntity ? (
               <p className="text-[11px] font-mono text-[var(--erp-muted)]">
-                Entity {selectedEntity.entity_name} · rates will be blank on every imported Draft line.
+                Branch {selectedEntity.entity_name} · quantity and rate values are taken from the detected format.
               </p>
             ) : null}
           </div>
@@ -329,7 +381,7 @@ export function ImportExcludedReport({
     }
   };
   const download = () => {
-    const blob = new Blob([`Order No\tCustomer Code\tReason\n${text}`], { type: 'text/plain' });
+    const blob = new Blob([`Order No\tParty Code\tReason\n${text}`], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

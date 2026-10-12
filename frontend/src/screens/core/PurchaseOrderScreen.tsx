@@ -109,7 +109,7 @@ const ADMIN_STATUS_LABELS: Record<string, string> = {
 };
 
 export const PurchaseOrderScreen: React.FC = () => {
-  const { userRole, sessionUserName, navigateTo } = useErp();
+  const { userRole, sessionUserName, navigateTo, selectedEntityId } = useErp();
   const canDraftWrite = userRole === 'admin' || userRole === 'operator';
   const canStatusOverride = userRole === 'admin';
 
@@ -117,13 +117,12 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [entities, setEntities] = useState<EntityRow[]>([]);
   const [brands, setBrands] = useState<BrandRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [listCustomers, setListCustomers] = useState<CustomerRow[]>([]);
+  const [listCustomers, setListPartys] = useState<CustomerRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [entityFilter, setEntityFilter] = useState<number | ''>('');
   const [customerFilter, setCustomerFilter] = useState<number | ''>(() => readCustomerListFilter());
   const [brandFilter, setBrandFilter] = useState<number | ''>('');
   const [unpricedOnly, setUnpricedOnly] = useState(false);
@@ -210,7 +209,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     try {
       setRows(await purchaseOrdersApi.list({
         status: statusFilter || undefined,
-        entity_id: entityFilter || undefined,
+        entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
         customer_id: customerFilter || undefined,
         brand_id: brandFilter || undefined,
         order_type: orderTypeFilter || undefined,
@@ -222,7 +221,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, entityFilter, customerFilter, brandFilter, orderTypeFilter, unpricedOnly]);
+  }, [statusFilter, selectedEntityId, customerFilter, brandFilter, orderTypeFilter, unpricedOnly]);
 
   useEffect(() => { void loadLookups(); }, [loadLookups]);
   useEffect(() => {
@@ -230,13 +229,13 @@ export const PurchaseOrderScreen: React.FC = () => {
   }, [load, viewMode]);
 
   const pipelineFilters = useMemo(() => ({
-    entity_id: entityFilter || undefined,
+    entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
     customer_id: customerFilter || undefined,
     brand_id: brandFilter || undefined,
     order_type: orderTypeFilter || undefined,
     search: search.trim() || undefined,
     has_unpriced: unpricedOnly || undefined,
-  }), [entityFilter, customerFilter, brandFilter, orderTypeFilter, search, unpricedOnly]);
+  }), [selectedEntityId, customerFilter, brandFilter, orderTypeFilter, search, unpricedOnly]);
 
   const loadPipeline = useCallback(async () => {
     setPipelineLoading(true);
@@ -279,11 +278,11 @@ export const PurchaseOrderScreen: React.FC = () => {
   };
 
   const typeCountFilters = useMemo(() => ({
-    entity_id: entityFilter || undefined,
+    entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
     customer_id: customerFilter || undefined,
     brand_id: brandFilter || undefined,
     search: search.trim() || undefined,
-  }), [entityFilter, customerFilter, brandFilter, search]);
+  }), [selectedEntityId, customerFilter, brandFilter, search]);
 
   useEffect(() => {
     if (viewMode === 'list') {
@@ -307,10 +306,10 @@ export const PurchaseOrderScreen: React.FC = () => {
   useEffect(() => {
     void customersApi.list({
       status: 'Active',
-      entity_id: entityFilter || undefined,
+      entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
       scope: 'visible',
-    }).then(setListCustomers).catch(notifyApiError);
-  }, [entityFilter]);
+    }).then(setListPartys).catch(notifyApiError);
+  }, [selectedEntityId]);
 
   const filtered = rows.filter(r => {
     const q = search.toLowerCase().trim();
@@ -388,7 +387,7 @@ export const PurchaseOrderScreen: React.FC = () => {
         if ((error as { status?: number }).status === 404) {
           setCustomerStatementSummary(null);
         } else {
-          notifyApiError(error, 'Could not load customer statement.');
+          notifyApiError(error, 'Could not load party statement.');
         }
       });
     return () => { cancelled = true; };
@@ -801,8 +800,8 @@ export const PurchaseOrderScreen: React.FC = () => {
         />
       ),
     },
-    { header: 'Entity', render: r => <span className="font-mono text-xs">{r.entity_code} · {r.entity_name}</span> },
-    { header: 'Customer', render: r => <span>{r.customer_name}</span> },
+    { header: 'Branch', render: r => <span className="font-mono text-xs">{r.entity_code} · {r.entity_name}</span> },
+    { header: 'Party', render: r => <span>{r.customer_name}</span> },
     { header: 'Brand', render: r => <span>{r.brand_name}</span> },
     { header: 'PO Date', accessorKey: 'po_date', mono: true, width: '110px' },
     { header: 'Total', align: 'right', mono: true, width: '110px', render: r => money(r.total_amount) },
@@ -826,7 +825,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     },
   ];
 
-  const formCustomers = customers.filter(c => c.status === 'Active' || c.id === form.customer_id);
+  const formParties = customers.filter(c => c.status === 'Active' || c.id === form.customer_id);
   const statusActions = detail?.allowed_transitions || [];
 
   return (
@@ -884,18 +883,14 @@ export const PurchaseOrderScreen: React.FC = () => {
               </button>
             ))}
           </div>
-          <select value={entityFilter} onChange={e => { setEntityFilter(e.target.value ? Number(e.target.value) : ''); setCustomerFilter(''); }} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
-            <option value="">All entities</option>
-            {entities.map(ent => <option key={ent.id} value={ent.id}>{ent.short_code} · {ent.entity_name}</option>)}
-          </select>
           <CustomerPicker
             compact
             allowAll
             customers={listCustomers}
             value={customerFilter}
             onChange={setCustomerFilter}
-            allLabel="All customers"
-            placeholder="All customers"
+            allLabel="All parties"
+            placeholder="All parties"
           />
           <select value={brandFilter} onChange={e => setBrandFilter(e.target.value ? Number(e.target.value) : '')} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
             <option value="">All brands</option>
@@ -1024,7 +1019,7 @@ export const PurchaseOrderScreen: React.FC = () => {
                       setFieldMessages(prev => clearFieldMessage(prev, 'po_date'));
                     }}
                   />
-                  <FormField label="Entity" required error={fieldMessages.entity_id}>
+                  <FormField label="Branch" required error={fieldMessages.entity_id}>
                     <select
                       value={form.entity_id || ''}
                       onChange={e => {
@@ -1034,7 +1029,7 @@ export const PurchaseOrderScreen: React.FC = () => {
                       }}
                       className={`${fieldSelectClass} ${fieldMessages.entity_id ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
                     >
-                      <option value="">Select entity…</option>
+                      <option value="">Select branch…</option>
                       {entities.map(ent => <option key={ent.id} value={ent.id}>{ent.short_code} · {ent.entity_name}</option>)}
                     </select>
                   </FormField>
@@ -1071,13 +1066,13 @@ export const PurchaseOrderScreen: React.FC = () => {
                       )}
                     
                   </FormField>
-                  <FormField label="Customer" required error={fieldMessages.customer_id} className="sm:col-span-2">
+                  <FormField label="Party" required error={fieldMessages.customer_id} className="sm:col-span-2">
                     <CustomerPicker
-                      customers={formCustomers}
+                      customers={formParties}
                       value={form.customer_id || ''}
                       disabled={!form.entity_id}
                       error={!!fieldMessages.customer_id}
-                      placeholder={form.entity_id ? 'Search customer…' : 'Select entity first'}
+                      placeholder={form.entity_id ? 'Search party…' : 'Select branch first'}
                       onChange={id => {
                         setForm({ ...form, customer_id: id || undefined });
                         setCustomerStatementSummary(null);

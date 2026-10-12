@@ -1,4 +1,4 @@
-"""Downstream checks for Customer Master.
+"""Downstream checks for Party Master.
 
 Invoices, orders, payments, and ledger lines are not built yet.
 These helpers return 0 so deactivate / hard-delete 409 wiring is in place

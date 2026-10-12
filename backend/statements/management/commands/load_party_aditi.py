@@ -13,7 +13,7 @@ from statements.models import CustomerStatement, StatementEntry
 
 
 class Command(BaseCommand):
-    help = "Load party_aditi.xlsx into separate customer statement tables. Use --dry-run first."
+    help = "Load party_aditi.xlsx into separate party statement tables. Use --dry-run first."
 
     def add_arguments(self, parser):
         parser.add_argument("xlsx_path")
@@ -25,7 +25,7 @@ class Command(BaseCommand):
             raise CommandError(f"File not found: {path}")
         entity = Entity.objects.filter(entity_name__iexact="Aditi").first() or Entity.objects.filter(short_code__iexact="ADT").first()
         if entity is None:
-            raise CommandError("Aditi entity not found.")
+            raise CommandError("Aditi branch not found.")
 
         parsed = parse_workbook(path)
         errors = list(parsed.errors) + validate_statements(parsed.statements)
@@ -34,10 +34,10 @@ class Command(BaseCommand):
         for statement in parsed.statements:
             customer = customers.get(statement.customer_code.upper())
             if customer is None:
-                errors.append(f"Customer {statement.customer_code or '<missing>'}, Excel row {statement.start_row}: customer not found.")
+                errors.append(f"Party {statement.customer_code or '<missing>'}, Excel row {statement.start_row}: party not found.")
                 continue
             if not CustomerEntity.objects.filter(customer=customer, entity=entity).exists():
-                errors.append(f"Customer {statement.customer_code}, Excel row {statement.start_row}: not linked to Aditi entity.")
+                errors.append(f"Party {statement.customer_code}, Excel row {statement.start_row}: not linked to Aditi branch.")
                 continue
             matched[statement.customer_code.upper()] = customer
 
@@ -91,7 +91,7 @@ class Command(BaseCommand):
                         for entry in statement.entries
                     ]
                 )
-        self.stdout.write(self.style.SUCCESS(f"Loaded {len(parsed.statements)} customer statements and {sum(len(s.entries) for s in parsed.statements)} entries."))
+        self.stdout.write(self.style.SUCCESS(f"Loaded {len(parsed.statements)} party statements and {sum(len(s.entries) for s in parsed.statements)} entries."))
 
     def _print_report(self, path, entity, statements, matched, errors):
         entries = sum(len(statement.entries) for statement in statements)
@@ -105,9 +105,9 @@ class Command(BaseCommand):
         opening_dr_count = sum(statement.opening_dc == "DR" for statement in statements)
         closing_dr_count = sum(statement.closing_dc == "DR" for statement in statements)
         self.stdout.write(f"File: {path.name}")
-        self.stdout.write(f"Entity: {entity.entity_name}")
+        self.stdout.write(f"Branch: {entity.entity_name}")
         self.stdout.write(f"Period: {statements[0].period_from if statements else '-'} to {statements[0].period_to if statements else '-'}")
-        self.stdout.write(f"Customers found: {len(statements)}; matched: {len(matched)}; entries found: {entries}; customers with no activity: {no_activity}")
+        self.stdout.write(f"Parties found: {len(statements)}; matched: {len(matched)}; entries found: {entries}; customers with no activity: {no_activity}")
         self.stdout.write(
             f"DR openings: {opening_dr_count}; DR closings: {closing_dr_count}; "
             f"Control totals: debit {debit}; credit {credit}; "
@@ -116,7 +116,7 @@ class Command(BaseCommand):
         reference = next((statement for statement in statements if statement.customer_code.upper() == "700762"), None)
         if reference:
             self.stdout.write(
-                f"Customer 700762: opening {reference.opening_amount} {reference.opening_dc}; "
+                f"Party 700762: opening {reference.opening_amount} {reference.opening_dc}; "
                 f"closing {reference.closing_amount} {reference.closing_dc}"
             )
         self.stdout.write(f"Errors: {len(errors)}")

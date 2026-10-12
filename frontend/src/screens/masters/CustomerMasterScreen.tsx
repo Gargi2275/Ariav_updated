@@ -14,13 +14,13 @@ import { acquireSaveLock, releaseSaveLock } from '../../services/saveLock';
 import { clearFieldMessage, collectRequired } from '../../services/requiredFields';
 import { EntityRow, entitiesApi } from '../../services/entitiesApi';
 import {
-  CUSTOMER_360_KEY,
-  CUSTOMER_LEDGER_KEY,
-  CUSTOMER_TYPES,
-  CustomerEntityLink,
+  PARTY_360_KEY,
+  PARTY_LEDGER_KEY,
+  PARTY_TYPES,
+  PartyEntityLink,
   CustomerRow,
   customersApi,
-  emptyCustomer,
+  emptyParty,
 } from '../../services/customersApi';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
@@ -37,10 +37,10 @@ function dateOrNull(value: string | null | undefined): string | null {
   return v || null;
 }
 
-function toggleEntity(links: CustomerEntityLink[], entity: EntityRow, checked: boolean): CustomerEntityLink[] {
+function toggleEntity(links: PartyEntityLink[], entity: EntityRow, checked: boolean): PartyEntityLink[] {
   if (checked) {
     if (links.some(l => l.entity_id === entity.id)) return links;
-    const next: CustomerEntityLink = {
+    const next: PartyEntityLink = {
       entity_id: entity.id,
       short_code: entity.short_code,
       entity_name: entity.entity_name,
@@ -55,19 +55,19 @@ function toggleEntity(links: CustomerEntityLink[], entity: EntityRow, checked: b
   return remaining;
 }
 
-function markPrimary(links: CustomerEntityLink[], entityId: number): CustomerEntityLink[] {
+function markPrimary(links: PartyEntityLink[], entityId: number): PartyEntityLink[] {
   return links.map(l => ({ ...l, primary_entity: l.entity_id === entityId }));
 }
 
-function entitiesGroupError(links: CustomerEntityLink[]): string | undefined {
-  if (!links.length) return 'Select at least one entity and mark exactly one as primary.';
+function entitiesGroupError(links: PartyEntityLink[]): string | undefined {
+  if (!links.length) return 'Select at least one branch and mark exactly one as primary.';
   const primaries = links.filter(l => l.primary_entity).length;
-  if (primaries !== 1) return 'Mark exactly one entity as primary.';
+  if (primaries !== 1) return 'Mark exactly one branch as primary.';
   return undefined;
 }
 
-export const CustomerMasterScreen: React.FC = () => {
-  const { userRole, navigateTo } = useErp();
+export const PartyMasterScreen: React.FC = () => {
+  const { userRole, navigateTo, selectedEntityId } = useErp();
   const canWrite = userRole === 'admin';
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [entityOptions, setEntityOptions] = useState<EntityRow[]>([]);
@@ -75,9 +75,8 @@ export const CustomerMasterScreen: React.FC = () => {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
-  const [entityFilter, setEntityFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState<Partial<CustomerRow>>(emptyCustomer());
+  const [form, setForm] = useState<Partial<CustomerRow>>(emptyParty());
   const [fieldErrors, setFieldErrors] = useState<string[]>([]);
   const [fieldMessages, setFieldMessages] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -97,19 +96,19 @@ export const CustomerMasterScreen: React.FC = () => {
       const [customers, ents] = await Promise.all([
         customersApi.list({
           status: statusFilter === 'All' ? undefined : statusFilter,
-          entity_id: entityFilter || undefined,
+          entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
         }),
         entitiesApi.list(),
       ]);
       setRows(customers);
       setEntityOptions(ents);
     } catch (e) {
-      const parsed = notifyApiError(e, 'Could not load customers.');
+      const parsed = notifyApiError(e, 'Could not load parties.');
       setError(parsed.message);
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, entityFilter]);
+  }, [statusFilter, selectedEntityId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -117,7 +116,7 @@ export const CustomerMasterScreen: React.FC = () => {
     if (!kebab) return;
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest('[data-customer-kebab]')) return;
+      if (target?.closest('[data-party-kebab]')) return;
       setKebab(null);
     };
     const timer = window.setTimeout(() => {
@@ -143,11 +142,13 @@ export const CustomerMasterScreen: React.FC = () => {
     const q = search.toLowerCase().trim();
     return !q
       || r.customer_code.toLowerCase().includes(q)
-      || r.customer_name.toLowerCase().includes(q);
+      || r.customer_name.toLowerCase().includes(q)
+      || r.gst_no.toLowerCase().includes(q)
+      || r.city.toLowerCase().includes(q);
   });
 
   const openCreate = () => {
-    setForm(emptyCustomer());
+    setForm(emptyParty());
     setFieldErrors([]);
     setFieldMessages({});
     setModalOpen(true);
@@ -189,10 +190,10 @@ export const CustomerMasterScreen: React.FC = () => {
     try {
       if (form.id) {
         await customersApi.update(form.id, payload);
-        notifySuccess(`Customer '${payload.customer_name}' updated.`);
+        notifySuccess(`Party '${payload.customer_name}' updated.`);
       } else {
         await customersApi.create(payload);
-        notifySuccess(`Customer '${payload.customer_name}' created successfully.`);
+        notifySuccess(`Party '${payload.customer_name}' created successfully.`);
       }
       setModalOpen(false);
       await load();
@@ -213,10 +214,10 @@ export const CustomerMasterScreen: React.FC = () => {
   };
 
   const columns: Column<CustomerRow>[] = [
-    { header: 'Customer Code', accessorKey: 'customer_code', mono: true, width: '120px', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.customer_code}</span> },
-    { header: 'Customer Name', accessorKey: 'customer_name', render: r => <span className="font-medium text-[var(--erp-text)]">{r.customer_name}</span> },
+    { header: 'Party Code', accessorKey: 'customer_code', mono: true, width: '120px', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.customer_code}</span> },
+    { header: 'Party Name', accessorKey: 'customer_name', render: r => <span className="font-medium text-[var(--erp-text)]">{r.customer_name}</span> },
     {
-      header: 'Primary Entity',
+      header: 'Primary Branch',
       accessorKey: 'primary_entity_name',
       width: '160px',
       render: r => r.primary_entity_code
@@ -243,7 +244,7 @@ export const CustomerMasterScreen: React.FC = () => {
             className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer"
             title="View 360°"
             onClick={() => {
-              sessionStorage.setItem(CUSTOMER_360_KEY, String(r.id));
+              sessionStorage.setItem(PARTY_360_KEY, String(r.id));
               navigateTo(48);
             }}
           >
@@ -254,7 +255,7 @@ export const CustomerMasterScreen: React.FC = () => {
             className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer"
             title="View Ledger"
             onClick={() => {
-              sessionStorage.setItem(CUSTOMER_LEDGER_KEY, String(r.id));
+              sessionStorage.setItem(PARTY_LEDGER_KEY, String(r.id));
               navigateTo(44);
             }}
           >
@@ -314,8 +315,8 @@ export const CustomerMasterScreen: React.FC = () => {
       <PageHeader
         moduleNumber="23"
         section="Masters"
-        title="Customer Master"
-        subtitle="Trading customers keyed by unique customer code, linked to one or more entities"
+        title="Party Master"
+        subtitle="Trading customers keyed by unique party code, linked to one or more branches"
         actions={
           canWrite ? (
             <button type="button" onClick={openCreate} className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
@@ -331,16 +332,6 @@ export const CustomerMasterScreen: React.FC = () => {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search code or name…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
         </div>
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-          <select
-            value={entityFilter}
-            onChange={e => setEntityFilter(e.target.value)}
-            className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]"
-          >
-            <option value="">All entities</option>
-            {entityOptions.map(ent => (
-              <option key={ent.id} value={ent.id}>{ent.short_code} · {ent.entity_name}</option>
-            ))}
-          </select>
           {(['All', 'Active', 'Inactive'] as const).map(s => (
             <button key={s} type="button" onClick={() => setStatusFilter(s)} className={`px-3 py-1 border ${statusFilter === s ? 'border-[var(--erp-gold)] text-[var(--erp-gold)] bg-[var(--erp-surface-2)]' : 'border-[var(--erp-hairline)] text-[var(--erp-muted)]'}`}>{s}</button>
           ))}
@@ -356,9 +347,9 @@ export const CustomerMasterScreen: React.FC = () => {
           {...emptyTableProps(
             rows.length,
             filtered.length,
-            statusFilter !== 'All' || entityFilter ? 'No customers match this filter.' : 'No customers configured yet.',
+            statusFilter !== 'All' || selectedEntityId !== 'all' ? 'No customers match this filter.' : 'No parties configured yet.',
             'No customers match this filter.',
-            canWrite ? 'Add first customer' : '',
+            canWrite ? 'Add first party' : '',
             canWrite ? openCreate : () => undefined,
           )}
         />
@@ -380,7 +371,7 @@ export const CustomerMasterScreen: React.FC = () => {
               setKebab(null);
               try {
                 await customersApi.reactivate(row.id);
-                notifySuccess(`Customer '${row.customer_name}' reactivated.`);
+                notifySuccess(`Party '${row.customer_name}' reactivated.`);
                 await load();
               } catch (err) {
                 notifyApiError(err);
@@ -410,7 +401,7 @@ export const CustomerMasterScreen: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <form noValidate onSubmit={save} className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-6">
             <div className="flex justify-between border-b border-[var(--erp-hairline)] pb-3 sticky top-0 bg-[var(--erp-surface)] z-10">
-              <h3 className="font-display text-lg font-bold flex items-center gap-2"><Users className="w-4 h-4 text-[var(--erp-gold)]" />{form.id ? 'Edit Customer' : 'Add Customer'}</h3>
+              <h3 className="font-display text-lg font-bold flex items-center gap-2"><Users className="w-4 h-4 text-[var(--erp-gold)]" />{form.id ? 'Edit Party' : 'Add Party'}</h3>
               <button type="button" onClick={() => setModalOpen(false)}><X className="w-4 h-4" /></button>
             </div>
             <RequiredLegend />
@@ -420,7 +411,7 @@ export const CustomerMasterScreen: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <TextInput
                   ref={codeRef}
-                  label="Customer code"
+                  label="Party code"
                   mono
                   required
                   error={fieldMessages.customer_code}
@@ -433,7 +424,7 @@ export const CustomerMasterScreen: React.FC = () => {
                   }}
                 />
                 <TextInput
-                  label="Customer name"
+                  label="Party name"
                   required
                   error={fieldMessages.customer_name}
                   invalid={fieldErrors.includes('customer_name')}
@@ -446,7 +437,7 @@ export const CustomerMasterScreen: React.FC = () => {
                 />
                 <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Type
                   <select value={form.customer_type || 'Company'} onChange={e => setField({ customer_type: e.target.value })} className={selectClass}>
-                    {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
+                    {PARTY_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Status
@@ -459,11 +450,11 @@ export const CustomerMasterScreen: React.FC = () => {
             </section>
 
             <section>
-              <FormSectionTitle required>Entities</FormSectionTitle>
-              <p className="text-[11px] font-mono text-[var(--erp-muted)] mb-3">Select every entity this customer trades with. Star marks the primary (default) entity.</p>
+              <FormSectionTitle required>Branches</FormSectionTitle>
+              <p className="text-[11px] font-mono text-[var(--erp-muted)] mb-3">Select every branch this party trades with. Star marks the primary (default) branch.</p>
               <div className={`border p-2 space-y-1 ${fieldMessages.entities || fieldErrors.includes('entities') ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline)]'}`}>
                 {pickerEntities.length === 0 ? (
-                  <p className="text-xs text-[var(--erp-muted)] px-2 py-3">No entities available. Create an entity first.</p>
+                  <p className="text-xs text-[var(--erp-muted)] px-2 py-3">No branches available. Create a branch first.</p>
                 ) : pickerEntities.map(ent => {
                   const isLinked = linked.some(l => l.entity_id === ent.id);
                   const isPrimary = linked.some(l => l.entity_id === ent.id && l.primary_entity);
@@ -483,7 +474,7 @@ export const CustomerMasterScreen: React.FC = () => {
                       {isLinked && (
                         <button
                           type="button"
-                          title="Primary entity"
+                          title="Primary branch"
                           onClick={() => {
                             setField({ entities: markPrimary(linked, ent.id) });
                             setFieldErrors(prev => prev.filter(f => f !== 'entities'));
@@ -518,6 +509,8 @@ export const CustomerMasterScreen: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <TextInput label="Address line 1" value={form.address_line_1 || ''} onChange={e => setField({ address_line_1: e.target.value })} />
                 <TextInput label="Address line 2" value={form.address_line_2 || ''} onChange={e => setField({ address_line_2: e.target.value })} />
+                <TextInput label="Address line 3" value={form.address_line_3 || ''} onChange={e => setField({ address_line_3: e.target.value })} />
+                <TextInput label="Address line 4" value={form.address_line_4 || ''} onChange={e => setField({ address_line_4: e.target.value })} />
                 <TextInput label="Area" value={form.area || ''} onChange={e => setField({ area: e.target.value })} />
                 <TextInput label="City" value={form.city || ''} onChange={e => setField({ city: e.target.value })} />
                 <TextInput label="District" value={form.district || ''} onChange={e => setField({ district: e.target.value })} />
@@ -526,6 +519,21 @@ export const CustomerMasterScreen: React.FC = () => {
                 <TextInput label="Country" value={form.country || ''} onChange={e => setField({ country: e.target.value })} />
                 <TextInput label="Zone" value={form.zone || ''} onChange={e => setField({ zone: e.target.value })} />
                 <TextInput label="STD code" mono value={form.std_code || ''} onChange={e => setField({ std_code: e.target.value })} />
+              </div>
+            </section>
+
+            <section>
+              <h4 className={sectionTitle}>Brand / SAP master data</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <TextInput label="Name 2" value={form.name_2 || ''} onChange={e => setField({ name_2: e.target.value })} />
+                <TextInput label="Search term 1" value={form.search_term_1 || ''} onChange={e => setField({ search_term_1: e.target.value })} />
+                <TextInput label="Search term 2" value={form.search_term_2 || ''} onChange={e => setField({ search_term_2: e.target.value })} />
+                <TextInput label="State code" mono value={form.state_code || ''} onChange={e => setField({ state_code: e.target.value })} />
+                <TextInput label="Country code" mono value={form.country_code || ''} onChange={e => setField({ country_code: e.target.value })} />
+                <TextInput label="Account group" value={form.account_group || ''} onChange={e => setField({ account_group: e.target.value })} />
+                <TextInput label="Distribution channel" value={form.distribution_channel || ''} onChange={e => setField({ distribution_channel: e.target.value })} />
+                <TextInput label="Division" value={form.division || ''} onChange={e => setField({ division: e.target.value })} />
+                <TextInput label="Transportation zone" value={form.transportation_zone || ''} onChange={e => setField({ transportation_zone: e.target.value })} />
               </div>
             </section>
 
@@ -593,7 +601,7 @@ export const CustomerMasterScreen: React.FC = () => {
 
             <div className="flex justify-end gap-3 pt-4 border-t border-[var(--erp-hairline)]">
               <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 border border-[var(--erp-hairline)] text-xs font-mono">Cancel</button>
-              <button type="submit" disabled={saving} className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">{saving ? 'Saving…' : 'Save Customer'}</button>
+              <button type="submit" disabled={saving} className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">{saving ? 'Saving…' : 'Save Party'}</button>
             </div>
           </form>
         </div>

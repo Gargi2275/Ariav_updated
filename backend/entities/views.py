@@ -71,7 +71,7 @@ class EntityViewSet(viewsets.ModelViewSet):
         entity = self.get_object()
         active_kids = active_child_count(entity.id)
         if active_kids:
-            noun = "child entity" if active_kids == 1 else "child entities"
+            noun = "child branch" if active_kids == 1 else "child branches"
             return Response(
                 {
                     "detail": (

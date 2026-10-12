@@ -139,7 +139,7 @@ export const BankReceiptVoucherScreen: React.FC = () => {
           />
           <div className="flex flex-col gap-1 text-left">
             <label className="text-xs text-[var(--erp-muted)] font-sans">
-              Entity Depositing Bank
+              Branch Depositing Bank
             </label>
             <select
               value={bankAccount}
@@ -152,7 +152,7 @@ export const BankReceiptVoucherScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Remitting Party & Instrument */}
+        {/* Remitting Customer & Instrument */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-5">
           <div className="md:col-span-2">
             <PartyPicker

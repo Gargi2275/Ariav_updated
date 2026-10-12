@@ -1,6 +1,6 @@
-"""Customer Master — trading customers keyed by unique customer_code.
+"""Party Master — trading customers keyed by unique customer_code.
 
-A customer may trade with multiple Entities (M2M via CustomerEntity).
+A party may trade with multiple Entities (M2M via CustomerEntity).
 Exactly one linked entity is flagged primary_entity for default UI flows.
 Do not seed this table.
 """
@@ -52,6 +52,8 @@ class Customer(models.Model):
 
     address_line_1 = models.CharField(max_length=200, blank=True)
     address_line_2 = models.CharField(max_length=200, blank=True)
+    address_line_3 = models.CharField(max_length=200, blank=True)
+    address_line_4 = models.CharField(max_length=200, blank=True)
     area = models.CharField(max_length=120, blank=True)
     city = models.CharField(max_length=80, blank=True)
     state = models.CharField(max_length=80, blank=True)
@@ -68,6 +70,14 @@ class Customer(models.Model):
     licence_no = models.CharField(max_length=40, blank=True)
     ecc = models.CharField(max_length=40, blank=True)
     division = models.CharField(max_length=80, blank=True)
+    name_2 = models.CharField(max_length=200, blank=True, null=True)
+    search_term_1 = models.CharField(max_length=120, blank=True, null=True)
+    search_term_2 = models.CharField(max_length=120, blank=True, null=True)
+    state_code = models.CharField(max_length=20, blank=True, null=True)
+    country_code = models.CharField(max_length=10, blank=True, null=True)
+    account_group = models.CharField(max_length=120, blank=True, null=True)
+    distribution_channel = models.CharField(max_length=40, blank=True, null=True)
+    transportation_zone = models.CharField(max_length=80, blank=True, null=True)
     range = models.CharField(max_length=80, blank=True)
 
     credit_days = models.PositiveIntegerField(default=0)
@@ -124,7 +134,7 @@ class Customer(models.Model):
 
 
 class CustomerEntity(models.Model):
-    """Join: one customer, many entities; exactly one primary per customer (enforced in serializer)."""
+    """Join: one party, many entities; exactly one primary per party (enforced in serializer)."""
 
     customer = models.ForeignKey(
         Customer,

@@ -19,9 +19,9 @@ export const CustomerPicker: React.FC<CustomerPickerProps> = ({
   customers,
   value,
   onChange,
-  placeholder = 'Select customer…',
+  placeholder = 'Select party…',
   allowAll = false,
-  allLabel = 'All customers',
+  allLabel = 'All parties',
   disabled = false,
   error = false,
   className = '',
@@ -88,7 +88,7 @@ export const CustomerPicker: React.FC<CustomerPickerProps> = ({
               autoFocus
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Type name or customer code…"
+              placeholder="Type name or party code…"
               className="w-full px-2.5 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] font-mono"
             />
           </div>
@@ -118,7 +118,7 @@ export const CustomerPicker: React.FC<CustomerPickerProps> = ({
               </button>
             ))}
             {filtered.length === 0 ? (
-              <p className="p-3 text-xs text-center text-[var(--erp-muted)] font-mono">No matching customers.</p>
+              <p className="p-3 text-xs text-center text-[var(--erp-muted)] font-mono">No matching parties.</p>
             ) : null}
           </div>
         </div>

@@ -134,7 +134,7 @@ export const QuickJumpModal: React.FC = () => {
         {/* Footer info */}
         <div className="p-2.5 border-t border-[var(--erp-hairline)] bg-[var(--erp-surface)] flex items-center justify-between text-[11px] font-mono text-[var(--erp-muted)]">
           <span>Tip: Press [Esc] to exit • Click any module to inspect screen</span>
-          <span>Ariav Gujarat Entity ERP v4.2</span>
+          <span>Ariav Gujarat Branch ERP v4.2</span>
         </div>
       </div>
     </div>

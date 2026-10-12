@@ -1,4 +1,4 @@
-"""Customer 360° aggregation — histories plus ledger KPIs, not a stored profile."""
+"""Party 360° aggregation — histories plus ledger KPIs, not a stored profile."""
 
 from datetime import date
 from decimal import Decimal

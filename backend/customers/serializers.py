@@ -37,6 +37,8 @@ class CustomerSerializer(serializers.ModelSerializer):
             "website",
             "address_line_1",
             "address_line_2",
+            "address_line_3",
+            "address_line_4",
             "area",
             "city",
             "state",
@@ -52,6 +54,14 @@ class CustomerSerializer(serializers.ModelSerializer):
             "licence_no",
             "ecc",
             "division",
+            "name_2",
+            "search_term_1",
+            "search_term_2",
+            "state_code",
+            "country_code",
+            "account_group",
+            "distribution_channel",
+            "transportation_zone",
             "range",
             "credit_days",
             "credit_limit",
@@ -88,25 +98,25 @@ class CustomerSerializer(serializers.ModelSerializer):
     def validate_customer_code(self, value):
         value = (value or "").strip().upper()
         if not value:
-            raise serializers.ValidationError("Customer code is required.")
+            raise serializers.ValidationError("Party code is required.")
         qs = Customer.objects.filter(customer_code__iexact=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError(f"Customer code {value} is already in use.")
+            raise serializers.ValidationError(f"Party code {value} is already in use.")
         return value
 
     def validate_customer_name(self, value):
         value = (value or "").strip()
         if not value:
-            raise serializers.ValidationError("Customer name is required.")
+            raise serializers.ValidationError("Party name is required.")
         return value
 
     def validate_customer_type(self, value):
         value = (value or "").strip()
         if value not in dict(Customer.CustomerType.choices):
             raise serializers.ValidationError(
-                "Customer type must be Company, Individual, or Distributor."
+                "Party type must be Company, Individual, or Distributor."
             )
         return value
 
@@ -196,7 +206,7 @@ class CustomerSerializer(serializers.ModelSerializer):
                 self._replace_links(customer, links or [])
         except IntegrityError:
             raise serializers.ValidationError(
-                {"customer_code": ["Customer code is already in use. Try a different code."]}
+                {"customer_code": ["Party code is already in use. Try a different code."]}
             )
         return customer
 
@@ -209,6 +219,6 @@ class CustomerSerializer(serializers.ModelSerializer):
                     self._replace_links(instance, links)
         except IntegrityError:
             raise serializers.ValidationError(
-                {"customer_code": ["Customer code is already in use. Try a different code."]}
+                {"customer_code": ["Party code is already in use. Try a different code."]}
             )
         return instance

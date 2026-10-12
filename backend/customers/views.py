@@ -36,7 +36,12 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if status_filter:
             qs = qs.filter(status__iexact=status_filter)
         if q:
-            qs = qs.filter(Q(customer_name__icontains=q) | Q(customer_code__icontains=q))
+            qs = qs.filter(
+                Q(customer_name__icontains=q)
+                | Q(customer_code__icontains=q)
+                | Q(gst_no__icontains=q)
+                | Q(city__icontains=q)
+            )
         if entity_id:
             qs = qs.filter(entities__id=entity_id)
         return qs.distinct()
@@ -50,7 +55,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "detail": (
-                    "You can only view this customer’s ledger and 360° if they appear "
+                    "You can only view this party’s ledger and 360° if they appear "
                     "on a purchase order, dispatch, invoice, or payment you created."
                 )
             },
@@ -150,8 +155,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
             )
         if not can_view_customer(request.user, customer.pk):
             return None, Response(
-                {"detail": "You do not have access to this customer's statement."},
-                status=status.HTTP_403_FORBIDDEN,
+                status=status.HTTP_404_NOT_FOUND,
             )
         statements = CustomerStatement.objects.filter(
             customer=customer,

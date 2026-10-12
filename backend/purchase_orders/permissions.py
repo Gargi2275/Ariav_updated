@@ -15,7 +15,6 @@ class PurchaseOrderPermission(BasePermission):
         "partial_update",
         "destroy",
         "submit",
-        "change_status",
         "import_preview",
         "import_commit",
     }
@@ -27,6 +26,11 @@ class PurchaseOrderPermission(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         action = getattr(view, "action", None)
+        if action == "change_status" and request.data.get("status") in {
+            "Partially Dispatched",
+            "Fully Dispatched",
+        }:
+            return True
         if action in self.STAFF_ACTIONS:
             return True
         return bool(getattr(user, "is_admin_role", False))

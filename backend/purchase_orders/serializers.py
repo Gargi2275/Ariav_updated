@@ -20,6 +20,25 @@ def _order_type_for_brand(brand: Brand) -> str:
     return PurchaseOrder.OrderType.DIGITAL
 
 
+def create_purchase_order_with_lines(*, user=None, lines, **validated_data):
+    if user is not None and getattr(user, "is_authenticated", False):
+        validated_data["created_by"] = user
+    with transaction.atomic():
+        po = PurchaseOrder.objects.create(**validated_data)
+        for row in lines:
+            PurchaseOrderLine.objects.create(
+                purchase_order=po,
+                product=row.get("product"),
+                product_description=(row.get("product_description") or "").strip(),
+                quantity=row["quantity"],
+                rate=row.get("rate"),
+                expected_delivery_period=row.get("expected_delivery_period", ""),
+                customer_delivery_date=row.get("customer_delivery_date"),
+                extra_data=row.get("extra_data", {}),
+            )
+    return po
+
+
 class PurchaseOrderLineSerializer(serializers.ModelSerializer):
     product_id = serializers.PrimaryKeyRelatedField(
         source="product",
@@ -47,6 +66,9 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
             "quantity",
             "rate",
             "line_total",
+            "expected_delivery_period",
+            "customer_delivery_date",
+            "extra_data",
             "total_dispatched",
             "pending_quantity",
             "total_invoiced",
@@ -58,6 +80,9 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
             "product_name",
             "unit",
             "line_total",
+            "expected_delivery_period",
+            "customer_delivery_date",
+            "extra_data",
             "total_dispatched",
             "pending_quantity",
             "total_invoiced",
@@ -200,6 +225,8 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             "po_date",
             "status",
             "remarks",
+            "source_format",
+            "extra_data",
             "handy_form_upload",
             "handy_form_url",
             "lines",
@@ -244,6 +271,8 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             "updated_at",
             "created_by",
             "created_by_name",
+            "source_format",
+            "extra_data",
         )
         extra_kwargs = {
             "po_number": {"validators": []},
@@ -410,9 +439,9 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         requested_type = attrs.get("order_type") or None
 
         if entity is None:
-            raise serializers.ValidationError({"entity_id": "Entity is required."})
+            raise serializers.ValidationError({"entity_id": "Branch is required."})
         if customer is None:
-            raise serializers.ValidationError({"customer_id": "Customer is required."})
+            raise serializers.ValidationError({"customer_id": "Party is required."})
         if brand is None:
             raise serializers.ValidationError({"brand_id": "Brand is required."})
 
@@ -452,7 +481,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
 
         if not CustomerEntity.objects.filter(customer=customer, entity=entity).exists():
             raise serializers.ValidationError(
-                {"customer_id": "Customer is not linked to the selected entity."}
+                {"customer_id": "Party is not linked to the selected branch."}
             )
 
         if lines is None:
@@ -501,12 +530,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         lines = validated_data.pop("lines")
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        if user is not None and getattr(user, "is_authenticated", False):
-            validated_data["created_by"] = user
-        with transaction.atomic():
-            po = PurchaseOrder.objects.create(**validated_data)
-            self._replace_lines(po, lines)
-        return po
+        return create_purchase_order_with_lines(user=user, lines=lines, **validated_data)
 
     def update(self, instance, validated_data):
         lines = validated_data.pop("lines", None)

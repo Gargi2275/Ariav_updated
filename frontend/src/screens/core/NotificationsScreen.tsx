@@ -128,7 +128,7 @@ export const NotificationsScreen: React.FC = () => {
         </button>
       ),
     },
-    { header: 'Customer', render: r => r.customer_name || '—' },
+    { header: 'Party', render: r => r.customer_name || '—' },
   ];
 
   return (

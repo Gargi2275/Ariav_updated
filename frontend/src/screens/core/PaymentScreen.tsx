@@ -43,7 +43,7 @@ function stampDate(iso?: string | null): string {
 }
 
 export const PaymentScreen: React.FC = () => {
-  const { userRole } = useErp();
+  const { userRole, selectedEntityId } = useErp();
   const canWrite = userRole === 'admin' || userRole === 'operator';
   const canDelete = userRole === 'admin';
 
@@ -52,7 +52,7 @@ export const PaymentScreen: React.FC = () => {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [modeFilter, setModeFilter] = useState('');
-  const [listCustomerFilter, setListCustomerFilter] = useState<number | ''>(() => readCustomerListFilter());
+  const [listPartyFilter, setListPartyFilter] = useState<number | ''>(() => readCustomerListFilter());
   const [mode, setMode] = useState<'list' | 'form' | 'detail'>('list');
   const [detail, setDetail] = useState<PaymentRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PaymentRow | null>(null);
@@ -93,7 +93,8 @@ export const PaymentScreen: React.FC = () => {
       setRows(await paymentsApi.list({
         search: search || undefined,
         payment_mode: modeFilter || undefined,
-        customer_id: listCustomerFilter || undefined,
+        customer_id: listPartyFilter || undefined,
+        entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
       }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load payments.');
@@ -101,7 +102,7 @@ export const PaymentScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, modeFilter, listCustomerFilter]);
+  }, [search, modeFilter, listPartyFilter, selectedEntityId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -117,7 +118,7 @@ export const PaymentScreen: React.FC = () => {
     void customersApi.list({ status: 'Active', entity_id: entityId }).then(setCustomers).catch(notifyApiError);
   }, [entityId]);
 
-  const loadCustomerContext = useCallback(async (id: number) => {
+  const loadPartyContext = useCallback(async (id: number) => {
     try {
       const [invoices, advance] = await Promise.all([
         invoicesApi.list({ customer_id: id, status: 'Issued,Partially Paid' }),
@@ -137,8 +138,8 @@ export const PaymentScreen: React.FC = () => {
       setAllocAmounts({});
       return;
     }
-    void loadCustomerContext(Number(customerId));
-  }, [customerId, loadCustomerContext]);
+    void loadPartyContext(Number(customerId));
+  }, [customerId, loadPartyContext]);
 
   const totals = useMemo(() => {
     const paymentAmount = num(amount);
@@ -309,7 +310,7 @@ export const PaymentScreen: React.FC = () => {
 
   const columns: Column<PaymentRow>[] = [
     { header: 'Payment No', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.payment_number}</span> },
-    { header: 'Customer', render: r => <span>{r.customer_name}</span> },
+    { header: 'Party', render: r => <span>{r.customer_name}</span> },
     { header: 'Code', accessorKey: 'customer_code', mono: true, width: '110px' },
     { header: 'Date', accessorKey: 'payment_date', mono: true, width: '110px' },
     { header: 'Amount', align: 'right', mono: true, width: '110px', render: r => money(r.amount) },
@@ -343,7 +344,7 @@ export const PaymentScreen: React.FC = () => {
         moduleNumber="43"
         section="Accounts"
         title="Payments"
-        subtitle="Record customer receipts and allocate against outstanding invoices"
+        subtitle="Record party receipts and allocate against outstanding invoices"
         actions={
           canWrite ? (
             <button type="button" onClick={openCreate} className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
@@ -356,14 +357,14 @@ export const PaymentScreen: React.FC = () => {
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-3">
         <div className="relative w-full lg:w-80">
           <Search className="w-4 h-4 text-[var(--erp-muted)] absolute left-3 top-2.5" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search payment no, UTR, customer…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search payment no, UTR, party…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
         </div>
         <select value={modeFilter} onChange={e => setModeFilter(e.target.value)} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs">
           <option value="">All modes</option>
           {PAYMENT_MODES.map(s => <option key={s}>{s}</option>)}
         </select>
-        {listCustomerFilter ? (
-          <button type="button" onClick={() => setListCustomerFilter('')} className="text-[11px] font-mono text-[var(--erp-gold)] hover:underline cursor-pointer">
+        {listPartyFilter ? (
+          <button type="button" onClick={() => setListPartyFilter('')} className="text-[11px] font-mono text-[var(--erp-gold)] hover:underline cursor-pointer">
             Clear customer filter
           </button>
         ) : null}
@@ -395,9 +396,9 @@ export const PaymentScreen: React.FC = () => {
             </div>
             <RequiredLegend />
             <section>
-              <h4 className={sectionTitle}>Customer</h4>
+              <h4 className={sectionTitle}>Party</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField label="Entity" required error={fieldMessages.entity_id}>
+                <FormField label="Branch" required error={fieldMessages.entity_id}>
                   <select
                     value={entityId}
                     onChange={e => {
@@ -408,13 +409,13 @@ export const PaymentScreen: React.FC = () => {
                     }}
                     className={selectClass}
                   >
-                    <option value="">Select entity…</option>
+                    <option value="">Select branch…</option>
                     {entities.map(ent => (
                       <option key={ent.id} value={ent.id}>{ent.short_code} · {ent.entity_name}</option>
                     ))}
                   </select>
                 </FormField>
-                <FormField label="Customer" required error={fieldMessages.customer_id}>
+                <FormField label="Party" required error={fieldMessages.customer_id}>
                   <select
                     value={customerId}
                     disabled={!entityId}
@@ -425,7 +426,7 @@ export const PaymentScreen: React.FC = () => {
                     }}
                     className={selectClass}
                   >
-                    <option value="">Select customer…</option>
+                    <option value="">Select party…</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>{c.customer_code} · {c.customer_name}</option>
                     ))}
@@ -490,7 +491,7 @@ export const PaymentScreen: React.FC = () => {
                 </div>
               ) : (
                 <p className="text-xs font-mono text-[var(--erp-muted)]">
-                  {customerId ? 'No outstanding invoices. Unallocated amount will be held as Advance/Credit.' : 'Select a customer to see outstanding invoices.'}
+                  {customerId ? 'No outstanding invoices. Unallocated amount will be held as Advance/Credit.' : 'Select a party to see outstanding invoices.'}
                 </p>
               )}
               <div className="mt-4 flex flex-wrap justify-end gap-6 font-mono text-sm border-t border-[var(--erp-hairline)] pt-3">

@@ -1,4 +1,4 @@
-"""Customer payments and invoice allocations."""
+"""Party payments and invoice allocations."""
 
 from datetime import date
 from decimal import Decimal

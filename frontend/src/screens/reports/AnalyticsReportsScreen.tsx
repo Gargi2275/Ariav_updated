@@ -10,7 +10,7 @@ import { notifyApiError } from '../../services/notify';
 import { BrandStatementReport } from './BrandStatementReport';
 import {
   BrandPerfRow,
-  CustomerPerfRow,
+  PartyPerfRow,
   EntityPerfRow,
   OutstandingRow,
   ReportFilters,
@@ -127,7 +127,7 @@ export const AnalyticsReportsScreen: React.FC = () => {
           <input type="date" value={to} onChange={e => setTo(e.target.value)} className="px-2 py-1.5 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]" />
         </label>
         <p className="text-[11px] font-mono text-[var(--erp-muted)] pb-1.5">
-          Entity: <span className="text-[var(--erp-text)]">{selectedBranch.name}</span>
+          Branch: <span className="text-[var(--erp-text)]">{selectedBranch.name}</span>
           <span className="text-[var(--erp-muted)]"> (header)</span>
         </p>
       </div>}
@@ -227,8 +227,8 @@ function ReportBody({ tab, payload }: { tab: ReportTab; payload: unknown }) {
     const rows = (data.rows || []) as OutstandingRow[];
     const columns: Column<OutstandingRow>[] = [
       { header: 'Code', accessorKey: 'customer_code', mono: true, sortable: true },
-      { header: 'Customer', accessorKey: 'customer_name', sortable: true },
-      { header: 'Entity', render: r => r.entity_short_code ? `${r.entity_short_code} · ${r.entity_name}` : '—' },
+      { header: 'Party', accessorKey: 'customer_name', sortable: true },
+      { header: 'Branch', render: r => r.entity_short_code ? `${r.entity_short_code} · ${r.entity_name}` : '—' },
       { header: 'Outstanding', accessorKey: 'outstanding_balance', align: 'right', mono: true, sortable: true, render: r => money(r.outstanding_balance) },
       { header: 'Overdue', accessorKey: 'overdue_amount', align: 'right', mono: true, sortable: true, render: r => money(r.overdue_amount) },
       { header: 'Oldest overdue', accessorKey: 'oldest_overdue_days', align: 'center', mono: true, sortable: true, render: r => r.oldest_overdue_days > 0 ? `${r.oldest_overdue_days}d` : '—' },
@@ -244,9 +244,9 @@ function ReportBody({ tab, payload }: { tab: ReportTab; payload: unknown }) {
   }
 
   if (tab === 'customer') {
-    const rows = (data.rows || []) as CustomerPerfRow[];
-    const columns: Column<CustomerPerfRow>[] = [
-      { header: 'Customer', accessorKey: 'customer_name', sortable: true, render: r => (
+    const rows = (data.rows || []) as PartyPerfRow[];
+    const columns: Column<PartyPerfRow>[] = [
+      { header: 'Party', accessorKey: 'customer_name', sortable: true, render: r => (
         <span>{r.customer_name}<span className="block text-[11px] font-mono text-[var(--erp-muted)]">{r.customer_code}</span></span>
       ) },
       { header: 'Orders', accessorKey: 'total_orders', align: 'center', mono: true, sortable: true },
@@ -292,10 +292,10 @@ function ReportBody({ tab, payload }: { tab: ReportTab; payload: unknown }) {
 
   const rows = (data.rows || []) as EntityPerfRow[];
   const columns: Column<EntityPerfRow>[] = [
-    { header: 'Entity', accessorKey: 'short_code', sortable: true, render: r => `${r.short_code} · ${r.entity_name}` },
+    { header: 'Branch', accessorKey: 'short_code', sortable: true, render: r => `${r.short_code} · ${r.entity_name}` },
     { header: 'Sales', accessorKey: 'total_sales', align: 'right', mono: true, sortable: true, render: r => money(r.total_sales) },
     { header: 'Orders', accessorKey: 'total_orders', align: 'center', mono: true, sortable: true },
-    { header: 'Customers', accessorKey: 'total_customers', align: 'center', mono: true, sortable: true },
+    { header: 'Parties', accessorKey: 'total_customers', align: 'center', mono: true, sortable: true },
     { header: 'Outstanding', accessorKey: 'total_outstanding', align: 'right', mono: true, sortable: true, render: r => money(r.total_outstanding) },
     { header: 'Overdue', accessorKey: 'total_overdue', align: 'right', mono: true, sortable: true, render: r => money(r.total_overdue) },
   ];

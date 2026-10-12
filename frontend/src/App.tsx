@@ -35,8 +35,8 @@ import { InvoiceScreen } from './screens/core/InvoiceScreen';
 import { PaymentScreen } from './screens/core/PaymentScreen';
 import { PaymentAdjustmentsScreen } from './screens/core/PaymentAdjustmentsScreen';
 import { NotificationsScreen } from './screens/core/NotificationsScreen';
-import { CustomerLedgerScreen } from './screens/core/CustomerLedgerScreen';
-import { Customer360Screen } from './screens/core/Customer360Screen';
+import { PartyLedgerScreen } from './screens/core/CustomerLedgerScreen';
+import { Party360Screen } from './screens/core/Customer360Screen';
 
 // Masters Screens (21 - 28)
 import { EntityMasterScreen } from './screens/masters/EntityMasterScreen';
@@ -44,7 +44,7 @@ import { BrandMasterScreen } from './screens/masters/BrandMasterScreen';
 import { CategoryMasterScreen } from './screens/masters/CategoryMasterScreen';
 import { ProductCatalogueScreen } from './screens/masters/ProductCatalogueScreen';
 import { PriceListScreen } from './screens/masters/PriceListScreen';
-import { CustomerMasterScreen } from './screens/masters/CustomerMasterScreen';
+import { PartyMasterScreen } from './screens/masters/PartyMasterScreen';
 import { ItemMasterScreen } from './screens/masters/ItemMasterScreen';
 import { GroupProductScreen } from './screens/masters/GroupProductScreen';
 import { ParametersScreen } from './screens/masters/ParametersScreen';
@@ -109,9 +109,9 @@ const ScreenDispatcher: React.FC = () => {
     case 15:
       return <PaymentVoucherScreen />;
     case 44:
-      return <CustomerLedgerScreen />;
+      return <PartyLedgerScreen />;
     case 48:
-      return <Customer360Screen />;
+      return <Party360Screen />;
     case 17:
       return <CreditDebitNoteScreen />;
     case 18:
@@ -137,7 +137,7 @@ const ScreenDispatcher: React.FC = () => {
     case 22:
       return <GroupProductScreen />;
     case 23:
-      return <CustomerMasterScreen />;
+      return <PartyMasterScreen />;
     case 25:
       return <ParametersScreen />;
     case 26:

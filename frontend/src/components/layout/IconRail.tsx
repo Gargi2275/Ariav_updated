@@ -68,7 +68,7 @@ export const IconRail: React.FC = () => {
     {
       id: 'journal-ledgers',
       label: 'Ledgers',
-      title: 'Customer Ledger & Journals',
+      title: 'Party Ledger & Journals',
       icon: <Scale className="w-5 h-5 stroke-[1.75]" />,
       screenIds: [44, 48],
       primaryScreenId: 44

@@ -15,9 +15,9 @@ def is_admin_user(user) -> bool:
 def customers_visible_to(user):
     """Customers whose Purchase Orders, Dispatches, Invoices and Payments this user may see.
 
-    Admin: every Customer. Operator: Customers on at least one Purchase Order,
+    Admin: every Party. Operator: Customers on at least one Purchase Order,
     Invoice, Payment or Dispatch the operator created. Anyone else: none.
-    Returns a lazy Customer queryset so callers can use it as a subquery.
+    Returns a lazy Party queryset so callers can use it as a subquery.
     """
     from customers.models import Customer
     from dispatches.models import Dispatch

@@ -57,7 +57,7 @@ type LineDraft = {
 };
 
 export const InvoiceScreen: React.FC = () => {
-  const { userRole } = useErp();
+  const { userRole, selectedEntityId } = useErp();
   const canWrite = userRole === 'admin' || userRole === 'operator';
   const canCancel = userRole === 'admin';
 
@@ -101,6 +101,7 @@ export const InvoiceScreen: React.FC = () => {
         status: statusFilter || undefined,
         search: search || undefined,
         customer_id: customerFilter || undefined,
+        entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
       }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load invoices.');
@@ -108,7 +109,7 @@ export const InvoiceScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, search, customerFilter]);
+  }, [statusFilter, search, customerFilter, selectedEntityId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -258,7 +259,7 @@ export const InvoiceScreen: React.FC = () => {
 
   const columns: Column<InvoiceRow>[] = [
     { header: 'Invoice No', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.invoice_number}</span> },
-    { header: 'Customer', render: r => <span>{r.customer_name}</span> },
+    { header: 'Party', render: r => <span>{r.customer_name}</span> },
     { header: 'Code', accessorKey: 'customer_code', mono: true, width: '110px' },
     { header: 'PO Number', render: r => <span className="font-mono">{r.po_number}</span> },
     { header: 'Invoice Date', accessorKey: 'invoice_date', mono: true, width: '110px' },
@@ -305,7 +306,7 @@ export const InvoiceScreen: React.FC = () => {
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-3">
         <div className="relative w-full lg:w-80">
           <Search className="w-4 h-4 text-[var(--erp-muted)] absolute left-3 top-2.5" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoice, customer code, PO…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoice, party code, PO…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
         </div>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs">
           <option value="">All statuses</option>

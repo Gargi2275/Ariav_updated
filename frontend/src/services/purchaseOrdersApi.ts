@@ -59,6 +59,9 @@ export interface PurchaseOrderLineRow {
   pending_quantity?: string | number;
   total_invoiced?: string | number;
   invoiceable_quantity?: string | number;
+  expected_delivery_period?: string;
+  customer_delivery_date?: string | null;
+  extra_data?: Record<string, unknown>;
 }
 
 export type POOrderType = 'Digital' | 'Manual';
@@ -80,6 +83,8 @@ export interface PurchaseOrderRow {
   po_date: string;
   status: POStatus | string;
   remarks: string;
+  source_format?: string;
+  extra_data?: Record<string, unknown>;
   handy_form_upload?: string | null;
   handy_form_url: string;
   lines: PurchaseOrderLineRow[];
@@ -178,7 +183,11 @@ async function sendPo(id: number | undefined, body: Record<string, unknown>, fil
 export interface PoImportLine {
   description: string;
   quantity: string | number;
-  rate: null;
+  rate: string | number | null;
+  row_number?: number;
+  expected_delivery_period?: string;
+  customer_delivery_date?: string | null;
+  extra_data?: Record<string, unknown>;
 }
 
 export interface PoImportable {
@@ -188,6 +197,9 @@ export interface PoImportable {
   matched_customer_id: number;
   line_count: number;
   lines: PoImportLine[];
+  po_date?: string;
+  remarks?: string;
+  extra_data?: Record<string, unknown>;
 }
 
 export interface PoImportExcluded {
@@ -205,6 +217,10 @@ export interface PoImportPreview {
   importable: PoImportable[];
   excluded: PoImportExcluded[];
   warnings: string[];
+  errors: string[];
+  format_id: string;
+  format_name: string;
+  allowed_formats: { id: string; name: string }[];
 }
 
 export interface PoImportCommitResult {
@@ -258,12 +274,14 @@ export const purchaseOrdersApi = {
     entityId: number;
     brandId: number;
     file: File;
+    formatId?: string;
   }): Promise<PoImportPreview> => {
     const token = localStorage.getItem('ariav_auth_token');
     const fd = new FormData();
     fd.append('entity_id', String(args.entityId));
     fd.append('brand_id', String(args.brandId));
     fd.append('file', args.file);
+    if (args.formatId) fd.append('format_id', args.formatId);
     const res = await fetch(apiUrl('/api/purchase-orders/import/preview/'), {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},

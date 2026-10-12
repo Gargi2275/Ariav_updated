@@ -1,4 +1,4 @@
-"""Invoice PDF — Entity letterhead, customer code, PO reference, totals."""
+"""Invoice PDF — Branch letterhead, party code, PO reference, totals."""
 
 from io import BytesIO
 
@@ -161,13 +161,13 @@ def build_invoice_pdf(invoice: Invoice) -> bytes:
     cust_addr = _customer_address(invoice.customer)
     parties = [
         [
-            Paragraph("<b>Customer</b>", small),
+            Paragraph("<b>Party</b>", small),
             Paragraph("<b>References</b>", small),
         ],
         [
             Paragraph(
                 f"{invoice.customer.customer_name}<br/>"
-                f"Customer Code {invoice.customer_code}"
+                f"Party Code {invoice.customer_code}"
                 + (f"<br/>{cust_addr}" if cust_addr else ""),
                 body,
             ),

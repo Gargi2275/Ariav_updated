@@ -14,7 +14,10 @@ def main():
     venv_py = _venv_python()
     current = Path(sys.executable).resolve()
     if venv_py.exists() and current != venv_py.resolve():
-        raise SystemExit(subprocess.call([str(venv_py), *sys.argv]))
+        try:
+            raise SystemExit(subprocess.call([str(venv_py), *sys.argv]))
+        except KeyboardInterrupt:
+            raise SystemExit(130)
 
     from django.core.management import execute_from_command_line
 

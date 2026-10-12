@@ -49,7 +49,7 @@ export const OrderFormScreen: React.FC = () => {
   const [orderNo, setOrderNo] = useState('SO-2025-1083');
   const [orderDate, setOrderDate] = useState('2026-09-08');
   const [deliveryDate, setDeliveryDate] = useState('2026-09-22');
-  const [partyId, setPartyId] = useState(parties[0]?.id || '');
+  const [partyId, setCustomerId] = useState(parties[0]?.id || '');
   const [itemId, setItemId] = useState(items[0]?.id || '');
   const [quantityMeters, setQuantityMeters] = useState('12000');
   const [ratePerMeter, setRatePerMeter] = useState('48.50');
@@ -196,7 +196,7 @@ export const OrderFormScreen: React.FC = () => {
       badge: 'INDEX'
     },
     {
-      label: 'Entity Brokerage',
+      label: 'Branch Brokerage',
       value: '₹9.64 L',
       subValue: '2.00% Flat Rate',
       trend: 'neutral',
@@ -456,7 +456,7 @@ export const OrderFormScreen: React.FC = () => {
             <PartyPicker
               label="Billing Party (Debtor Mill / Wholesaler)"
               selectedPartyId={partyId}
-              onSelect={setPartyId}
+              onSelect={setCustomerId}
             />
 
             <div className="flex flex-col gap-1 text-left">
@@ -577,7 +577,7 @@ export const OrderFormScreen: React.FC = () => {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search by order #, mill party, broker, or fabric quality..."
+                placeholder="Search by order #, mill customer, broker, or fabric quality..."
                 className="w-full pl-9 pr-3 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] placeholder-[var(--erp-muted)] focus:outline-none focus:border-[var(--erp-gold)]"
               />
             </div>
@@ -646,7 +646,7 @@ export const OrderFormScreen: React.FC = () => {
                   <div className="h-full bg-[var(--erp-gold)] transition-all duration-200" style={{ width: `${uploadProgress}%` }} />
                 </div>
                 <span className="text-[10px] font-mono text-[var(--erp-muted)]">
-                  Validating GSTIN party IDs &bull; Checking fabric construction schemas &bull; Verifying credit limits
+                  Validating GSTIN customer IDs &bull; Checking fabric construction schemas &bull; Verifying credit limits
                 </span>
               </div>
             )}

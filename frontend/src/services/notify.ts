@@ -2,7 +2,7 @@
  * Ariav toast helpers. Use these (or parseApiError) in every new module —
  * never dump DRF JSON into a modal banner.
  *
- * Success: notifySuccess(`Entity '${name}' created successfully.`)
+ * Success: notifySuccess(`Branch '${name}' created successfully.`)
  * Failure: notifyApiError(err)  // toasts + returns { message, fields }
  */
 import { toast } from 'react-toastify';

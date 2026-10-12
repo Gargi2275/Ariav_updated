@@ -104,7 +104,7 @@ export interface OutstandingRow {
   oldest_overdue_days: number;
 }
 
-export interface CustomerPerfRow {
+export interface PartyPerfRow {
   customer_id: number;
   customer_code: string;
   customer_name: string;
@@ -149,7 +149,7 @@ export const reportsApi = {
   outstanding: (f: ReportFilters) =>
     request<ReportEnvelope<OutstandingRow>>(`/api/reports/outstanding-report/?${qs(f)}`),
   customer: (f: ReportFilters) =>
-    request<ReportEnvelope<CustomerPerfRow>>(`/api/reports/customer-performance/?${qs(f)}`),
+    request<ReportEnvelope<PartyPerfRow>>(`/api/reports/customer-performance/?${qs(f)}`),
   brand: (f: ReportFilters) =>
     request<ReportEnvelope<BrandPerfRow>>(`/api/reports/brand-performance/?${qs(f)}`),
   entity: (f: ReportFilters) =>

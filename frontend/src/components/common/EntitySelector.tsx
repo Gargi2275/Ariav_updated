@@ -24,8 +24,8 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   showRollupToggle = true,
   excludeIds = [],
   allowEmpty = true,
-  emptyLabel = 'All entities',
-  label = 'Entity',
+  emptyLabel = 'All branches',
+  label = 'Branch',
   disabled = false,
   status = 'Active',
   compact = false,
@@ -101,7 +101,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
               </button>
             ))}
             {filtered.length === 0 && (
-              <p className="px-3 py-2 text-xs font-mono text-[var(--erp-muted)]">No matching entities</p>
+              <p className="px-3 py-2 text-xs font-mono text-[var(--erp-muted)]">No matching branches</p>
             )}
           </div>
         </div>
@@ -113,7 +113,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
             checked={includeSubEntities}
             onChange={e => onIncludeSubEntitiesChange(e.target.checked)}
           />
-          Include sub-entities (roll-up)
+          Include sub-branches (roll-up)
         </label>
       )}
     </div>

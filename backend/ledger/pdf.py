@@ -1,4 +1,4 @@
-"""Customer ledger statement PDF."""
+"""Party ledger statement PDF."""
 
 from io import BytesIO
 
@@ -61,7 +61,7 @@ def build_customer_ledger_pdf(customer, payload: dict) -> bytes:
         rightMargin=16 * mm,
         topMargin=14 * mm,
         bottomMargin=16 * mm,
-        title=f"Customer Ledger {customer.customer_code}",
+        title=f"Party Ledger {customer.customer_code}",
     )
     styles = getSampleStyleSheet()
     title = ParagraphStyle(
@@ -124,9 +124,9 @@ def build_customer_ledger_pdf(customer, payload: dict) -> bytes:
         if meta:
             story.append(Paragraph(meta, subtitle))
     else:
-        story.append(Paragraph("Customer Ledger", title))
+        story.append(Paragraph("Party Ledger", title))
     story.append(Spacer(1, 6))
-    story.append(Paragraph("CUSTOMER LEDGER STATEMENT", heading))
+    story.append(Paragraph("PARTY LEDGER STATEMENT", heading))
 
     range_label = "Full history"
     if payload.get("date_from") or payload.get("date_to"):
@@ -134,7 +134,7 @@ def build_customer_ledger_pdf(customer, payload: dict) -> bytes:
     cust_addr = _customer_address(customer)
     story.append(
         Paragraph(
-            f"<b>{customer.customer_name}</b><br/>Customer Code {customer.customer_code}"
+            f"<b>{customer.customer_name}</b><br/>Party Code {customer.customer_code}"
             + (f"<br/>{cust_addr}" if cust_addr else "")
             + f"<br/>Period {range_label}",
             body,

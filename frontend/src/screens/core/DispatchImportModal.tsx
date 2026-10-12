@@ -180,7 +180,7 @@ export const DispatchImportModal: React.FC<DispatchImportModalProps> = ({ onClos
                       <tr>
                         <th className="px-3 py-2 w-8" />
                         <th className="px-3 py-2">PO Number</th>
-                        <th className="px-3 py-2">Entity / Customer</th>
+                        <th className="px-3 py-2">Branch / Party</th>
                         <th className="px-3 py-2">Invoice / LR</th>
                         <th className="px-3 py-2">Transport</th>
                         <th className="px-3 py-2 text-right">Lines</th>

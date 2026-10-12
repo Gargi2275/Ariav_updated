@@ -10,18 +10,18 @@ import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterSt
 import { num } from '../../services/mastersApi';
 import { notifyApiError } from '../../services/notify';
 import {
-  CUSTOMER_360_KEY,
-  CUSTOMER_LEDGER_KEY,
-  Customer360DispatchRow,
-  Customer360InvoiceRow,
-  Customer360Payload,
-  Customer360PaymentRow,
-  Customer360PurchaseRow,
-  Customer360TrendRow,
-  CustomerLedgerEntry,
+  PARTY_360_KEY,
+  PARTY_LEDGER_KEY,
+  Party360DispatchRow,
+  Party360InvoiceRow,
+  Party360Payload,
+  Party360PaymentRow,
+  Party360PurchaseRow,
+  Party360TrendRow,
+  PartyLedgerEntry,
   CustomerRow,
   customersApi,
-  writeCustomerListFilter,
+  writePartyListFilter,
 } from '../../services/customersApi';
 import { LEDGER_OPEN_INVOICE_KEY } from '../../services/invoicesApi';
 import { LEDGER_OPEN_PAYMENT_KEY } from '../../services/paymentsApi';
@@ -65,7 +65,7 @@ function typeChip(type: string): StatusChipType | string {
   return 'pending';
 }
 
-export const Customer360Screen: React.FC = () => {
+export const Party360Screen: React.FC = () => {
   const { navigateTo } = useErp();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
@@ -74,7 +74,7 @@ export const Customer360Screen: React.FC = () => {
   const [dateTo, setDateTo] = useState('');
   const [appliedFrom, setAppliedFrom] = useState('');
   const [appliedTo, setAppliedTo] = useState('');
-  const [payload, setPayload] = useState<Customer360Payload | null>(null);
+  const [payload, setPayload] = useState<Party360Payload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<TabId>('basic');
@@ -85,7 +85,7 @@ export const Customer360Screen: React.FC = () => {
       const rows = await customersApi.list({ status: 'Active', scope: 'visible' });
       setCustomers(Array.isArray(rows) ? rows : []);
     } catch (e) {
-      notifyApiError(e, 'Could not load customers.');
+      notifyApiError(e, 'Could not load parties.');
       setCustomers([]);
     } finally {
       setListLoading(false);
@@ -109,9 +109,9 @@ export const Customer360Screen: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(CUSTOMER_360_KEY);
+    const raw = sessionStorage.getItem(PARTY_360_KEY);
     if (!raw) return;
-    sessionStorage.removeItem(CUSTOMER_360_KEY);
+    sessionStorage.removeItem(PARTY_360_KEY);
     const id = Number(raw);
     if (!id) return;
     setCustomerId(id);
@@ -127,13 +127,13 @@ export const Customer360Screen: React.FC = () => {
 
   const openLedger = () => {
     if (!customerId) return;
-    sessionStorage.setItem(CUSTOMER_LEDGER_KEY, String(customerId));
+    sessionStorage.setItem(PARTY_LEDGER_KEY, String(customerId));
     navigateTo(44);
   };
 
   const viewAll = (screenId: number) => {
     if (!customerId) return;
-    writeCustomerListFilter(Number(customerId));
+    writePartyListFilter(Number(customerId));
     navigateTo(screenId);
   };
 
@@ -154,7 +154,7 @@ export const Customer360Screen: React.FC = () => {
       ]
     : [];
 
-  const purchaseCols: Column<Customer360PurchaseRow>[] = [
+  const purchaseCols: Column<Party360PurchaseRow>[] = [
     { header: 'PO', render: r => (
       <button type="button" className="font-mono text-[var(--erp-gold)] hover:underline cursor-pointer" onClick={() => { sessionStorage.setItem(OPEN_PO_KEY, String(r.id)); navigateTo(40); }}>{r.po_number}</button>
     ) },
@@ -164,7 +164,7 @@ export const Customer360Screen: React.FC = () => {
     { header: 'Amount', align: 'right', mono: true, width: '120px', render: r => money(r.total_amount) },
   ];
 
-  const dispatchCols: Column<Customer360DispatchRow>[] = [
+  const dispatchCols: Column<Party360DispatchRow>[] = [
     { header: 'Date', accessorKey: 'dispatch_date', mono: true, width: '110px' },
     { header: 'LR', render: r => (
       <button type="button" className="font-mono text-[var(--erp-gold)] hover:underline cursor-pointer" onClick={() => { sessionStorage.setItem(OPEN_DISPATCH_KEY, String(r.id)); navigateTo(41); }}>{r.lr_number || '—'}</button>
@@ -173,7 +173,7 @@ export const Customer360Screen: React.FC = () => {
     { header: 'PO', accessorKey: 'po_number', mono: true },
   ];
 
-  const invoiceCols: Column<Customer360InvoiceRow>[] = [
+  const invoiceCols: Column<Party360InvoiceRow>[] = [
     { header: 'Invoice', render: r => (
       <button type="button" className="font-mono text-[var(--erp-gold)] hover:underline cursor-pointer" onClick={() => { sessionStorage.setItem(LEDGER_OPEN_INVOICE_KEY, String(r.id)); navigateTo(42); }}>{r.invoice_number}</button>
     ) },
@@ -183,7 +183,7 @@ export const Customer360Screen: React.FC = () => {
     { header: 'Outstanding', align: 'right', mono: true, width: '120px', render: r => money(r.remaining_balance) },
   ];
 
-  const paymentCols: Column<Customer360PaymentRow>[] = [
+  const paymentCols: Column<Party360PaymentRow>[] = [
     { header: 'Payment', render: r => (
       <button type="button" className="font-mono text-[var(--erp-gold)] hover:underline cursor-pointer" onClick={() => { sessionStorage.setItem(LEDGER_OPEN_PAYMENT_KEY, String(r.id)); navigateTo(43); }}>{r.payment_number}</button>
     ) },
@@ -193,7 +193,7 @@ export const Customer360Screen: React.FC = () => {
     { header: 'Unallocated', align: 'right', mono: true, width: '120px', render: r => money(r.unallocated_amount) },
   ];
 
-  const ledgerCols: Column<CustomerLedgerEntry>[] = [
+  const ledgerCols: Column<PartyLedgerEntry>[] = [
     { header: 'Date', accessorKey: 'date', mono: true, width: '110px' },
     { header: 'Type', width: '120px', render: r => <StatusChip status={typeChip(String(r.type))} label={String(r.type).toUpperCase()} /> },
     { header: 'Reference', accessorKey: 'reference', mono: true },
@@ -211,7 +211,7 @@ export const Customer360Screen: React.FC = () => {
       <PageHeader
         moduleNumber="48"
         section="Ledgers"
-        title="Customer 360°"
+        title="Party 360°"
         subtitle="Aggregated profile — purchases, invoices, payments and ledger KPIs"
         actions={
           customerId ? (
@@ -239,10 +239,10 @@ export const Customer360Screen: React.FC = () => {
               className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none disabled:opacity-60"
             >
               {noCustomers ? (
-                <option value="">No customers found — add one in Customer Master</option>
+                <option value="">No parties found — add one in Party Master</option>
               ) : (
                 <>
-                  <option value="">Select customer…</option>
+                  <option value="">Select party…</option>
                   {customers.map(c => (
                     <option key={c.id} value={c.id}>{c.customer_code} · {c.customer_name}</option>
                   ))}
@@ -287,11 +287,11 @@ export const Customer360Screen: React.FC = () => {
           </div>
           <p className="text-xs font-mono text-[var(--erp-muted)] text-center max-w-md">
             {noCustomers
-              ? 'No customers found — add one in Customer Master'
+              ? 'No parties found — add one in Party Master'
               : 'Select a customer to open their 360° profile.'}
           </p>
           {noCustomers ? (
-            <button type="button" onClick={() => navigateTo(23)} className={GOLD_BTN}>Open Customer Master</button>
+            <button type="button" onClick={() => navigateTo(23)} className={GOLD_BTN}>Open Party Master</button>
           ) : null}
         </div>
       ) : loading ? (
@@ -432,7 +432,7 @@ export const Customer360Screen: React.FC = () => {
                   { header: 'Product', render: r => <span><span className="font-mono text-[var(--erp-gold)]">{r.product_code}</span> · {r.product_name}</span> },
                   { header: 'Qty', align: 'right', mono: true, width: '100px', render: r => num(r.total_qty).toLocaleString('en-IN') },
                   { header: 'Value', align: 'right', mono: true, width: '120px', render: r => money(r.total_value) },
-                ] as Column<Customer360TrendRow>[]}
+                ] as Column<Party360TrendRow>[]}
                 data={trends}
                 keyExtractor={r => r.product_id}
                 {...emptyTableProps(trends.length, trends.length, 'No invoiced products yet.', 'No invoiced products in this date range.', '', () => undefined)}

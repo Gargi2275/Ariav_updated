@@ -3,6 +3,7 @@ from io import BytesIO
 from openpyxl import Workbook
 
 
+# External file header: do not rename
 CLIENT_HEADERS = [
     "CompanyCd", "Area", "Agent", "Order Code", "Template Code", "InvoiceLineNo",
     "Invoice Date", "Invoice No.", "CustomerCd", "Customer Name", "Customer City",

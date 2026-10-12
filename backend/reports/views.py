@@ -50,7 +50,7 @@ def _parse_filters(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if not Entity.objects.filter(pk=entity_id).exists():
-            return Response({"detail": "Entity not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
     return date_from, date_to, entity_id
 
 

@@ -33,7 +33,7 @@ export const CreditDebitNoteScreen: React.FC = () => {
       'notice'
     );
     showFlash(`${typeLabel} ${noteNo} posted against ${originalInvoiceNo}`, 'positive');
-    navigateTo(26); // Go to Party Ledger
+    navigateTo(26); // Go to Customer Ledger
   };
 
   return (
@@ -104,7 +104,7 @@ export const CreditDebitNoteScreen: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-5">
           <PartyPicker
-            label={noteType === 'credit' ? 'Customer Account (Debtor)' : 'Supplier Account (Creditor)'}
+            label={noteType === 'credit' ? 'Party Account (Debtor)' : 'Supplier Account (Creditor)'}
             selectedPartyId={selectedPartyId}
             onSelect={setSelectedPartyId}
           />

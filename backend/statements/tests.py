@@ -164,5 +164,12 @@ class StatementLoadTests(TestCase):
                 f"/api/customers/{self.customer.id}/statement/",
                 {"entity_id": self.entity.id},
             ).status_code,
-            403,
+            404,
+        )
+        self.assertEqual(
+            self.client.get(
+                f"/api/customers/{self.customer.id}/statement-summary/",
+                {"entity_id": self.entity.id},
+            ).status_code,
+            404,
         )

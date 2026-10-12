@@ -47,7 +47,7 @@ function findNode(nodes: EntityTreeNode[], id: number): EntityTreeNode | null {
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
 
 function activeChildrenBlockMessage(name: string, count: number): string {
-  const noun = count === 1 ? 'child entity' : 'child entities';
+  const noun = count === 1 ? 'child branch' : 'child branches';
   return `Cannot deactivate ${name}: it has ${count} active ${noun}. Deactivate or re-parent them first.`;
 }
 
@@ -87,7 +87,7 @@ export const EntityMasterScreen: React.FC = () => {
     try {
       setTree(await entitiesApi.tree(statusFilter === 'All' ? {} : { status: statusFilter }));
     } catch (e) {
-      const parsed = notifyApiError(e, 'Could not load entities.');
+      const parsed = notifyApiError(e, 'Could not load branches.');
       setError(parsed.message);
     } finally {
       setLoading(false);
@@ -147,7 +147,7 @@ export const EntityMasterScreen: React.FC = () => {
       setFieldMessages({});
       setModalOpen(true);
     } catch (e) {
-      notifyApiError(e, 'Could not load entity.');
+      notifyApiError(e, 'Could not load branch.');
     }
   };
 
@@ -155,7 +155,7 @@ export const EntityMasterScreen: React.FC = () => {
     try {
       setDetail(await entitiesApi.retrieve(id));
     } catch (e) {
-      notifyApiError(e, 'Could not load entity details.');
+      notifyApiError(e, 'Could not load branch details.');
     }
   };
 
@@ -166,10 +166,10 @@ export const EntityMasterScreen: React.FC = () => {
     try {
       if (payload.id) {
         await entitiesApi.update(payload.id, payload);
-        notifySuccess(`Entity '${payload.entity_name}' updated.`);
+        notifySuccess(`Branch '${payload.entity_name}' updated.`);
       } else {
         await entitiesApi.create(payload);
-        notifySuccess(`Entity '${payload.entity_name}' created successfully.`);
+        notifySuccess(`Branch '${payload.entity_name}' created successfully.`);
       }
       setModalOpen(false);
       setPendingDeactivate(null);
@@ -214,12 +214,12 @@ export const EntityMasterScreen: React.FC = () => {
       <PageHeader
         moduleNumber="36"
         section="Masters"
-        title="Entity Master"
-        subtitle="Multi-level parent–child entities for Gujarat, Aditi and Shriva"
+        title="Branch Master"
+        subtitle="Multi-level parent–child branches for Gujarat, Aditi and Shriva"
         actions={
           canWrite ? (
             <button type="button" onClick={() => openCreate(null)} className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
-              <Plus className="w-3.5 h-3.5" /> Add Entity
+              <Plus className="w-3.5 h-3.5" /> Add Branch
             </button>
           ) : undefined
         }
@@ -238,11 +238,11 @@ export const EntityMasterScreen: React.FC = () => {
       </div>
 
       {loading ? (
-        <MasterLoading label="Loading entity tree…" rows={8} />
+        <MasterLoading label="Loading branch tree…" rows={8} />
       ) : (
         <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] overflow-hidden">
           <div className="bg-[var(--erp-surface-2)] border-b border-[var(--erp-hairline-strong)] px-4 py-2.5 font-mono text-xs text-[var(--erp-muted)] flex justify-between">
-            <span>ENTITY HIERARCHY</span>
+            <span>BRANCH HIERARCHY</span>
             <div className="flex items-center gap-8">
               <span className="w-24">TYPE</span>
               <span className="w-20">STATUS</span>
@@ -252,8 +252,8 @@ export const EntityMasterScreen: React.FC = () => {
           {visible.length === 0 ? (
             <div className="py-12 text-center text-xs font-mono text-[var(--erp-muted)]">
               {statusFilter !== 'All' || search.trim()
-                ? 'No entities match this filter.'
-                : 'No entities configured yet.'}
+                ? 'No branches match this filter.'
+                : 'No branches configured yet.'}
             </div>
           ) : (
             <div className="divide-y divide-[var(--erp-hairline)]">
@@ -280,7 +280,7 @@ export const EntityMasterScreen: React.FC = () => {
                         </span>
                       )}
                     </button>
-                    <span className="font-mono text-[var(--erp-muted)] w-24">{node.entity_type}</span>
+                    <span className="font-mono text-[var(--erp-muted)] w-24">{node.entity_type === 'Branch' ? 'Branch' : node.entity_type}</span>
                     <span className="w-20">
                       <span className={`font-mono text-[10px] ${contextOnly || node.status !== 'Active' ? 'text-[var(--erp-muted)]' : 'text-[var(--erp-positive)]'}`}>{node.status.toUpperCase()}</span>
                     </span>
@@ -318,7 +318,7 @@ export const EntityMasterScreen: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <form noValidate onSubmit={save} className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-6">
             <div className="flex justify-between border-b border-[var(--erp-hairline)] pb-3 sticky top-0 bg-[var(--erp-surface)] z-10">
-              <h3 className="font-display text-lg font-bold">{form.id ? 'Edit Entity' : 'Add Entity'}</h3>
+              <h3 className="font-display text-lg font-bold">{form.id ? 'Edit Branch' : 'Add Branch'}</h3>
               <button type="button" onClick={() => setModalOpen(false)}><X className="w-4 h-4" /></button>
             </div>
             <RequiredLegend />
@@ -340,7 +340,7 @@ export const EntityMasterScreen: React.FC = () => {
                   }}
                 />
                 <TextInput
-                  label="Entity name"
+                  label="Branch name"
                   required
                   error={fieldMessages.entity_name}
                   invalid={fieldErrors.includes('entity_name')}
@@ -351,7 +351,7 @@ export const EntityMasterScreen: React.FC = () => {
                     setFieldMessages(prev => clearFieldMessage(prev, 'entity_name'));
                   }}
                 />
-                <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Entity type
+                <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Branch type
                   <select value={form.entity_type || 'Branch'} onChange={e => setForm({ ...form, entity_type: e.target.value })} className="px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]">
                     {ENTITY_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
@@ -370,7 +370,7 @@ export const EntityMasterScreen: React.FC = () => {
             <section>
               <h4 className={sectionTitle}>Hierarchy</h4>
               <EntitySelector
-                label="Parent entity"
+                label="Parent branch"
                 value={form.parent_entity_id ?? null}
                 onChange={id => setForm({ ...form, parent_entity_id: id })}
                 excludeIds={parentExcludeIds}
@@ -379,7 +379,7 @@ export const EntityMasterScreen: React.FC = () => {
                 showRollupToggle={false}
                 status=""
               />
-              <p className="text-[11px] font-mono text-[var(--erp-muted)] mt-2">Leave empty for a root entity. Parent cannot be this entity or one of its descendants.</p>
+              <p className="text-[11px] font-mono text-[var(--erp-muted)] mt-2">Leave empty for a root branch. Parent cannot be this branch or one of its descendants.</p>
             </section>
 
             <section>
@@ -434,7 +434,7 @@ export const EntityMasterScreen: React.FC = () => {
 
             <div className="flex justify-end gap-3 pt-4 border-t border-[var(--erp-hairline)]">
               <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 border border-[var(--erp-hairline)] text-xs font-mono">Cancel</button>
-              <button type="submit" disabled={saving} className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">{saving ? 'Saving…' : 'Save Entity'}</button>
+              <button type="submit" disabled={saving} className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">{saving ? 'Saving…' : 'Save Branch'}</button>
             </div>
           </form>
         </div>
@@ -448,10 +448,10 @@ export const EntityMasterScreen: React.FC = () => {
                 <h3 className="font-display text-lg font-bold text-[var(--erp-text)]">{detail.entity_name}</h3>
                 <p className="font-mono text-xs text-[var(--erp-muted)]">{detail.short_code} · {detail.entity_type} · {detail.status}</p>
               </div>
-              <button type="button" aria-label="Close entity details" onClick={() => setDetail(null)}><X className="w-4 h-4" /></button>
+              <button type="button" aria-label="Close branch details" onClick={() => setDetail(null)}><X className="w-4 h-4" /></button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-xs">
-              <DetailField label="Parent entity" value={detail.parent ? `${detail.parent.short_code} · ${detail.parent.entity_name}` : 'None'} />
+              <DetailField label="Parent branch" value={detail.parent ? `${detail.parent.short_code} · ${detail.parent.entity_name}` : 'None'} />
               <DetailField label="Cash code" value={detail.cash_code} />
               <DetailField label="Invoice series" value={detail.invoice_series} />
               <DetailField label="Contact person" value={detail.contact_person} />
@@ -466,7 +466,7 @@ export const EntityMasterScreen: React.FC = () => {
             </div>
             {detail.children.length > 0 && (
               <div className="border-t border-[var(--erp-hairline)] pt-4">
-                <h4 className={sectionTitle}>Child entities</h4>
+                <h4 className={sectionTitle}>Child branches</h4>
                 <div className="flex flex-wrap gap-2">
                   {detail.children.map(child => (
                     <span key={child.id} className="px-2 py-1 border border-[var(--erp-hairline)] font-mono text-[11px]">
@@ -482,9 +482,9 @@ export const EntityMasterScreen: React.FC = () => {
 
       <ConfirmDialog
         open={!!pendingDelete}
-        entityType="entity"
+        entityType="branch"
         entityLabel={pendingDelete ? `${pendingDelete.entity_name} (${pendingDelete.short_code})` : ''}
-        title={deleteBlockDetail ? 'Cannot deactivate entity' : 'Deactivate entity?'}
+        title={deleteBlockDetail ? 'Cannot deactivate branch' : 'Deactivate branch?'}
         message={
           deleteBlockDetail
           || (pendingDelete
@@ -526,13 +526,13 @@ export const EntityMasterScreen: React.FC = () => {
 
       <ConfirmDialog
         open={!!pendingDeactivate}
-        entityType="entity"
+        entityType="branch"
         entityLabel={pendingDeactivate ? pendingDeactivate.entity_name || '' : ''}
-        title="Cannot deactivate entity"
+        title="Cannot deactivate branch"
         message={
           pendingDeactivate
             ? activeChildrenBlockMessage(
-                pendingDeactivate.entity_name || 'This entity',
+                pendingDeactivate.entity_name || 'This branch',
                 pendingDeactivate.active_children_count || 0,
               )
             : ''

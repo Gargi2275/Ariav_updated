@@ -82,7 +82,7 @@ export const PaymentAdjustmentsScreen: React.FC = () => {
         </button>
       ),
     },
-    { header: 'Customer', render: r => <span>{r.customer_name}</span> },
+    { header: 'Party', render: r => <span>{r.customer_name}</span> },
     { header: 'Invoice', mono: true, render: r => r.invoice_number },
     { header: 'Amount', align: 'right', mono: true, width: '110px', render: r => money(r.amount) },
     { header: 'Reason', render: r => <span>{r.reason}</span> },
@@ -116,7 +116,7 @@ export const PaymentAdjustmentsScreen: React.FC = () => {
               onChange={e => setCustomerId(e.target.value ? Number(e.target.value) : '')}
               className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs min-w-[180px]"
             >
-              <option value="">All customers</option>
+              <option value="">All parties</option>
               {customers.map(c => (
                 <option key={c.id} value={c.id}>{c.customer_code} · {c.customer_name}</option>
               ))}

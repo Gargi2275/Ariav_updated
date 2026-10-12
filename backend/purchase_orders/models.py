@@ -53,6 +53,8 @@ class PurchaseOrder(models.Model):
     po_date = models.DateField(default=date.today)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.DRAFT)
     remarks = models.TextField(blank=True)
+    source_format = models.CharField(max_length=80, blank=True)
+    extra_data = models.JSONField(default=dict)
     handy_form_upload = models.FileField(upload_to="po_handy_forms/", blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -160,6 +162,9 @@ class PurchaseOrderLine(models.Model):
     )
     rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     line_total = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    expected_delivery_period = models.CharField(max_length=160, blank=True)
+    customer_delivery_date = models.DateField(null=True, blank=True)
+    extra_data = models.JSONField(default=dict)
 
     class Meta:
         db_table = "purchase_orders_purchaseorderline"

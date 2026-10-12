@@ -99,12 +99,12 @@ class EntitySerializer(serializers.ModelSerializer):
     def validate_entity_name(self, value):
         value = (value or "").strip()
         if not value:
-            raise serializers.ValidationError("Entity name is required.")
+            raise serializers.ValidationError("Branch name is required.")
         qs = Entity.objects.filter(entity_name__iexact=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("An entity with this name already exists.")
+            raise serializers.ValidationError("A branch with this name already exists.")
         return value
 
     def validate_gst_no(self, value):
@@ -125,7 +125,7 @@ class EntitySerializer(serializers.ModelSerializer):
         entity_id = self.instance.pk if self.instance else None
         if would_create_cycle(entity_id, parent_id):
             raise serializers.ValidationError(
-                {"parent_entity_id": "Cannot set parent to this entity or one of its descendants."}
+                {"parent_entity_id": "Cannot set parent to this branch or one of its descendants."}
             )
         return attrs
 

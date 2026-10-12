@@ -92,7 +92,7 @@ export const TopBar: React.FC = () => {
               {/* Branch Selector in Dropdown */}
               <div className="mb-3">
                 <label className="block font-mono text-[10px] text-[var(--erp-muted)] mb-1">
-                  ENTITY
+                  BRANCH
                 </label>
                 <div className="relative">
                   <Building2 className="w-3.5 h-3.5 text-[var(--erp-gold)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />

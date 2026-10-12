@@ -162,7 +162,7 @@ def build_po_pdf(po: PurchaseOrder) -> bytes:
     cust_addr = _customer_address(po.customer)
     parties = [
         [
-            Paragraph("<b>Customer</b>", small),
+            Paragraph("<b>Party</b>", small),
             Paragraph("<b>Brand</b>", small),
         ],
         [
