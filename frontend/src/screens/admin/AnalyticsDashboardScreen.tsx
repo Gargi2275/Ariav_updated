@@ -33,7 +33,7 @@ function riskChip(band: string): StatusChipType {
 function kpiStrip(data: SnapshotDashboard, navigateTo: (id: number) => void): LedgerMetricItem[] {
   const k = data.kpis;
   return [
-    { label: 'Total Sales', value: money(k.total_sales), subValue: `${k.total_invoices} issued invoices`, onClick: () => navigateTo(42), hrefLabel: 'Invoices' },
+    { label: 'Total order booking', value: money(k.total_sales), subValue: `${k.total_invoices} issued invoices`, onClick: () => navigateTo(42), hrefLabel: 'Invoices' },
     { label: 'Collections', value: money(k.total_collections), subValue: 'Payment receipts', onClick: () => navigateTo(43), hrefLabel: 'Payments' },
     { label: 'Outstanding', value: money(k.total_outstanding), subValue: 'Unpaid invoice balance', onClick: () => navigateTo(44), hrefLabel: 'Party Ledger' },
     { label: 'Overdue', value: money(k.total_overdue), subValue: 'Past due remaining', onClick: () => navigateTo(44), hrefLabel: 'Party Ledger' },
@@ -63,7 +63,7 @@ function opsStrip(
 }
 
 export const AnalyticsDashboardScreen: React.FC = () => {
-  const { navigateTo, userRole, selectedEntityId, selectedBranch } = useErp();
+  const { navigateTo, userRole, selectedEntityId, selectedBranch, entityReady } = useErp();
   const isAdmin = userRole === 'admin';
   const [snapshot, setSnapshot] = useState<SnapshotDashboard | null>(null);
   const [staff, setStaff] = useState<StaffDashboard | null>(null);
@@ -71,6 +71,7 @@ export const AnalyticsDashboardScreen: React.FC = () => {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
+    if (!entityReady) return;
     setLoading(true);
     setError('');
     try {
@@ -89,7 +90,7 @@ export const AnalyticsDashboardScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedEntityId, isAdmin]);
+  }, [selectedEntityId, isAdmin, entityReady]);
 
   useEffect(() => { void load(); }, [load]);
 

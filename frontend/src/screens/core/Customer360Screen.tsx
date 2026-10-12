@@ -66,7 +66,7 @@ function typeChip(type: string): StatusChipType | string {
 }
 
 export const Customer360Screen: React.FC = () => {
-  const { navigateTo } = useErp();
+  const { navigateTo, selectedEntityId, entityReady } = useErp();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [customerId, setCustomerId] = useState<number | ''>('');
@@ -80,9 +80,14 @@ export const Customer360Screen: React.FC = () => {
   const [tab, setTab] = useState<TabId>('basic');
 
   const loadCustomers = useCallback(async () => {
+    if (!entityReady) return;
     setListLoading(true);
     try {
-      const rows = await customersApi.list({ status: 'Active', scope: 'visible' });
+      const rows = await customersApi.list({
+        status: 'Active',
+        scope: 'visible',
+        entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
+      });
       setCustomers(Array.isArray(rows) ? rows : []);
     } catch (e) {
       notifyApiError(e, 'Could not load parties.');
@@ -90,7 +95,7 @@ export const Customer360Screen: React.FC = () => {
     } finally {
       setListLoading(false);
     }
-  }, []);
+  }, [selectedEntityId, entityReady]);
 
   useEffect(() => { void loadCustomers(); }, [loadCustomers]);
 

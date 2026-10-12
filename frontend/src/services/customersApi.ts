@@ -400,8 +400,10 @@ export function writeCustomerListFilter(id: number) {
 
 export const customersApi = {
   /** `scope: 'visible'` limits operators to Parties they have a PO, Dispatch, Invoice or Payment with. */
-  list: (params: { status?: string; search?: string; entity_id?: number | string; scope?: 'visible' } = {}) =>
-    request<CustomerRow[]>(`/api/customers/${qs(params)}`),
+  list: (
+    params: { status?: string; search?: string; entity_id?: number | string; scope?: 'visible' } = {},
+    options: RequestInit = {},
+  ) => request<CustomerRow[]>(`/api/customers/${qs(params)}`, options),
   retrieve: (id: number) => request<CustomerRow>(`/api/customers/${id}/`),
   ledger: (id: number, params: { from?: string; to?: string } = {}) =>
     request<CustomerLedgerPayload>(`/api/customers/${id}/ledger/${qs(params)}`),

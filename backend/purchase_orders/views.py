@@ -314,7 +314,7 @@ def _require_import_context(request, *, require_file: bool):
         brand_id = int(brand_raw)
     except (TypeError, ValueError) as exc:
         raise ValidationError(
-            {"entity_id": "Invalid entity_id.", "brand_id": "Invalid brand_id."}
+            {"entity_id": "Invalid branch selection.", "brand_id": "Invalid brand_id."}
         ) from exc
 
     entity = Entity.objects.filter(pk=entity_id).first()

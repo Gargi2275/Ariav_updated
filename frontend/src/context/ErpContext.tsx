@@ -33,6 +33,7 @@ interface ErpContextType {
   branches: Branch[];
   selectedBranch: Branch;
   selectedEntityId: SelectedEntityId;
+  entityReady: boolean;
   setSelectedBranch: (branch: Branch) => void;
   setSelectedEntityId: (id: SelectedEntityId) => void;
   financialYear: string;
@@ -144,6 +145,7 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedBranch, setSelectedBranchState] = useState<Branch>(() =>
     restoreSelectedBranch([], localStorage.getItem(ENTITY_STORAGE_KEY))
   );
+  const [entityReady, setEntityReady] = useState(false);
   const [financialYear, setFinancialYear] = useState<string>('2025-26');
   const [userRole, setUserRole] = useState<UserRole>(() => {
     if (!localStorage.getItem('ariav_auth_token')) return 'operator';
@@ -233,15 +235,28 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const authenticated = currentScreenId > 4;
   useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated) {
+      setEntityReady(false);
+      return;
+    }
     let cancelled = false;
+    setEntityReady(false);
     const loadEntities = async () => {
       try {
         const rows = await entitiesApi.list({ status: 'Active' });
         const live = rows.map(mapEntityToBranch);
-        if (cancelled || !live.length) return;
+        if (cancelled) return;
         setBranches(live);
-        setSelectedBranchState(restoreSelectedBranch(live, localStorage.getItem(ENTITY_STORAGE_KEY)));
+        const stored = localStorage.getItem(ENTITY_STORAGE_KEY);
+        const parsed = parseSelectedEntityId(stored);
+        const restored = parsed === ALL_ENTITIES_ID
+          ? ALL_ENTITIES
+          : live.find(branch => branch.id === String(parsed));
+        if (stored && stored !== ALL_ENTITIES_ID && (!restored || parsed === ALL_ENTITIES_ID)) {
+          localStorage.removeItem(ENTITY_STORAGE_KEY);
+        }
+        setSelectedBranchState(restored || ALL_ENTITIES);
+        setEntityReady(true);
       } catch {
         // Keep current list if Entity Master cannot be fetched.
       }
@@ -250,7 +265,7 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       cancelled = true;
     };
-  }, [authenticated, currentScreenId]);
+  }, [authenticated]);
 
   const setSelectedBranch = useCallback((branch: Branch) => {
     setSelectedBranchState(branch);
@@ -562,6 +577,7 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         branches,
         selectedBranch,
         selectedEntityId,
+        entityReady,
         setSelectedBranch,
         setSelectedEntityId,
         financialYear,
@@ -607,4 +623,3 @@ export const useErp = (): ErpContextType => {
   }
   return context;
 };
-

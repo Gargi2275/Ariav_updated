@@ -66,8 +66,12 @@ function entitiesGroupError(links: CustomerEntityLink[]): string | undefined {
   return undefined;
 }
 
+export function shouldApplyCustomerListResponse(requestId: number, currentRequestId: number): boolean {
+  return requestId === currentRequestId;
+}
+
 export const CustomerMasterScreen: React.FC = () => {
-  const { userRole, navigateTo, selectedEntityId } = useErp();
+  const { userRole, navigateTo, selectedBranch, selectedEntityId, entityReady } = useErp();
   const canWrite = userRole === 'admin';
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [entityOptions, setEntityOptions] = useState<EntityRow[]>([]);
@@ -88,29 +92,49 @@ export const CustomerMasterScreen: React.FC = () => {
   const [advanceBalance, setAdvanceBalance] = useState<string | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
   const savingLock = useRef(false);
+  const listRequest = useRef<{ id: number; controller: AbortController } | null>(null);
 
   const load = useCallback(async () => {
+    if (!entityReady) return;
+    const requestId = (listRequest.current?.id || 0) + 1;
+    listRequest.current?.controller.abort();
+    const controller = new AbortController();
+    listRequest.current = { id: requestId, controller };
     setLoading(true);
     setError('');
+    setRows([]);
     try {
       const [customers, ents] = await Promise.all([
         customersApi.list({
           status: statusFilter === 'All' ? undefined : statusFilter,
           entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
-        }),
+        }, { signal: controller.signal }),
         entitiesApi.list(),
       ]);
+      if (!shouldApplyCustomerListResponse(requestId, listRequest.current?.id || 0)) return;
       setRows(customers);
       setEntityOptions(ents);
     } catch (e) {
+      if (!shouldApplyCustomerListResponse(requestId, listRequest.current?.id || 0) || controller.signal.aborted) return;
       const parsed = notifyApiError(e, 'Could not load parties.');
       setError(parsed.message);
     } finally {
-      setLoading(false);
+      if (shouldApplyCustomerListResponse(requestId, listRequest.current?.id || 0)) {
+        setLoading(false);
+      }
     }
-  }, [statusFilter, selectedEntityId]);
+  }, [statusFilter, selectedEntityId, entityReady]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => () => {
+    listRequest.current?.controller.abort();
+  }, []);
+
+  useEffect(() => {
+    setSearch('');
+    setKebab(null);
+  }, [selectedEntityId]);
 
   useEffect(() => {
     if (!kebab) return;
@@ -224,6 +248,22 @@ export const CustomerMasterScreen: React.FC = () => {
         ? <span className="font-mono text-xs">{r.primary_entity_code} · {r.primary_entity_name}</span>
         : <span className="text-[var(--erp-muted)]">—</span>,
     },
+    {
+      header: 'Branches',
+      width: '210px',
+      render: r => r.entities.length
+        ? (
+          <div className="flex flex-col gap-0.5">
+            {r.entities.map(link => (
+              <span key={link.entity_id} className="font-mono text-xs">
+                {link.short_code || '—'} · {link.entity_name || 'Unnamed branch'}
+                {link.primary_entity ? ' (Primary)' : ''}
+              </span>
+            ))}
+          </div>
+        )
+        : <span className="text-[var(--erp-muted)]">—</span>,
+    },
     { header: 'Type', accessorKey: 'customer_type', width: '120px' },
     { header: 'City', accessorKey: 'city', width: '120px', render: r => r.city || '—' },
     {
@@ -316,7 +356,7 @@ export const CustomerMasterScreen: React.FC = () => {
         moduleNumber="23"
         section="Masters"
         title="Party Master"
-        subtitle="Trading customers keyed by unique party code, linked to one or more branches"
+        subtitle={`${rows.length} ${rows.length === 1 ? 'party' : 'parties'} · ${selectedBranch.name}`}
         actions={
           canWrite ? (
             <button type="button" onClick={openCreate} className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
@@ -340,19 +380,25 @@ export const CustomerMasterScreen: React.FC = () => {
       {loading ? (
         <MasterLoading label="Loading customers…" />
       ) : (
-        <DataTable
-          columns={columns}
-          data={filtered}
-          keyExtractor={r => r.id}
-          {...emptyTableProps(
-            rows.length,
-            filtered.length,
-            statusFilter !== 'All' || selectedEntityId !== 'all' ? 'No customers match this filter.' : 'No parties configured yet.',
-            'No customers match this filter.',
-            canWrite ? 'Add first party' : '',
-            canWrite ? openCreate : () => undefined,
-          )}
-        />
+        <React.Fragment key={`${selectedEntityId}-${statusFilter}`}>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            keyExtractor={r => r.id}
+            {...emptyTableProps(
+              rows.length,
+              filtered.length,
+              rows.length === 0 && selectedEntityId !== 'all'
+                ? `No parties linked to ${selectedBranch.code} · ${selectedBranch.name}`
+                : statusFilter !== 'All'
+                  ? 'No customers match this filter.'
+                  : 'No parties configured yet.',
+              'No customers match this filter.',
+              canWrite ? 'Add first party' : '',
+              canWrite ? openCreate : () => undefined,
+            )}
+          />
+        </React.Fragment>
       )}
 
       {kebab && createPortal(

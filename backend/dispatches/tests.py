@@ -143,6 +143,45 @@ class DispatchApiTests(TestCase):
         self.assertIn("Draft", str(res.json()))
         self.assertEqual(Dispatch.objects.count(), 0)
 
+    def test_list_filters_dispatches_by_purchase_order_entity(self):
+        other_entity = Entity.objects.create(
+            short_code="ADT",
+            entity_name="Aditi",
+            entity_type=Entity.EntityType.BRANCH,
+            address_line_1="Ring Road",
+            city="Surat",
+            state="Gujarat",
+        )
+        CustomerEntity.objects.create(
+            customer=self.customer,
+            entity=other_entity,
+            primary_entity=False,
+        )
+        first_po = self._accept_po(self._create_po()["id"])
+        second_po = self._accept_po(
+            self._create_po(
+                po_number="PO-DSP-002",
+                entity_id=other_entity.id,
+            )["id"]
+        )
+        first_dispatch = self._post_dispatch(self._dispatch_payload(first_po))
+        second_dispatch = self._post_dispatch(
+            self._dispatch_payload(
+                second_po,
+                lr_number="LR-2001",
+                challan_reference="CH-2001",
+            )
+        )
+        self.assertEqual(first_dispatch.status_code, 201, first_dispatch.content)
+        self.assertEqual(second_dispatch.status_code, 201, second_dispatch.content)
+
+        response = self.client.get(
+            f"/api/dispatches/?entity_id={self.entity.id}",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([row["id"] for row in response.json()], [first_dispatch.json()["id"]])
+
     def test_partial_then_complete_dispatch_updates_po_status(self):
         po = self._accept_po(self._create_po()["id"])
         first = self._post_dispatch(self._dispatch_payload(po))

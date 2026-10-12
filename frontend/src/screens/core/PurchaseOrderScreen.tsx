@@ -109,7 +109,7 @@ const ADMIN_STATUS_LABELS: Record<string, string> = {
 };
 
 export const PurchaseOrderScreen: React.FC = () => {
-  const { userRole, sessionUserName, navigateTo, selectedEntityId } = useErp();
+  const { userRole, sessionUserName, navigateTo, selectedEntityId, entityReady } = useErp();
   const canDraftWrite = userRole === 'admin' || userRole === 'operator';
   const canStatusOverride = userRole === 'admin';
 
@@ -204,6 +204,7 @@ export const PurchaseOrderScreen: React.FC = () => {
   }, []);
 
   const load = useCallback(async () => {
+    if (!entityReady) return;
     setLoading(true);
     setError('');
     try {
@@ -221,7 +222,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, selectedEntityId, customerFilter, brandFilter, orderTypeFilter, unpricedOnly]);
+  }, [statusFilter, selectedEntityId, customerFilter, brandFilter, orderTypeFilter, unpricedOnly, entityReady]);
 
   useEffect(() => { void loadLookups(); }, [loadLookups]);
   useEffect(() => {
@@ -235,9 +236,10 @@ export const PurchaseOrderScreen: React.FC = () => {
     order_type: orderTypeFilter || undefined,
     search: search.trim() || undefined,
     has_unpriced: unpricedOnly || undefined,
-  }), [selectedEntityId, customerFilter, brandFilter, orderTypeFilter, search, unpricedOnly]);
+  }), [selectedEntityId, customerFilter, brandFilter, orderTypeFilter, search, unpricedOnly, entityReady]);
 
   const loadPipeline = useCallback(async () => {
+    if (!entityReady) return;
     setPipelineLoading(true);
     setError('');
     try {
@@ -261,7 +263,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     } finally {
       setPipelineLoading(false);
     }
-  }, [pipelineFilters]);
+  }, [entityReady, pipelineFilters]);
 
   useEffect(() => {
     if (viewMode === 'pipeline') void loadPipeline();
@@ -282,15 +284,15 @@ export const PurchaseOrderScreen: React.FC = () => {
     customer_id: customerFilter || undefined,
     brand_id: brandFilter || undefined,
     search: search.trim() || undefined,
-  }), [selectedEntityId, customerFilter, brandFilter, search]);
+  }), [selectedEntityId, customerFilter, brandFilter, search, entityReady]);
 
   useEffect(() => {
-    if (viewMode === 'list') {
+    if (viewMode === 'list' && entityReady) {
       void purchaseOrdersApi.pipelineSummary(typeCountFilters)
         .then(response => setTypeCounts(response.type_counts))
         .catch(error => notifyApiError(error, 'Could not load purchase order type counts.'));
     }
-  }, [typeCountFilters, viewMode]);
+  }, [entityReady, typeCountFilters, viewMode]);
 
   const loadPipelineMore = async (status: string) => {
     const offset = pipelineOffsets[status] || 0;
@@ -304,12 +306,13 @@ export const PurchaseOrderScreen: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!entityReady) return;
     void customersApi.list({
       status: 'Active',
       entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
       scope: 'visible',
     }).then(setListCustomers).catch(notifyApiError);
-  }, [selectedEntityId]);
+  }, [selectedEntityId, entityReady]);
 
   const filtered = rows.filter(r => {
     const q = search.toLowerCase().trim();

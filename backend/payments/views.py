@@ -4,15 +4,16 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from accounts.access import can_view_customer, scope_to_visible_customers
+from accounts.access import can_view_customer, is_admin_user, scope_to_visible_customers
 
-from .models import Payment, PaymentAllocation, PaymentAdjustment
+from .models import BankAccount, Payment, PaymentAllocation, PaymentAdjustment
 from .permissions import PaymentAdjustmentPermission, PaymentPermission
 from .serializers import (
     INVOICE_NOT_FOUND,
     AllocateSerializer,
     PaymentAdjustmentSerializer,
     PaymentSerializer,
+    BankAccountSerializer,
     _save_allocations,
     _validate_allocation_batch,
 )
@@ -40,6 +41,17 @@ class PaymentViewSet(viewsets.ModelViewSet):
     pagination_class = None
     http_method_names = ["get", "post", "delete", "head", "options"]
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        output = PaymentSerializer(
+            serializer.instance,
+            context={**self.get_serializer_context(), "include_duplicate_warning": True},
+        )
+        return Response(output.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def get_queryset(self):
         qs = scope_to_visible_customers(super().get_queryset(), self.request.user)
         customer_id = self.request.query_params.get("customer_id")
@@ -47,6 +59,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         payment_mode = self.request.query_params.get("payment_mode")
         date_from = self.request.query_params.get("date_from")
         date_to = self.request.query_params.get("date_to")
+        allocation_status = self.request.query_params.get("allocation_status")
         invoice_id = self.request.query_params.get("invoice_id")
         q = self.request.query_params.get("search")
         if customer_id:
@@ -59,16 +72,41 @@ class PaymentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(payment_date__gte=date_from)
         if date_to:
             qs = qs.filter(payment_date__lte=date_to)
+        if allocation_status == "allocated":
+            qs = qs.filter(allocations__isnull=False)
+        elif allocation_status == "unallocated":
+            qs = qs.filter(allocations__isnull=True)
         if invoice_id:
             qs = qs.filter(allocations__invoice_id=invoice_id).distinct()
         if q:
             qs = qs.filter(
                 Q(payment_number__icontains=q)
                 | Q(transaction_reference__icontains=q)
+                | Q(invoice_reference__icontains=q)
                 | Q(customer_code__icontains=q)
                 | Q(customer__customer_name__icontains=q)
+                | Q(allocations__invoice__invoice_number__icontains=q)
+                | Q(deposit_account__bank_name__icontains=q)
+                | Q(deposit_account__bank_branch_name__icontains=q)
+                | Q(payer_bank_name__icontains=q)
+                | Q(payer_bank_branch__icontains=q)
+                | Q(instrument_number__icontains=q)
             )
-        return qs
+        return qs.distinct()
+
+    @action(detail=False, methods=["get"], url_path="bank-accounts")
+    def bank_accounts(self, request):
+        qs = BankAccount.objects.filter(active=True).select_related("entity")
+        entity_id = request.query_params.get("entity_id")
+        if entity_id:
+            qs = qs.filter(entity_id=entity_id)
+        if not is_admin_user(request.user):
+            visible_entity_ids = scope_to_visible_customers(
+                Payment.objects.all(),
+                request.user,
+            ).values("entity_id")
+            qs = qs.filter(entity_id__in=visible_entity_ids)
+        return Response(BankAccountSerializer(qs, many=True).data)
 
     def destroy(self, request, *args, **kwargs):
         payment = self.get_object()

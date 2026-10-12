@@ -32,7 +32,7 @@ const GOLD_BTN =
   'px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer hover:bg-[var(--erp-gold-soft)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--erp-gold)]';
 
 export const CustomerLedgerScreen: React.FC = () => {
-  const { navigateTo } = useErp();
+  const { navigateTo, selectedEntityId, entityReady } = useErp();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [customerId, setCustomerId] = useState<number | ''>('');
@@ -41,9 +41,14 @@ export const CustomerLedgerScreen: React.FC = () => {
   const [error, setError] = useState('');
 
   const loadCustomers = useCallback(async () => {
+    if (!entityReady) return;
     setListLoading(true);
     try {
-      const rows = await customersApi.list({ status: 'Active', scope: 'visible' });
+      const rows = await customersApi.list({
+        status: 'Active',
+        scope: 'visible',
+        entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
+      });
       setCustomers(Array.isArray(rows) ? rows : []);
     } catch (e) {
       notifyApiError(e, 'Could not load parties.');
@@ -51,7 +56,7 @@ export const CustomerLedgerScreen: React.FC = () => {
     } finally {
       setListLoading(false);
     }
-  }, []);
+  }, [selectedEntityId, entityReady]);
 
   useEffect(() => { void loadCustomers(); }, [loadCustomers]);
 

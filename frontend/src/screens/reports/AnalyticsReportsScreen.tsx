@@ -55,7 +55,7 @@ function allZero(values: number[]): boolean {
 }
 
 export const AnalyticsReportsScreen: React.FC = () => {
-  const { selectedEntityId, selectedBranch } = useErp();
+  const { selectedEntityId, selectedBranch, entityReady } = useErp();
   const initial = defaultRange();
   const tab: ReportTab = 'party-balance';
   const [from, setFrom] = useState(initial.from);
@@ -70,6 +70,7 @@ export const AnalyticsReportsScreen: React.FC = () => {
   );
 
   const load = useCallback(async () => {
+    if (!entityReady) return;
     setLoading(true);
     setError('');
     try {
@@ -93,7 +94,7 @@ export const AnalyticsReportsScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, tab]);
+  }, [entityReady, filters, tab]);
 
   useEffect(() => { void load(); }, [load]);
 

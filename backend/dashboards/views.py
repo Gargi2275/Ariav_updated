@@ -15,7 +15,7 @@ def _parse_entity_id(request):
     try:
         entity_id = int(raw)
     except (TypeError, ValueError):
-        return Response({"detail": "entity_id must be an integer or 'all'."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Branch selection must be an integer or 'all'."}, status=status.HTTP_400_BAD_REQUEST)
     if not Entity.objects.filter(pk=entity_id).exists():
         return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
     return entity_id

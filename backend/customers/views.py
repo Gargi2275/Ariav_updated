@@ -150,7 +150,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
             entity_id = int(entity_id)
         except ValueError:
             return None, Response(
-                {"detail": "entity_id must be an integer."},
+                {"detail": "Branch selection must be an integer."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if not can_view_customer(request.user, customer.pk):
@@ -240,7 +240,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
         try:
             entity_id = int(entity_id)
         except ValueError:
-            return Response({"detail": "entity_id must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(            {"detail": "Branch selection must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
 
         statements = CustomerStatement.objects.filter(
             entity_id=entity_id,

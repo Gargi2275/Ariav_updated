@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
 
 
@@ -39,6 +39,18 @@ class Payment(models.Model):
     payment_mode = models.CharField(max_length=24, choices=PaymentMode.choices)
     bank_cash_account = models.CharField(max_length=120)
     transaction_reference = models.CharField(max_length=80, blank=True)
+    invoice_reference = models.CharField(max_length=255, null=True, blank=True)
+    deposit_account = models.ForeignKey(
+        "BankAccount",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="payments",
+    )
+    payer_bank_name = models.CharField(max_length=160, blank=True)
+    payer_bank_branch = models.CharField(max_length=160, blank=True)
+    instrument_number = models.CharField(max_length=120, blank=True)
+    instrument_date = models.DateField(null=True, blank=True)
     remarks = models.TextField(blank=True)
     unallocated_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -57,6 +69,40 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"{self.payment_number} {self.amount}"
+
+
+class BankAccount(models.Model):
+    entity = models.ForeignKey(
+        "entities.Entity",
+        on_delete=models.PROTECT,
+        related_name="deposit_bank_accounts",
+    )
+    bank_name = models.CharField(max_length=160)
+    bank_branch_name = models.CharField(max_length=160, blank=True)
+    account_number = models.CharField(max_length=80)
+    ifsc = models.CharField(
+        max_length=11,
+        blank=True,
+        validators=[RegexValidator(r"^[A-Z]{4}0[A-Z0-9]{6}$", "Enter a valid IFSC code.")],
+    )
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "payments_bankaccount"
+        ordering = ["bank_name", "account_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("entity", "account_number"),
+                name="payments_bankaccount_entity_account_uniq",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.ifsc = (self.ifsc or "").strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.bank_name} ••••{self.account_number[-4:]}"
 
 
 class PaymentAllocation(models.Model):

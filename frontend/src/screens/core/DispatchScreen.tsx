@@ -16,7 +16,7 @@ import { openTraceTarget } from '../../services/traceLinks';
 import { readCustomerListFilter } from '../../services/customersApi';
 
 export const DispatchScreen: React.FC = () => {
-  const { userRole, navigateTo } = useErp();
+  const { userRole, navigateTo, selectedEntityId, entityReady } = useErp();
   const canWrite = userRole === 'admin' || userRole === 'operator';
   const [rows, setRows] = useState<DispatchRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +32,7 @@ export const DispatchScreen: React.FC = () => {
   const searchTimer = useRef<number | null>(null);
 
   const load = useCallback(async (term = search) => {
+    if (!entityReady) return;
     setLoading(true);
     setError('');
     try {
@@ -40,6 +41,7 @@ export const DispatchScreen: React.FC = () => {
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         customer_id: customerFilter || undefined,
+        entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
       }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load dispatches.');
@@ -47,9 +49,9 @@ export const DispatchScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo, search, customerFilter]);
+  }, [dateFrom, dateTo, search, customerFilter, selectedEntityId, entityReady]);
 
-  useEffect(() => { void load(); }, [dateFrom, dateTo, customerFilter]);
+  useEffect(() => { void load(); }, [dateFrom, dateTo, customerFilter, selectedEntityId, entityReady]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(OPEN_DISPATCH_KEY);
@@ -64,7 +66,7 @@ export const DispatchScreen: React.FC = () => {
     if (searchTimer.current) window.clearTimeout(searchTimer.current);
     searchTimer.current = window.setTimeout(() => { void load(search); }, 250);
     return () => { if (searchTimer.current) window.clearTimeout(searchTimer.current); };
-  }, [search]);
+  }, [search, entityReady]);
 
   const columns: Column<DispatchRow>[] = [
     { header: 'Date', accessorKey: 'dispatch_date', mono: true, width: '110px' },

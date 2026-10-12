@@ -161,6 +161,7 @@ export function todayIso(): string {
 export const dispatchesApi = {
   list: (params: {
     purchase_order_id?: number;
+    entity_id?: number;
     date_from?: string;
     date_to?: string;
     transporter?: string;

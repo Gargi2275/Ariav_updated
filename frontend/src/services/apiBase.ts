@@ -61,7 +61,8 @@ function pageHostname(): string {
 }
 
 export function getApiBase(): string {
-  const fromEnv = normalizeOrigin(String(import.meta.env.VITE_API_BASE_URL || '').trim());
+  const env = (import.meta as ImportMeta & { env?: Record<string, string> }).env;
+  const fromEnv = normalizeOrigin(String(env?.VITE_API_BASE_URL || '').trim());
   const host = pageHostname();
   if (fromEnv && !(isLoopbackOrigin(fromEnv) && !isLoopbackHost(host))) {
     return fromEnv;

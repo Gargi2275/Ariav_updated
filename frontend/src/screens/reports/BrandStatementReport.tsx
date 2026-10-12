@@ -13,7 +13,7 @@ function money(value: string | number | null | undefined): string {
 }
 
 export const BrandStatementReport: React.FC = () => {
-  const { selectedEntityId } = useErp();
+  const { selectedEntityId, entityReady } = useErp();
   const entityId = selectedEntityId === 'all' ? null : selectedEntityId;
   const [rows, setRows] = useState<BrandStatementReportRow[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -25,7 +25,7 @@ export const BrandStatementReport: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'nonzero' | 'zero' | 'opening_debit' | 'opening_credit'>('all');
 
   const load = useCallback(async () => {
-    if (!entityId) return;
+    if (!entityReady || !entityId) return;
     setLoading(true);
     try {
       const response = await customersApi.statementReport({
@@ -43,16 +43,16 @@ export const BrandStatementReport: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [code, entityId, from, name, to]);
+  }, [code, entityId, entityReady, from, name, to]);
 
   useEffect(() => {
-    if (!entityId) {
+    if (!entityReady || !entityId) {
       setLoaded(false);
       setRows([]);
       return;
     }
     void load();
-  }, [entityId, load]);
+  }, [entityId, entityReady, load]);
 
   const visibleRows = useMemo(() => rows.filter(row => {
     const openingDebit = num(row.opening_debit);

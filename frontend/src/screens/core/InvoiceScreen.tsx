@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Eye, FileText, Plus, Search, Trash2, X } from 'lucide-react';
+import { Download, Eye, FileText, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable, Column } from '../../components/common/DataTable';
@@ -23,6 +23,13 @@ import {
   todayIso,
 } from '../../services/invoicesApi';
 import { InvoiceTraceabilityPanel } from './InvoiceTraceabilityPanel';
+import {
+  FINANCIAL_MONTHS,
+  FINANCIAL_YEARS,
+  customDateRange,
+  financialYearRange,
+  isDateRangeInvalid,
+} from '../../utils/dateFilters';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
 
@@ -48,6 +55,11 @@ function invoiceChip(status: string, isOverdue?: boolean): StatusChipType | stri
     default:
       return 'inactive';
   }
+
+}
+
+export function shouldApplyInvoiceListResponse(requestId: number, currentRequestId: number): boolean {
+  return requestId === currentRequestId;
 }
 
 type LineDraft = {
@@ -57,7 +69,7 @@ type LineDraft = {
 };
 
 export const InvoiceScreen: React.FC = () => {
-  const { userRole, selectedEntityId } = useErp();
+  const { userRole, selectedBranch, selectedEntityId, entityReady } = useErp();
   const canWrite = userRole === 'admin' || userRole === 'operator';
   const canCancel = userRole === 'admin';
 
@@ -67,6 +79,10 @@ export const InvoiceScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [customerFilter, setCustomerFilter] = useState<number | ''>(() => readCustomerListFilter());
+  const [yearFilter, setYearFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState<number | ''>('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [mode, setMode] = useState<'list' | 'form' | 'detail'>('list');
   const [detail, setDetail] = useState<InvoiceRow | null>(null);
   const [detailTab, setDetailTab] = useState<'details' | 'trace'>('details');
@@ -92,26 +108,58 @@ export const InvoiceScreen: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const savingLock = useRef(false);
   const numberRef = useRef<HTMLInputElement>(null);
+  const listRequest = useRef<{ id: number; controller: AbortController } | null>(null);
+
+  const dateRange = useMemo(
+    () => dateFrom || dateTo
+      ? customDateRange(dateFrom, dateTo)
+      : financialYearRange(yearFilter, monthFilter),
+    [dateFrom, dateTo, monthFilter, yearFilter],
+  );
+  const dateRangeInvalid = isDateRangeInvalid(dateFrom, dateTo);
+  const dateFilterActive = Boolean(yearFilter || monthFilter || dateFrom || dateTo);
+  const anyFilterActive = Boolean(search || statusFilter || customerFilter || dateFilterActive || selectedEntityId !== 'all');
+
+  const clearFilters = () => {
+    setSearch('');
+    setStatusFilter('');
+    setCustomerFilter('');
+    setYearFilter('');
+    setMonthFilter('');
+    setDateFrom('');
+    setDateTo('');
+  };
 
   const load = useCallback(async () => {
+    if (!entityReady || dateRangeInvalid) return;
+    const requestId = (listRequest.current?.id || 0) + 1;
+    listRequest.current?.controller.abort();
+    const controller = new AbortController();
+    listRequest.current = { id: requestId, controller };
     setLoading(true);
     setError('');
     try {
-      setRows(await invoicesApi.list({
+      const nextRows = await invoicesApi.list({
         status: statusFilter || undefined,
         search: search || undefined,
         customer_id: customerFilter || undefined,
         entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
-      }));
+        date_from: dateRange.date_from,
+        date_to: dateRange.date_to,
+      }, { signal: controller.signal });
+      if (!shouldApplyInvoiceListResponse(requestId, listRequest.current?.id || 0)) return;
+      setRows(nextRows);
     } catch (e) {
+      if (controller.signal.aborted || !shouldApplyInvoiceListResponse(requestId, listRequest.current?.id || 0)) return;
       const parsed = notifyApiError(e, 'Could not load invoices.');
       setError(parsed.message);
     } finally {
-      setLoading(false);
+      if (shouldApplyInvoiceListResponse(requestId, listRequest.current?.id || 0)) setLoading(false);
     }
-  }, [statusFilter, search, customerFilter, selectedEntityId]);
+  }, [statusFilter, search, customerFilter, selectedEntityId, entityReady, dateRange, dateRangeInvalid]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => () => listRequest.current?.controller.abort(), []);
 
   const openFromPo = useCallback(async (poId: number) => {
     try {
@@ -303,21 +351,62 @@ export const InvoiceScreen: React.FC = () => {
         }
       />
       {error && <MasterError message={error} onRetry={() => void load()} />}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-3">
-        <div className="relative w-full lg:w-80">
-          <Search className="w-4 h-4 text-[var(--erp-muted)] absolute left-3 top-2.5" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoice, party code, PO…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
+      <div className="grid grid-cols-1 gap-2.5 rounded-md border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-2.5 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-[minmax(240px,1.8fr)_minmax(130px,1fr)_minmax(120px,0.95fr)_minmax(110px,0.9fr)_minmax(145px,1fr)_minmax(145px,1fr)_auto]">
+        <div className="relative min-w-0 sm:col-span-2 lg:col-span-2 2xl:col-span-1">
+          <label htmlFor="invoice-search" className="sr-only">Search invoices</label>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--erp-muted)]" />
+          <input id="invoice-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoice, party code, PO…" className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] pl-9 pr-3 text-xs text-[var(--erp-text)] placeholder:text-[var(--erp-muted)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 font-mono" />
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs">
+        <div className="min-w-0">
+          <label htmlFor="invoice-status-filter" className="sr-only">Invoice status</label>
+          <select id="invoice-status-filter" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 font-mono">
           <option value="">All statuses</option>
           {INVOICE_STATUSES.map(s => <option key={s}>{s}</option>)}
-        </select>
-        {customerFilter ? (
-          <button type="button" onClick={() => setCustomerFilter('')} className="text-[11px] font-mono text-[var(--erp-gold)] hover:underline cursor-pointer">
-            Clear customer filter
+          </select>
+        </div>
+        <div className="min-w-0">
+          <label htmlFor="invoice-year-filter" className="sr-only">Financial year</label>
+          <select id="invoice-year-filter"
+          value={dateFrom || dateTo ? '' : yearFilter}
+          disabled={Boolean(dateFrom || dateTo)}
+          onChange={e => { setYearFilter(e.target.value); setMonthFilter(''); }}
+          className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 disabled:cursor-not-allowed disabled:opacity-50 font-mono">
+          <option value="">All years</option>
+          {FINANCIAL_YEARS.map(year => <option key={year} value={year}>FY {year}</option>)}
+          </select>
+        </div>
+        <div className="min-w-0">
+          <label htmlFor="invoice-month-filter" className="sr-only">Month</label>
+          <select id="invoice-month-filter"
+          value={dateFrom || dateTo ? '' : monthFilter}
+          disabled={!yearFilter || Boolean(dateFrom || dateTo)}
+          onChange={e => setMonthFilter(e.target.value ? Number(e.target.value) : '')}
+          className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 disabled:cursor-not-allowed disabled:opacity-50 font-mono">
+          <option value="">All months</option>
+          {FINANCIAL_MONTHS.map(month => <option key={month.value} value={month.value}>{month.label}</option>)}
+          </select>
+        </div>
+        <div className="min-w-0">
+          <label htmlFor="invoice-from-date" className="sr-only">From date</label>
+          <input id="invoice-from-date" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setYearFilter(''); setMonthFilter(''); }} className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 font-mono" aria-label="From date" />
+        </div>
+        <div className="min-w-0">
+          <label htmlFor="invoice-to-date" className="sr-only">To date</label>
+          <input id="invoice-to-date" type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setYearFilter(''); setMonthFilter(''); }} className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 font-mono" aria-label="To date" />
+        </div>
+        {anyFilterActive ? (
+          <button type="button" onClick={clearFilters} className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap px-2 text-[11px] text-[var(--erp-muted)] transition-colors hover:text-[var(--erp-gold)] cursor-pointer 2xl:justify-self-end font-mono">
+            <RotateCcw className="h-3.5 w-3.5" /> Clear filters
           </button>
         ) : null}
       </div>
+      {dateRangeInvalid && <p className="text-xs text-[var(--erp-negative)]">From date cannot be after To date.</p>}
+      <p className="text-[11px] font-mono text-[var(--erp-muted)]">
+        {rows.length} invoice{rows.length === 1 ? '' : 's'} · {selectedBranch.name}
+        {yearFilter && ` · FY ${yearFilter}`}
+        {monthFilter && ` · ${FINANCIAL_MONTHS.find(month => month.value === monthFilter)?.label}`}
+        {(dateFrom || dateTo) && ` · ${dateFrom || '…'} to ${dateTo || '…'}`}
+      </p>
       {loading ? (
         <MasterLoading label="Loading invoices…" />
       ) : (
@@ -326,12 +415,12 @@ export const InvoiceScreen: React.FC = () => {
           data={rows}
           keyExtractor={r => r.id}
           {...emptyTableProps(
+            anyFilterActive ? Math.max(rows.length, 1) : rows.length,
             rows.length,
-            rows.length,
-            'No invoices yet.',
-            'No invoices match this filter.',
-            canWrite ? 'Create Invoice' : '',
-            canWrite ? () => void openPickPo() : () => undefined,
+            anyFilterActive ? `No invoices match the current filters for ${selectedBranch.name}.` : `No invoices yet for ${selectedBranch.name}.`,
+            anyFilterActive ? `No invoices match the current filters for ${selectedBranch.name}.` : `No invoices yet for ${selectedBranch.name}.`,
+            anyFilterActive ? 'Clear filters' : canWrite ? 'Create Invoice' : '',
+            anyFilterActive ? clearFilters : canWrite ? () => void openPickPo() : () => undefined,
           )}
         />
       )}

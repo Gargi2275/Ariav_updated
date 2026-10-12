@@ -38,6 +38,7 @@ class DispatchViewSet(viewsets.ModelViewSet):
         qs = scope_to_visible_customers(super().get_queryset(), self.request.user, "purchase_order__customer_id")
         po_id = self.request.query_params.get("purchase_order_id")
         customer_id = self.request.query_params.get("customer_id")
+        entity_id = self.request.query_params.get("entity_id")
         date_from = self.request.query_params.get("date_from")
         date_to = self.request.query_params.get("date_to")
         transporter = self.request.query_params.get("transporter")
@@ -46,6 +47,8 @@ class DispatchViewSet(viewsets.ModelViewSet):
             qs = qs.filter(purchase_order_id=po_id)
         if customer_id:
             qs = qs.filter(purchase_order__customer_id=customer_id)
+        if entity_id:
+            qs = qs.filter(purchase_order__entity_id=entity_id)
         if date_from:
             qs = qs.filter(dispatch_date__gte=date_from)
         if date_to:
