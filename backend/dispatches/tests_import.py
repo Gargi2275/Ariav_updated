@@ -1,6 +1,9 @@
 from decimal import Decimal
 from io import BytesIO
 from collections import defaultdict
+import json
+import os
+from pathlib import Path
 
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -693,6 +696,126 @@ class DispatchImportApiTests(TestCase):
         self.assertEqual(len(body["excluded"]), 1)
         self.assertIn("No customer + item PO match for Order Code MISSING-PO", body["excluded"][0]["reason"])
         self.assertEqual(Dispatch.objects.count(), 0)
+
+    def _golden(self, name, value):
+        path = Path(__file__).with_name("tests") / "snapshots" / f"{name}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if os.environ.get("UPDATE_DISPATCH_GOLDENS") == "1":
+            path.write_text(json.dumps(value, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+        self.assertTrue(path.exists(), f"Missing golden snapshot: {path}")
+        expected = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(value, expected)
+
+    @staticmethod
+    def _snapshot_response(response):
+        value = json.loads(json.dumps(response.json(), default=str))
+        if "preview_token" in value:
+            value["preview_token"] = "<preview-token>"
+        return value
+
+    @staticmethod
+    def _snapshot_rows(value):
+        value = json.loads(json.dumps(value, default=str))
+        for collection in value.values():
+            for row in collection:
+                for key in row:
+                    if key == "id" or key.endswith("_id"):
+                        row[key] = "<id>"
+        return value
+
+    def test_golden_ocm_empty_database_preview(self):
+        response = self._dispatch_fixture_preview()
+        self.assertEqual(response.status_code, 200, response.content)
+        self._golden("ocm_empty_preview", self._snapshot_response(response))
+
+    def test_golden_ocm_all_groups_preview_commit_and_rows(self):
+        self._create_fixture_pos()
+        preview = self._dispatch_fixture_preview()
+        self.assertEqual(preview.status_code, 200, preview.content)
+        raw_preview = preview.json()
+        preview_body = dict(raw_preview)
+        preview_body["preview_token"] = "<preview-token>"
+        commit = self.client.post(
+            "/api/dispatches/import/commit/",
+            {
+                "preview_token": raw_preview["preview_token"],
+                "group_keys": [row["group_key"] for row in raw_preview["importable"]],
+            },
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(commit.status_code, 201, commit.content)
+        rows = {
+            "dispatches": list(
+                Dispatch.objects.order_by("id").values(
+                    "id", "purchase_order_id", "dispatch_date", "lr_number",
+                    "transporter", "challan_reference", "created_by_id",
+                )
+            ),
+            "lines": list(
+                DispatchLine.objects.order_by("id").values(
+                    "id", "dispatch_id", "purchase_order_line_id", "dispatched_quantity",
+                )
+            ),
+        }
+        self._golden("ocm_all_commit", {"preview": preview_body, "commit": self._snapshot_response(commit), "rows": self._snapshot_rows(rows)})
+
+    def test_golden_ocm_edge_cases_and_missing_column(self):
+        cases = {}
+        cases["customer_item_fallback"] = self._snapshot_response(
+            self._preview([_row("MISSING-FALLBACK", "INV-FALLBACK")])
+        )
+        self._create_po("WRONG-CUSTOMER-PO", status="Brand Accepted")
+        cases["wrong_customer"] = self._snapshot_response(
+            self._preview([_row("WRONG-CUSTOMER-PO", "INV-WRONG", customer_code="DSP-C2")])
+        )
+        self._create_po("ALREADY-IMPORTED", status="Brand Accepted")
+        first = self._preview([_row("ALREADY-IMPORTED", "INV-ALREADY")])
+        self.client.post(
+            "/api/dispatches/import/commit/",
+            {"preview_token": first.json()["preview_token"], "group_keys": [first.json()["importable"][0]["group_key"]]},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        cases["already_imported"] = self._snapshot_response(self._preview([_row("ALREADY-IMPORTED", "INV-ALREADY")]))
+        out_scope = self._create_po("OUT-OF-SCOPE", status="Brand Accepted")
+        PurchaseOrder.objects.filter(pk=out_scope).update(entity=Entity.objects.create(
+            short_code="OTH", entity_name="Other", entity_type=Entity.EntityType.HEAD_OFFICE,
+        ))
+        cases["out_of_scope"] = self._snapshot_response(self._preview([_row("OUT-OF-SCOPE", "INV-SCOPE")]))
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append([header for header in HEADERS if header != "Invoice No"])
+        sheet.append(["ADT", "AG1", "MISSING-COLUMN"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        missing = self.client.post(
+            "/api/dispatches/import/preview/",
+            {"file": SimpleUploadedFile("missing.xlsx", buffer.getvalue())},
+            format="multipart",
+            HTTP_HOST="localhost",
+        )
+        cases["missing_required_column"] = {"status_code": missing.status_code, "body": missing.json()}
+        self._golden("ocm_edge_cases", cases)
+
+    def test_golden_manual_dispatch_creation(self):
+        po_id = self._create_po("MANUAL-GOLDEN", status="Brand Accepted")
+        line = PurchaseOrderLine.objects.get(purchase_order_id=po_id)
+        response = self.client.post(
+            "/api/dispatches/",
+            {
+                "purchase_order_id": po_id,
+                "dispatch_date": "2026-09-17",
+                "lr_number": "LR-GOLDEN",
+                "transporter": "VRL Logistics",
+                "challan_reference": "MANUAL-INV",
+                "lines": [{"purchase_order_line_id": line.id, "dispatched_quantity": "1.00"}],
+            },
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self._golden("manual_dispatch", {"status_code": response.status_code, "body": self._snapshot_response(response)})
 
     def test_preview_draft_po_excluded_not_brand_accepted(self):
         self._create_po("ATN-DRAFT", status="Draft")
