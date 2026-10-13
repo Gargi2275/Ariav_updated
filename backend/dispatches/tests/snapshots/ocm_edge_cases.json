@@ -10,7 +10,7 @@
         "order_code": "ALREADY-IMPORTED",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3259,
+        "po_id": 3287,
         "po_number": "ALREADY-IMPORTED",
         "reason": "Dispatch for ALREADY-IMPORTED and invoice INV-ALREADY is already imported",
         "source_rows": [
@@ -67,7 +67,7 @@
             "description": "A-B-C-T-S",
             "po_line_description": "A-B-C-T-S",
             "product_code": "",
-            "purchase_order_line_id": 6755,
+            "purchase_order_line_id": 6803,
             "quantity": "4.00",
             "shade": "C"
           }
@@ -79,7 +79,7 @@
         "order_code": "OUT-OF-SCOPE",
         "po_entity_code": "OTH",
         "po_entity_name": "Other",
-        "po_id": 3260,
+        "po_id": 3288,
         "po_number": "OUT-OF-SCOPE",
         "transporter": "VRL Logistics"
       }
@@ -99,7 +99,7 @@
         "order_code": "WRONG-CUSTOMER-PO",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3258,
+        "po_id": 3286,
         "po_number": "WRONG-CUSTOMER-PO",
         "reason": "Customer mismatch: file CustomerCd 'DSP-C2' does not match PO customer code 'DSP-C1' for WRONG-CUSTOMER-PO.",
         "source_rows": [
