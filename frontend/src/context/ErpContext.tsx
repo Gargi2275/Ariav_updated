@@ -22,6 +22,7 @@ import { authApi, PythonHealthInfo } from '../services/authApi';
 import { EntityRow, entitiesApi } from '../services/entitiesApi';
 import { notifyError, notifyInfo, notifySuccess } from '../services/notify';
 import { isSessionExpiryHandled, subscribeToSessionExpiry } from '../services/sessionExpiry';
+import { currentFinancialYear, getPeriod as buildPeriod, normalizeFinancialYear, normalizePeriodMonth, Period } from '../utils/dateFilters';
 
 interface ErpContextType {
   currentScreenId: number;
@@ -38,10 +39,15 @@ interface ErpContextType {
   setSelectedEntityId: (id: SelectedEntityId) => void;
   financialYear: string;
   setFinancialYear: (fy: string) => void;
+  periodMonth: number | '';
+  setPeriodMonth: (month: number | '') => void;
+  getPeriod: () => Period;
   
   // Security & Role — role is session-backed; setUserRole is login/OTP only
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
+  canEditRecords: boolean;
+  canDeleteRecords: boolean;
   sessionUserName: string;
   logout: () => void;
 
@@ -66,6 +72,7 @@ interface ErpContextType {
     branch: string;
     adminName: string;
     status: 'pending' | 'approved' | 'rejected';
+    expiresAt?: number;
   } | null;
   setPendingLoginRequest: React.Dispatch<React.SetStateAction<{
     id: string;
@@ -74,6 +81,7 @@ interface ErpContextType {
     branch: string;
     adminName: string;
     status: 'pending' | 'approved' | 'rejected';
+    expiresAt?: number;
   } | null>>;
   
   // Audit Logs
@@ -103,6 +111,11 @@ const ErpContext = createContext<ErpContextType | undefined>(undefined);
 
 const SCREEN_STORAGE_KEY = 'ariav_current_screen';
 const ENTITY_STORAGE_KEY = 'ariav_selected_entity_id';
+
+function periodStorageKey(part: 'fy' | 'month'): string {
+  const user = localStorage.getItem('ariav_auth_name') || localStorage.getItem('ariav_auth_role') || 'default';
+  return `ariav_period_${part}_${user}`;
+}
 
 function mapEntityToBranch(row: EntityRow): Branch {
   return {
@@ -146,11 +159,31 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     restoreSelectedBranch([], localStorage.getItem(ENTITY_STORAGE_KEY))
   );
   const [entityReady, setEntityReady] = useState(false);
-  const [financialYear, setFinancialYear] = useState<string>('2025-26');
+  const [financialYear, setFinancialYearState] = useState<string>(
+    () => normalizeFinancialYear(localStorage.getItem(periodStorageKey('fy'))) || currentFinancialYear(),
+  );
+  const [periodMonth, setPeriodMonthState] = useState<number | ''>(() =>
+    normalizePeriodMonth(localStorage.getItem(periodStorageKey('month'))),
+  );
+  const setFinancialYear = useCallback((fy: string) => {
+    const next = normalizeFinancialYear(fy) || currentFinancialYear();
+    setFinancialYearState(next);
+    setPeriodMonthState('');
+    localStorage.setItem(periodStorageKey('fy'), next);
+    localStorage.setItem(periodStorageKey('month'), '');
+  }, []);
+  const setPeriodMonth = useCallback((month: number | '') => {
+    const next = normalizePeriodMonth(month);
+    setPeriodMonthState(next);
+    localStorage.setItem(periodStorageKey('month'), next === '' ? '' : String(next));
+  }, []);
+  const getPeriod = useCallback(() => buildPeriod(financialYear, periodMonth), [financialYear, periodMonth]);
   const [userRole, setUserRole] = useState<UserRole>(() => {
-    if (!localStorage.getItem('ariav_auth_token')) return 'operator';
-    return localStorage.getItem('ariav_auth_role') === 'admin' ? 'admin' : 'operator';
+    if (!localStorage.getItem('ariav_auth_token')) return 'staff';
+    return localStorage.getItem('ariav_auth_role') === 'admin' ? 'admin' : 'staff';
   });
+  const [canEditRecords, setCanEditRecords] = useState(false);
+  const [canDeleteRecords, setCanDeleteRecords] = useState(false);
   const [sessionUserName, setSessionUserName] = useState<string>(
     () => localStorage.getItem('ariav_auth_name') || ''
   );
@@ -162,10 +195,14 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     branch: string;
     adminName: string;
     status: 'pending' | 'approved' | 'rejected';
+    expiresAt?: number;
   } | null>(() => {
     try {
       const saved = sessionStorage.getItem('ariav_pending_login_req');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (parsed?.branch === 'Surat Ring Road Textile Mkt') parsed.branch = '';
+      return parsed;
     } catch {
       return null;
     }
@@ -208,8 +245,10 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       const me = await authApi.me();
       if (cancelled) return;
-      if (me.success && (me.role === 'admin' || me.role === 'operator')) {
+      if (me.success && (me.role === 'admin' || me.role === 'staff')) {
         setUserRole(me.role);
+        setCanEditRecords(me.role === 'admin' || !!me.user?.can_edit);
+        setCanDeleteRecords(me.role === 'admin' || !!me.user?.can_delete);
         localStorage.setItem('ariav_auth_role', me.role);
         const name = me.user?.name || '';
         if (name) {
@@ -305,7 +344,9 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPythonOnline(false);
     setFlashMessage(null);
     setSessionUserName('');
-    setUserRole('operator');
+    setUserRole('staff');
+    setCanEditRecords(false);
+    setCanDeleteRecords(false);
     setCurrentScreenId(1);
   }, []);
 
@@ -417,12 +458,18 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const currentScreen = ERP_SCREENS.find(s => s.id === currentScreenId) || ERP_SCREENS[5];
 
   const navigateTo = (screenIdOrSlug: number | string) => {
-    if (typeof screenIdOrSlug === 'number') {
-      setCurrentScreenId(screenIdOrSlug === 24 ? 36 : screenIdOrSlug);
-    } else {
-      const found = ERP_SCREENS.find(s => s.slug === screenIdOrSlug);
-      if (found) setCurrentScreenId(found.id);
+    const adminOnly = new Set([4, 5, 7, 8, 9, 10]);
+    const resolveId = () => {
+      if (typeof screenIdOrSlug === 'number') return screenIdOrSlug === 24 ? 36 : screenIdOrSlug;
+      return ERP_SCREENS.find(s => s.slug === screenIdOrSlug)?.id;
+    };
+    const nextId = resolveId();
+    if (!nextId) return;
+    if (userRole !== 'admin' && adminOnly.has(nextId)) {
+      showFlash('That module is limited to an administrator.', 'negative');
+      return;
     }
+    setCurrentScreenId(nextId);
   };
 
   const showFlash = (text: string, type: 'positive' | 'negative' | 'gold' = 'positive') => {
@@ -563,7 +610,9 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPendingLoginRequest(null);
     void authApi.logout();
     setSessionUserName('');
-    setUserRole('operator');
+    setUserRole('staff');
+    setCanEditRecords(false);
+    setCanDeleteRecords(false);
     setCurrentScreenId(1);
   };
 
@@ -582,8 +631,13 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedEntityId,
         financialYear,
         setFinancialYear,
+        periodMonth,
+        setPeriodMonth,
+        getPeriod,
         userRole,
         setUserRole: commitUserRole,
+        canEditRecords,
+        canDeleteRecords,
         sessionUserName,
         logout,
         pythonStatus,

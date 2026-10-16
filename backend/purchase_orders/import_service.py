@@ -12,10 +12,12 @@ from io import BytesIO
 from django.core.cache import cache
 from django.db import transaction
 from openpyxl import load_workbook
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from brands.models import Brand
-from customers.models import CustomerEntity
+from customers.models import Customer, CustomerEntity
+from customers.serializers import CustomerSerializer
+from accounts.models import AuditLog
 from entities.models import Entity
 from purchase_orders.models import PurchaseOrder
 from purchase_orders.serializers import create_purchase_order_with_lines
@@ -245,15 +247,122 @@ def _existing_po_numbers() -> dict[str, str]:
     return {number.strip().lower(): number for number in PurchaseOrder.objects.values_list("po_number", flat=True)}
 
 
+def _normalised_party_code(value: str) -> str:
+    raw = "".join(character for character in _cell_str(value).upper() if character.isalnum())
+    return raw.lstrip("0") or "0"
+
+
+def _party_suggestions(code: str, name: str, city: str, gst: str = "", pan: str = "") -> list[dict]:
+    queryset = Customer.objects.filter(status=Customer.Status.ACTIVE)
+    exact = list(queryset.filter(customer_code__iexact=code))
+    normalised = _normalised_party_code(code)
+    candidates = list(queryset.exclude(pk__in=[item.pk for item in exact])[:250])
+    ranked: list[tuple[int, Customer, str]] = [(0, item, "same code after normalisation") for item in exact]
+    for item in candidates:
+        if gst and item.gst_no and item.gst_no.strip().casefold() == gst.strip().casefold():
+            ranked.append((1, item, "same GST"))
+        elif pan and item.pan_no and item.pan_no.strip().casefold() == pan.strip().casefold():
+            ranked.append((1, item, "same PAN"))
+        elif _normalised_party_code(item.customer_code) == normalised:
+            ranked.append((1, item, "same code after normalisation"))
+        elif name and item.customer_name.casefold() == name.casefold() and (
+            not city or item.city.casefold() == city.casefold()
+        ):
+            ranked.append((2, item, "same name and city"))
+    ranked.sort(key=lambda item: (item[0], item[1].customer_name.casefold()))
+    return [
+        {
+            "id": item.id,
+            "code": item.customer_code,
+            "name": item.customer_name,
+            "city": item.city,
+            "why": why,
+        }
+        for _, item, why in ranked[:3]
+    ]
+
+
+def _existing_party_details(code: str, entity: Entity) -> tuple[list[dict], int | None, str]:
+    party = Customer.objects.filter(customer_code__iexact=code).prefetch_related("entity_links__entity").first()
+    if party is None:
+        return [], None, ""
+    branches = [
+        {"code": link.entity.short_code, "name": link.entity.entity_name}
+        for link in party.entity_links.all()
+        if link.entity_id != entity.id
+    ]
+    return branches, party.id, party.customer_name
+
+
+def _record_unmatched_party(
+    unmatched: OrderedDict,
+    unmatched_rows: dict,
+    group: dict,
+    code: str,
+    profile: ImportProfile,
+    entity: Entity,
+) -> None:
+    header_values = {field: value for field, (value, _row) in group["header_values"].items()}
+    party = unmatched.setdefault(code, {
+        "code": code,
+        "name": group["customer_name"],
+        "city": _cell_str(header_values.get("city")),
+        "state": _cell_str(header_values.get("state")),
+        "address": _cell_str(header_values.get("address")),
+        "gst": _cell_str(header_values.get("gst_no") or header_values.get("gst")),
+        "pan": _cell_str(header_values.get("pan_no") or header_values.get("pan")),
+        "po_count": 0,
+        "line_count": 0,
+        "order_nos": [],
+        "suggested_matches": [],
+        "exists_in_branches": [],
+        "existing_party_id": None,
+        "existing_party_name": "",
+    })
+    party["po_count"] += 1
+    party["line_count"] += len(group["lines"])
+    party["order_nos"].append(group["order_no"])
+    party["suggested_matches"] = _party_suggestions(
+        party["code"], party["name"], party["city"], party["gst"], party["pan"],
+    )
+    branches, existing_id, existing_name = _existing_party_details(code, entity)
+    party["exists_in_branches"] = branches
+    party["existing_party_id"] = existing_id
+    party["existing_party_name"] = existing_name
+    extra_data = {
+        field: header_values.get(field, "")
+        for field in profile.source_extra_fields
+        if header_values.get(field, "") not in ("", None)
+    }
+    unmatched_rows.setdefault(code, []).append({
+        "order_no": group["order_no"],
+        "customer_code": code,
+        "customer_name": group["customer_name"],
+        "file_customer_name": group["customer_name"],
+        "matched_customer_id": None,
+        "line_count": len(group["lines"]),
+        "lines": group["lines"],
+        "po_date": header_values.get(profile.date_field) if profile.date_field else date.today(),
+        "remarks": header_values.get(profile.remarks_field, "") if profile.remarks_field else "",
+        "extra_data": extra_data,
+    })
+
+
 def unmatched_reason(customer_code: str, entity: Entity) -> str:
     return f"Customer code {customer_code or '(blank)'} not found under {entity.entity_name}"
 
 
 def build_preview(file_bytes: bytes, entity: Entity, brand: Brand, format_id: str | None = None) -> dict:
+    if entity.status != Entity.Status.ACTIVE or brand.status != Brand.Status.ACTIVE:
+        raise ValidationError({"brand_id": "Only active branch and brand combinations can be imported."})
+    if not entity.brands.filter(pk=brand.pk).exists():
+        raise ValidationError(
+            {"brand_id": f"Brand {brand.brand_name} is not mapped to branch {entity.entity_name}."}
+        )
     profile, groups, parse_warnings, parse_errors = _parse_workbook(file_bytes, brand, format_id)
     customers = _customers_for_entity(entity)
     existing = _existing_po_numbers()
-    importable, excluded = [], []
+    importable, excluded, unmatched, unmatched_rows = [], [], OrderedDict(), {}
     warnings = list(parse_warnings)
     errors = list(parse_errors)
     allowed_profiles = profiles_for_brand(brand.brand_code)
@@ -275,7 +384,10 @@ def build_preview(file_bytes: bytes, entity: Entity, brand: Brand, format_id: st
             reason = unmatched_reason(code, entity)
         if reason:
             errors.extend(group["errors"])
-            excluded.append({"order_no": order_no, "customer_code": code, "customer_name": group["customer_name"], "reason": reason, "line_count": len(group["lines"]), "errors": group["errors"]})
+            row = {"order_no": order_no, "customer_code": code, "customer_name": group["customer_name"], "reason": reason, "line_count": len(group["lines"]), "errors": group["errors"]}
+            excluded.append(row)
+            if len(group["customer_codes"]) == 1 and code.upper() not in customers and order_no.lower() not in existing:
+                _record_unmatched_party(unmatched, unmatched_rows, group, code, profile, entity)
             if order_no.lower() in existing:
                 warnings.append(f"Order No {order_no} already exists as an existing po_number.")
             continue
@@ -302,6 +414,8 @@ def build_preview(file_bytes: bytes, entity: Entity, brand: Brand, format_id: st
         "format_id": profile.id, "format_name": profile.display_name,
         "allowed_formats": [{"id": p.id, "name": p.display_name} for p in allowed_profiles],
         "file_sha256": hashlib.sha256(file_bytes).hexdigest(), "importable": importable,
+        "unmatched_parties": list(unmatched.values()),
+        "unmatched_rows": unmatched_rows,
         "excluded": excluded, "warnings": warnings, "errors": errors,
     }
 
@@ -323,55 +437,166 @@ def drop_preview(token: str) -> None:
 
 
 def public_preview_payload(preview: dict, token: str) -> dict:
-    return {"preview_token": token, **{key: preview[key] for key in (
+    return {"preview_token": token, "preview_id": token, **{key: preview[key] for key in (
         "entity_id", "brand_id", "format_id", "format_name", "allowed_formats",
         "importable", "excluded", "warnings", "errors",
+        "unmatched_parties",
     )}}
 
 
-def commit_import(*, user, token: str, entity_id: int, brand_id: int, order_nos: list[str]) -> dict:
+def commit_import(*, user, token: str, entity_id: int, brand_id: int, order_nos: list[str], decisions: dict | None = None) -> dict:
     cached = load_preview(token)
     if not cached or cached.get("user_id") != getattr(user, "id", None):
         raise ValidationError({"detail": "Preview has expired or was not found. Run preview again before committing."})
     if int(cached["entity_id"]) != int(entity_id) or int(cached["brand_id"]) != int(brand_id):
         raise ValidationError({"detail": "Import context does not match the preview."})
+    legacy_commit = decisions is None
+    decisions = decisions or {}
+    stored_parties = {item["code"]: item for item in cached.get("unmatched_parties", [])}
+    unknown = sorted(set(decisions) - set(stored_parties))
+    missing = sorted(set(stored_parties) - set(decisions))
+    if unknown:
+        raise ValidationError({"decisions": f"Party code(s) not found in the stored preview: {', '.join(unknown)}."})
+    if missing and not legacy_commit:
+        raise ValidationError({"decisions": f"A decision is required for Party code(s): {', '.join(missing)}."})
+    for code, decision in decisions.items():
+        if not isinstance(decision, dict) or decision.get("action") not in {"create", "map", "link", "skip"}:
+            raise ValidationError({"decisions": f"Invalid decision for Party code {code}."})
+    if any(item["action"] in {"create", "link"} for item in decisions.values()) and not user.is_admin_role:
+        raise PermissionDenied("Only administrators can add or link Parties.")
+
     approved = {_cell_str(value) for value in order_nos if _cell_str(value)}
     rows = [row for row in cached["importable"] if row["order_no"] in approved]
     skipped = [row for row in cached["excluded"] if row["order_no"] in approved]
+    for code, decision in decisions.items():
+        party_rows = cached.get("unmatched_rows", {}).get(code, [])
+        if decision["action"] in {"create", "map", "link"}:
+            rows.extend(party_rows)
+        else:
+            skipped.extend(party_rows)
     if not rows and not skipped:
         raise ValidationError({"order_nos": "Select at least one purchase order to import."})
-    entity = Entity.objects.get(pk=entity_id)
-    brand = Brand.objects.get(pk=brand_id)
+
+    entity = Entity.objects.filter(pk=entity_id).first()
+    brand = Brand.objects.filter(pk=brand_id).first()
+    if entity is None:
+        raise ValidationError({"entity_id": "Branch was not found."})
+    if brand is None:
+        raise ValidationError({"brand_id": "Brand was not found."})
+    if entity.status != Entity.Status.ACTIVE:
+        raise ValidationError({"entity_id": "Only active branches can be used for purchase order imports."})
+    if brand.status != Brand.Status.ACTIVE:
+        raise ValidationError({"brand_id": "Only active brands can be used for purchase order imports."})
+    if not entity.brands.filter(pk=brand.pk).exists():
+        raise ValidationError(
+            {"brand_id": f"Brand {brand.brand_name} is not mapped to branch {entity.entity_name}."}
+        )
     customers = _customers_for_entity(entity)
     existing = _existing_po_numbers()
     if any(row["order_no"].lower() in existing for row in rows):
         raise ValidationError({"detail": "Import was rejected because a PO was already imported since preview."})
-    created = []
+
+    created, parties_created, parties_mapped, parties_linked = [], [], [], []
     with transaction.atomic():
+        resolved = {}
+        for code, decision in decisions.items():
+            if decision["action"] == "skip":
+                continue
+            if decision["action"] == "map":
+                customer = Customer.objects.filter(
+                    pk=decision.get("map_to_party_id"),
+                    status=Customer.Status.ACTIVE,
+                    entity_links__entity_id=entity.id,
+                ).first()
+                if customer is None:
+                    raise ValidationError({"decisions": f"Selected Party for code {code} is not Active or is not linked to the import Branch."})
+                resolved[code] = customer
+                parties_mapped.append({"source_code": code, "id": customer.id, "code": customer.customer_code, "name": customer.customer_name})
+                continue
+            if decision["action"] == "link":
+                customer = Customer.objects.filter(
+                    customer_code=code,
+                    status=Customer.Status.ACTIVE,
+                ).first()
+                if customer is None:
+                    raise ValidationError({"decisions": f"Party code {code} does not exist or is not Active."})
+                if CustomerEntity.objects.filter(customer=customer, entity=entity).exists():
+                    raise ValidationError({"decisions": f"Party code {code} is already linked to the import Branch."})
+                CustomerEntity.objects.create(customer=customer, entity=entity, primary_entity=False)
+                parties_linked.append({
+                    "source_code": code,
+                    "id": customer.id,
+                    "code": customer.customer_code,
+                    "name": customer.customer_name,
+                    "branch": {"code": entity.short_code, "name": entity.entity_name},
+                })
+                AuditLog.objects.create(
+                    user=user.display_name or user.username,
+                    role=user.role,
+                    action="PO Import Party Linked",
+                    module="Purchase Orders",
+                    details=f"Party {customer.customer_code}; Branch {entity.short_code}; Preview {token}",
+                )
+                resolved[code] = customer
+                continue
+            decision_code = _cell_str(decision.get("code"))
+            decision_name = _cell_str(decision.get("name"))
+            try:
+                branch_ids = [int(value) for value in decision.get("branch_ids", [])]
+                primary_id = int(decision.get("primary_branch_id"))
+            except (TypeError, ValueError):
+                raise ValidationError({"decisions": f"New Party {code} has invalid Branch selection."})
+            if not decision_code or not decision_name or not isinstance(branch_ids, list) or not branch_ids or primary_id not in branch_ids:
+                raise ValidationError({"decisions": f"New Party {code} requires code, name, at least one Branch, and exactly one primary Branch."})
+            if entity.id not in branch_ids or len(set(branch_ids)) != len(branch_ids):
+                raise ValidationError({"decisions": f"New Party {code} must include the import Branch and contain no duplicate Branches."})
+            if Customer.objects.filter(customer_code__iexact=decision_code).exists():
+                raise ValidationError({"detail": f"Party code {decision_code} now exists. Re-run the preview before committing."})
+            serializer = CustomerSerializer(data={
+                "customer_code": decision_code,
+                "customer_name": decision_name,
+                "customer_type": decision.get("type") or Customer.CustomerType.COMPANY,
+                "city": decision.get("city") or "",
+                "state": decision.get("state") or "",
+                "address_line_1": decision.get("address") or "",
+                "gst_no": decision.get("gst") or "",
+                "entities": [{"entity_id": branch_id, "primary_entity": branch_id == primary_id} for branch_id in branch_ids],
+            })
+            serializer.is_valid(raise_exception=True)
+            customer = serializer.save()
+            resolved[code] = customer
+            branches = list(customer.entity_links.select_related("entity").values_list("entity__short_code", "entity__entity_name"))
+            parties_created.append({"id": customer.id, "code": customer.customer_code, "name": customer.customer_name, "branches": [{"code": short, "name": name} for short, name in branches]})
+            AuditLog.objects.create(user=user.display_name or user.username, role=user.role, action="PO Import Party Created", module="Purchase Orders", details=f"Preview {token}; Branches {branches}")
+
         for row in rows:
-            customer = customers.get(row["customer_code"].upper())
+            customer = resolved.get(row["customer_code"]) or customers.get(row["customer_code"].upper())
             if customer is None:
-                raise ValidationError({"detail": f"Import was rejected because data changed since preview. Customer code {row['customer_code']} is no longer linked to {entity.entity_name}."})
-            lines = [
-                {
-                    "product": None,
-                    "product_description": line["description"],
-                    "quantity": Decimal(line["quantity"]),
-                    "rate": Decimal(line["rate"]) if line.get("rate") is not None else None,
-                    "expected_delivery_period": line.get("expected_delivery_period", ""),
-                    "customer_delivery_date": line.get("customer_delivery_date"),
-                    "extra_data": line.get("extra_data", {}),
-                }
-                for line in row["lines"]
-            ]
+                raise ValidationError({"detail": f"Import was rejected because data changed since preview. Party code {row['customer_code']} is no longer linked to {entity.entity_name}."})
+            lines = [{
+                "product": None,
+                "product_description": line["description"],
+                "quantity": Decimal(line["quantity"]),
+                "rate": Decimal(line["rate"]) if line.get("rate") is not None else None,
+                "expected_delivery_period": line.get("expected_delivery_period", ""),
+                "customer_delivery_date": line.get("customer_delivery_date"),
+                "extra_data": line.get("extra_data", {}),
+            } for line in row["lines"]]
             po = create_purchase_order_with_lines(
-                user=user,
-                po_number=row["order_no"], order_type=PurchaseOrder.OrderType.MANUAL if brand.order_method == Brand.OrderMethod.MANUAL_POR else PurchaseOrder.OrderType.DIGITAL,
+                user=user, po_number=row["order_no"],
+                order_type=PurchaseOrder.OrderType.MANUAL if brand.order_method == Brand.OrderMethod.MANUAL_POR else PurchaseOrder.OrderType.DIGITAL,
                 entity=entity, customer=customer, brand=brand, po_date=row["po_date"] or date.today(),
-                status=PurchaseOrder.Status.DRAFT, remarks=row.get("remarks", ""), source_format=cached["format_id"],
+                status=PurchaseOrder.Status.BRAND_ACCEPTED, remarks=row.get("remarks", ""), source_format=cached["format_id"],
                 extra_data=row.get("extra_data", {}), lines=lines,
             )
             created.append({"id": po.id, "po_number": po.po_number, "customer_id": po.customer_id, "line_count": len(row["lines"])})
+        AuditLog.objects.create(user=user.display_name or user.username, role=user.role, action="Purchase Order Import", module="Purchase Orders", details=f"Preview {token}; created {len(created)} POs; created {len(parties_created)} Parties; mapped {len(parties_mapped)} Parties; linked {len(parties_linked)} Parties; skipped {len(skipped)} POs.")
     drop_preview(token)
-    excluded = cached["excluded"]
-    return {"created": created, "created_count": len(created), "excluded": excluded, "excluded_count": len(excluded), "skipped_excluded_order_nos": [row["order_no"] for row in skipped]}
+    reported_excluded = cached["excluded"] if legacy_commit else skipped
+    return {
+        "created": created, "created_count": len(created),
+        "parties_created": parties_created, "parties_mapped": parties_mapped, "parties_linked": parties_linked,
+        "parties_created_count": len(parties_created), "parties_mapped_count": len(parties_mapped), "parties_linked_count": len(parties_linked),
+        "excluded": reported_excluded, "excluded_count": len(reported_excluded),
+        "skipped_excluded_order_nos": [row["order_no"] for row in skipped],
+    }

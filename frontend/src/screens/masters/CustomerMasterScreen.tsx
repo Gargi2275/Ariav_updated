@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, Edit2, MoreVertical, Plus, RotateCcw, ScanSearch, Search, Star, Trash2, Users, X } from 'lucide-react';
+import { BookOpen, Edit2, Eye, MoreVertical, Plus, RotateCcw, ScanSearch, Search, Star, Trash2, Users, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable, Column } from '../../components/common/DataTable';
@@ -22,6 +22,7 @@ import {
   customersApi,
   emptyCustomer,
 } from '../../services/customersApi';
+import { RecordPrintShare } from '../../components/common/RecordPrintShare';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
 const selectClass = 'px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]';
@@ -89,6 +90,7 @@ export const CustomerMasterScreen: React.FC = () => {
   const [pendingHardDelete, setPendingHardDelete] = useState<CustomerRow | null>(null);
   const [hardDeleteBlockDetail, setHardDeleteBlockDetail] = useState<string | null>(null);
   const [kebab, setKebab] = useState<{ row: CustomerRow; top: number; left: number } | null>(null);
+  const [detail, setDetail] = useState<CustomerRow | null>(null);
   const [advanceBalance, setAdvanceBalance] = useState<string | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
   const savingLock = useRef(false);
@@ -279,6 +281,15 @@ export const CustomerMasterScreen: React.FC = () => {
       width: '120px',
       render: r => (
         <div className="flex justify-end gap-1">
+        <button
+          type="button"
+          aria-label={`View ${r.customer_name} details`}
+          title="View details"
+          className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer"
+          onClick={() => setDetail(r)}
+        >
+          <Eye className="w-3.5 h-3.5" />
+        </button>
           <button
             type="button"
             className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer"
@@ -441,6 +452,71 @@ export const CustomerMasterScreen: React.FC = () => {
           </button>
         </div>,
         document.body,
+      )}
+
+      {detail && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-5">
+            <div className="flex items-start justify-between border-b border-[var(--erp-hairline)] pb-3">
+              <div>
+                <h3 className="font-display text-lg font-bold text-[var(--erp-text)]">{detail.customer_name}</h3>
+                <p className="font-mono text-xs text-[var(--erp-muted)]">{detail.customer_code} · {detail.customer_type} · {detail.status}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <RecordPrintShare
+                  title="Party Details"
+                  recordName={detail.customer_name}
+                  fields={[
+                    { label: 'Party Code', value: detail.customer_code },
+                    { label: 'Party Name', value: detail.customer_name },
+                    { label: 'Party Type', value: detail.customer_type },
+                    { label: 'Status', value: detail.status },
+                    { label: 'Primary Branch', value: detail.primary_entity_name ? `${detail.primary_entity_code} · ${detail.primary_entity_name}` : undefined },
+                    { label: 'Linked Branches', value: detail.entities.map(link => `${link.short_code || ''} · ${link.entity_name || ''}${link.primary_entity ? ' (Primary)' : ''}`).join(', ') },
+                    { label: 'Contact Person', value: detail.contact_person },
+                    { label: 'Phone', value: detail.phone },
+                    { label: 'Mobile', value: detail.mobile },
+                    { label: 'Email', value: detail.email },
+                    { label: 'Website', value: detail.website },
+                    { label: 'Billing Address', value: [detail.address_line_1, detail.address_line_2, detail.address_line_3, detail.address_line_4, detail.area, detail.city, detail.district, detail.state, detail.pincode, detail.country].filter(Boolean).join(', ') },
+                    { label: 'GSTIN', value: detail.gst_no },
+                    { label: 'PAN', value: detail.pan_no },
+                    { label: 'Opening Balance', value: detail.opening_balance },
+                  ]}
+                  shareFields={[
+                    { label: 'Party Name', value: detail.customer_name },
+                    { label: 'Party Code', value: detail.customer_code },
+                    { label: 'Mobile', value: detail.mobile },
+                    { label: 'Email', value: detail.email },
+                    { label: 'GSTIN', value: detail.gst_no },
+                    { label: 'Address', value: [detail.address_line_1, detail.address_line_2, detail.address_line_3, detail.address_line_4, detail.area, detail.city, detail.district, detail.state, detail.pincode, detail.country].filter(Boolean).join(', ') },
+                  ]}
+                />
+                <button type="button" aria-label="Close party details" onClick={() => setDetail(null)}><X className="w-4 h-4" /></button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-xs">
+              {[
+                ['Party Type', detail.customer_type],
+                ['Status', detail.status],
+                ['Primary Branch', detail.primary_entity_name ? `${detail.primary_entity_code} · ${detail.primary_entity_name}` : ''],
+                ['Contact Person', detail.contact_person],
+                ['Phone / Mobile', [detail.phone, detail.mobile].filter(Boolean).join(' / ')],
+                ['Email', detail.email],
+                ['Website', detail.website],
+                ['Address', [detail.address_line_1, detail.address_line_2, detail.address_line_3, detail.address_line_4, detail.area, detail.city, detail.district, detail.state, detail.pincode, detail.country].filter(Boolean).join(', ')],
+                ['GSTIN', detail.gst_no],
+                ['PAN', detail.pan_no],
+                ['Opening Balance', detail.opening_balance],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">{label}</div>
+                  <div className="mt-1 min-h-5 text-[var(--erp-text)]">{value || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {modalOpen && canWrite && (

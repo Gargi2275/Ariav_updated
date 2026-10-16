@@ -1,27 +1,60 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useErp } from '../../context/ErpContext';
 import { LockKeyhole, Clock, AlertTriangle, ArrowRight, CheckCircle2, ArrowLeft, Loader2 } from 'lucide-react';
 import { authApi } from '../../services/authApi';
 
 export const VerbalOtpScreen: React.FC = () => {
   const { navigateTo, setUserRole, showFlash, addAuditLog, pendingLoginRequest, setPendingLoginRequest } = useErp();
-  const [secondsRemaining, setSecondsRemaining] = useState(300);
+  const deadlineRef = useRef(pendingLoginRequest?.expiresAt || 0);
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(() => {
+    if (!pendingLoginRequest?.expiresAt) return null;
+    return Math.max(0, Math.ceil((pendingLoginRequest.expiresAt - Date.now()) / 1000));
+  });
   const [otpCode, setOtpCode] = useState('');
   const [isVerified, setIsVerified] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const operatorName = pendingLoginRequest?.operatorName || 'Bhavin V. Joshi';
-  const branchName = pendingLoginRequest?.branch || 'Surat Ring Road Textile Mkt';
+  const operatorName = pendingLoginRequest?.operatorName || '';
+  const branchName = pendingLoginRequest?.branch === 'Surat Ring Road Textile Mkt' ? '' : (pendingLoginRequest?.branch || '');
+  const timedOut = secondsRemaining === 0;
 
-  // 5-minute countdown
   useEffect(() => {
-    if (secondsRemaining <= 0 || isVerified) return;
-    const timer = setInterval(() => {
-      setSecondsRemaining(prev => prev - 1);
+    const requestId = pendingLoginRequest?.id;
+    if (!requestId) {
+      setSecondsRemaining(0);
+      setErrorMessage('No login request found for this terminal. Go back and sign in again.');
+      return;
+    }
+    let cancelled = false;
+    void authApi.checkRequestStatus(requestId).then(res => {
+      if (cancelled) return;
+      const closed = !res.success || res.status === 'expired' || res.status === 'rejected' || res.status === 'completed' || res.status === 'not_found';
+      if (closed) {
+        deadlineRef.current = Date.now();
+        setSecondsRemaining(0);
+        setErrorMessage('This code has expired. Sign in again and ask for a new approval.');
+        return;
+      }
+      const left = Math.max(0, res.seconds_remaining ?? 0);
+      deadlineRef.current = Date.now() + left * 1000;
+      setPendingLoginRequest(current => current ? { ...current, expiresAt: deadlineRef.current } : current);
+      setSecondsRemaining(left);
+    }).catch(() => {
+      if (cancelled || deadlineRef.current) return;
+      setSecondsRemaining(0);
+      setErrorMessage('Could not confirm how long this code remains valid. Sign in again.');
+    });
+    return () => { cancelled = true; };
+  }, [pendingLoginRequest?.id, setPendingLoginRequest]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!deadlineRef.current) return;
+      setSecondsRemaining(Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000)));
     }, 1000);
-    return () => clearInterval(timer);
-  }, [secondsRemaining, isVerified]);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -31,14 +64,14 @@ export const VerbalOtpScreen: React.FC = () => {
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (secondsRemaining <= 0) {
-      setErrorMessage('Verbal OTP token has expired. Request a new token from your administrator.');
+    if (secondsRemaining === null || secondsRemaining <= 0) {
+      setErrorMessage('This code has expired. Sign in again and ask for a new approval.');
       return;
     }
 
     const cleaned = otpCode.replace(/[^0-9]/g, '');
     if (cleaned.length !== 6) {
-      setErrorMessage('Please enter the 6-digit verbal OTP provided by admin (e.g. 530-535).');
+      setErrorMessage('Enter the 6-digit code from your administrator.');
       return;
     }
 
@@ -55,7 +88,7 @@ export const VerbalOtpScreen: React.FC = () => {
       const res = await authApi.verifyVerbalOtp(requestId, cleaned);
       if (res.success) {
         setIsVerified(true);
-        setUserRole('operator');
+        setUserRole('staff');
         setPendingLoginRequest(null);
         addAuditLog('Verbal OTP Successfully Cleared', 'Security Gate', `Operator session opened for request ${requestId}`, 'notice');
         showFlash(res.message || 'Verbal OTP validated. Operator session active.', 'positive');
@@ -75,7 +108,7 @@ export const VerbalOtpScreen: React.FC = () => {
 
   const handleCancel = () => {
     setPendingLoginRequest(null);
-    showFlash('Login session aborted.', 'gold');
+    showFlash('Sign in again when you are ready.', 'gold');
     navigateTo(1); // Return to Login Gateway
   };
 
@@ -89,18 +122,18 @@ export const VerbalOtpScreen: React.FC = () => {
               <LockKeyhole className="w-5 h-5" />
             </div>
             <div>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-gold)] font-medium">VERBAL OTP GATE</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-gold)] font-medium">SIGN IN</span>
               <h2 className="font-serif text-lg font-bold text-[var(--erp-text)]">
-                Security Code Entry
+                {timedOut ? 'This code has timed out' : 'Enter your code'}
               </h2>
             </div>
           </div>
 
           {/* 5-minute countdown */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] font-mono text-xs">
-            <Clock className={`w-3.5 h-3.5 ${secondsRemaining < 60 ? 'text-[var(--erp-negative)] animate-pulse' : 'text-[var(--erp-gold)]'}`} />
-            <span className={secondsRemaining < 60 ? 'text-[var(--erp-negative)] font-bold' : 'text-[var(--erp-text)]'}>
-              {formatTime(secondsRemaining)}
+            <Clock className={`w-3.5 h-3.5 ${secondsRemaining !== null && secondsRemaining < 60 ? 'text-[var(--erp-negative)] animate-pulse' : 'text-[var(--erp-gold)]'}`} />
+            <span className={secondsRemaining !== null && secondsRemaining < 60 ? 'text-[var(--erp-negative)] font-bold' : 'text-[var(--erp-text)]'}>
+              {secondsRemaining === null ? '--:--' : timedOut ? 'Timed out' : formatTime(secondsRemaining)}
             </span>
           </div>
         </div>
@@ -108,23 +141,39 @@ export const VerbalOtpScreen: React.FC = () => {
         {/* Requester Identity Confirmation */}
         <div className="mb-5 py-2.5 px-4 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs font-mono text-[var(--erp-text)] flex flex-col sm:flex-row items-center justify-between gap-1 text-center sm:text-left">
           <span className="font-semibold text-[var(--erp-text)]">{operatorName}</span>
-          <span className="text-[var(--erp-muted)]">{branchName}</span>
+          {branchName ? <span className="text-[var(--erp-muted)]">{branchName}</span> : null}
         </div>
 
-        {!isVerified ? (
+        {!isVerified && timedOut ? (
+          <div className="space-y-5">
+            <p className="text-sm text-[var(--erp-muted)] leading-relaxed font-sans">
+              This sign-in code is no longer valid. Sign in again, then ask your administrator for a new code.
+            </p>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="w-full py-2.5 bg-[var(--erp-gold)] text-[#0F141B] font-mono text-xs font-semibold hover:bg-[var(--erp-gold-soft)] transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+            >
+              <ArrowLeft className="w-4 h-4" /> Sign in again
+            </button>
+          </div>
+        ) : !isVerified ? (
           <form onSubmit={handleVerify} className="space-y-5">
-            <p className="text-xs text-[var(--erp-muted)] leading-relaxed font-sans">
-              Enter the 6-digit verbal security code provided by admin from their live approval console.
+            <p className="text-sm text-[var(--erp-muted)] leading-relaxed font-sans">
+              Ask your administrator for the 6-digit code. The time left stays the same if you refresh this page.
             </p>
 
             <div>
               <label className="block text-xs font-mono text-[var(--erp-muted)] mb-1.5">
-                6-Digit Verbal Code
+                Security code
               </label>
               <input
                 type="text"
                 autoFocus
-                placeholder="e.g. 530-535"
+                placeholder="6-digit code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={7}
                 value={otpCode}
                 onChange={e => {
                   setOtpCode(e.target.value);
@@ -144,7 +193,7 @@ export const VerbalOtpScreen: React.FC = () => {
             <div className="flex items-center gap-2.5 pt-2">
               <button
                 type="submit"
-                disabled={isValidating || !otpCode.trim()}
+                disabled={isValidating || !otpCode.trim() || secondsRemaining === null || secondsRemaining <= 0}
                 className="flex-1 py-2.5 bg-[var(--erp-gold)] text-[#0F141B] font-mono text-xs font-semibold hover:bg-[var(--erp-gold-soft)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
               >
                 {isValidating ? (
@@ -177,7 +226,7 @@ export const VerbalOtpScreen: React.FC = () => {
               Session Authenticated
             </h3>
             <p className="text-xs font-mono text-[var(--erp-positive)]">
-              Operator clearance verified for {branchName}
+              Signed in{branchName ? ` for ${branchName}` : ''}.
             </p>
             <span className="text-[11px] font-mono text-[var(--erp-muted)]">
               Entering dashboard...

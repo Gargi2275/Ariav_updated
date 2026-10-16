@@ -339,14 +339,14 @@ class Command(BaseCommand):
             username=settings.DEV_OPERATOR_USERNAME,
             defaults={
                 "email": "bhavin.joshi@ariavagency.com",
-                "role": AuthUser.Role.OPERATOR,
+                "role": AuthUser.Role.STAFF,
                 "display_name": "Bhavin V. Joshi",
                 "operator_code": "OP-04",
                 "branch": branches["SUR-02"],
             },
         )
         operator.set_password(settings.DEV_OPERATOR_PASSWORD)
-        operator.role = AuthUser.Role.OPERATOR
+        operator.role = AuthUser.Role.STAFF
         operator.display_name = "Bhavin V. Joshi"
         operator.operator_code = "OP-04"
         operator.branch = branches["SUR-02"]

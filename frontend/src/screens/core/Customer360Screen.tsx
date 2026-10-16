@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { BookCopy, ScanSearch } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { LedgerMetricStrip, LedgerMetricItem } from '../../components/common/LedgerMetricStrip';
 import { StatusChip, StatusChipType } from '../../components/common/StatusChip';
@@ -66,14 +67,11 @@ function typeChip(type: string): StatusChipType | string {
 }
 
 export const Customer360Screen: React.FC = () => {
-  const { navigateTo, selectedEntityId, entityReady } = useErp();
+  const { navigateTo, selectedEntityId, entityReady, getPeriod } = useErp();
+  const period = getPeriod();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [customerId, setCustomerId] = useState<number | ''>('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [appliedFrom, setAppliedFrom] = useState('');
-  const [appliedTo, setAppliedTo] = useState('');
   const [payload, setPayload] = useState<Customer360Payload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -99,11 +97,11 @@ export const Customer360Screen: React.FC = () => {
 
   useEffect(() => { void loadCustomers(); }, [loadCustomers]);
 
-  const loadProfile = useCallback(async (id: number, from?: string, to?: string) => {
+  const loadProfile = useCallback(async (id: number) => {
     setLoading(true);
     setError('');
     try {
-      setPayload(await customersApi.profile360(id, { from: from || undefined, to: to || undefined }));
+      setPayload(await customersApi.profile360(id, { from: period.from, to: period.to }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load party 360.');
       setError(parsed.message);
@@ -111,7 +109,7 @@ export const Customer360Screen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [period.from, period.to]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(CUSTOMER_360_KEY);
@@ -123,12 +121,10 @@ export const Customer360Screen: React.FC = () => {
     void loadProfile(id);
   }, [loadProfile]);
 
-  const applyRange = () => {
+  useEffect(() => {
     if (!customerId) return;
-    setAppliedFrom(dateFrom);
-    setAppliedTo(dateTo);
-    void loadProfile(Number(customerId), dateFrom, dateTo);
-  };
+    void loadProfile(Number(customerId));
+  }, [customerId, loadProfile]);
 
   const openLedger = () => {
     if (!customerId) return;
@@ -239,7 +235,6 @@ export const Customer360Screen: React.FC = () => {
                 const id = e.target.value ? Number(e.target.value) : '';
                 setCustomerId(id);
                 setPayload(null);
-                if (id) void loadProfile(id, dateFrom, dateTo);
               }}
               className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none disabled:opacity-60"
             >
@@ -255,33 +250,14 @@ export const Customer360Screen: React.FC = () => {
               )}
             </select>
           </label>
-          <label htmlFor="c360-from" className="flex flex-col gap-1 text-xs font-normal text-[var(--erp-muted)] font-sans">
-            From
-            <input id="c360-from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none" />
-          </label>
-          <label htmlFor="c360-to" className="flex flex-col gap-1 text-xs font-normal text-[var(--erp-muted)] font-sans">
-            To
-            <input id="c360-to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none" />
-          </label>
-          <button
-            type="button"
-            disabled={!customerId}
-            onClick={applyRange}
-            className={
-              customerId
-                ? `${GOLD_BTN} h-[34px]`
-                : 'h-[34px] px-4 py-1.5 border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface-2)] text-[var(--erp-muted)] font-body text-xs font-semibold flex items-center justify-center cursor-not-allowed'
-            }
-          >
-            Apply dates
-          </button>
         </div>
+        <PeriodScope />
         <p className="text-[11px] font-mono text-[var(--erp-muted)]">
-          Date range scopes history, product trends and payment behaviour. Outstanding / advance / overdue stay current.
+          The header year and month scope history, product trends and payment behaviour. Outstanding, advance and overdue stay current.
         </p>
       </div>
 
-      {error && <MasterError message={error} onRetry={() => customerId && void loadProfile(Number(customerId), appliedFrom, appliedTo)} />}
+      {error && <MasterError message={error} onRetry={() => customerId && void loadProfile(Number(customerId))} />}
 
       {listLoading ? (
         <MasterLoading label="Loading parties…" rows={4} />

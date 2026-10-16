@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from accounts.access import can_view_customer, is_admin_user, scope_to_visible_customers
+from config.dates import parse_query_dates
 
 from .models import BankAccount, Payment, PaymentAllocation, PaymentAdjustment
 from .permissions import PaymentAdjustmentPermission, PaymentPermission
@@ -57,8 +58,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         customer_id = self.request.query_params.get("customer_id")
         entity_id = self.request.query_params.get("entity_id")
         payment_mode = self.request.query_params.get("payment_mode")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
+        date_from, date_to = parse_query_dates(self.request.query_params)
         allocation_status = self.request.query_params.get("allocation_status")
         invoice_id = self.request.query_params.get("invoice_id")
         q = self.request.query_params.get("search")
@@ -207,8 +207,7 @@ class PaymentAdjustmentViewSet(viewsets.ReadOnlyModelViewSet):
         payment_id = self.request.query_params.get("payment_id")
         invoice_id = self.request.query_params.get("invoice_id")
         customer_id = self.request.query_params.get("customer_id")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
+        date_from, date_to = parse_query_dates(self.request.query_params)
         q = self.request.query_params.get("search")
         if payment_id:
             qs = qs.filter(payment_id=payment_id)

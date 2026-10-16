@@ -9,8 +9,8 @@ export const OperatorWaitingScreen: React.FC = () => {
 
   // Identify active request info
   const targetReqId = pendingLoginRequest?.id || approvalQueue.find(r => r.status === 'pending')?.id || '';
-  const operatorName = pendingLoginRequest?.operatorName || 'Bhavin V. Joshi';
-  const branchName = pendingLoginRequest?.branch || 'Surat Ring Road Textile Mkt';
+  const operatorName = pendingLoginRequest?.operatorName || '';
+  const branchName = pendingLoginRequest?.branch || '';
   const adminName = pendingLoginRequest?.adminName || 'admin';
 
   // Poll /api/check-request-status/ every 4 seconds
@@ -23,10 +23,12 @@ export const OperatorWaitingScreen: React.FC = () => {
         const match = approvalQueue.find(r => r.operatorName === operatorName);
         if (match?.status === 'approved') {
           setStatus('approved');
-          showFlash('Request approved. Please enter the 6-digit verbal OTP from admin.', 'positive');
-          setTimeout(() => {
-            navigateTo(3); // Screen 3: Verbal OTP Gate
-          }, 800);
+          const noticeKey = `ariav_otp_notice_${targetReqId || operatorName}`;
+          if (!sessionStorage.getItem(noticeKey)) {
+            sessionStorage.setItem(noticeKey, '1');
+            showFlash('Request approved. Enter the 6-digit code from your administrator.', 'positive');
+          }
+          navigateTo(3);
         } else if (match?.status === 'rejected') {
           setStatus('rejected');
         }
@@ -37,12 +39,16 @@ export const OperatorWaitingScreen: React.FC = () => {
         const res = await authApi.checkRequestStatus(targetReqId);
         if (res.success && res.status) {
           if (res.status === 'approved') {
-            setStatus('approved');
-            showFlash('Request approved. Please enter the 6-digit verbal OTP from admin.', 'positive');
-            setTimeout(() => {
-              navigateTo(3); // Screen 3: Verbal OTP Gate
-            }, 800);
-          } else if (res.status === 'rejected') {
+          const expiresAt = Date.now() + Math.max(0, res.seconds_remaining ?? 0) * 1000;
+          setPendingLoginRequest(current => current ? { ...current, status: 'approved', expiresAt } : current);
+          setStatus('approved');
+          const noticeKey = `ariav_otp_notice_${targetReqId}`;
+          if (!sessionStorage.getItem(noticeKey)) {
+            sessionStorage.setItem(noticeKey, '1');
+            showFlash('Request approved. Enter the 6-digit code from your administrator.', 'positive');
+          }
+          navigateTo(3);
+        } else if (res.status === 'rejected') {
             setStatus('rejected');
             showFlash('Login request declined by administrator.', 'negative');
           }
@@ -92,8 +98,8 @@ export const OperatorWaitingScreen: React.FC = () => {
             {/* Requester Identity (Plain & Human) - Full Text, No Truncation */}
             <div className="w-full py-3 px-4 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs font-mono text-[var(--erp-text)] mb-8 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-center rounded-xs">
               <span className="font-semibold text-[var(--erp-text)] whitespace-normal">{operatorName}</span>
-              <span className="hidden sm:inline text-[var(--erp-hairline-strong)]">·</span>
-              <span className="text-[var(--erp-muted)] whitespace-normal">{branchName}</span>
+              {branchName ? <span className="hidden sm:inline text-[var(--erp-hairline-strong)]">·</span> : null}
+              {branchName ? <span className="text-[var(--erp-muted)] whitespace-normal">{branchName}</span> : null}
             </div>
 
             {/* Simple Cancel Request Action */}

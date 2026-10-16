@@ -55,7 +55,7 @@ class PurchaseOrderImportApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="po-imp-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
@@ -86,6 +86,8 @@ class PurchaseOrderImportApiTests(TestCase):
             brand_name="Digital Mills",
             order_method=Brand.OrderMethod.DIGITAL_PO,
         )
+        self.aditi.brands.add(self.manual, self.digital)
+        self.gujarat.brands.add(self.manual)
 
         self.aditi_customers = []
         for code, name in (
@@ -206,7 +208,7 @@ class PurchaseOrderImportApiTests(TestCase):
         self.assertFalse(PurchaseOrder.objects.filter(po_number__in=["O8", "O9", "O10"]).exists())
         po = PurchaseOrder.objects.get(po_number="O1")
         self.assertEqual(po.order_type, PurchaseOrder.OrderType.MANUAL)
-        self.assertEqual(po.status, PurchaseOrder.Status.DRAFT)
+        self.assertEqual(po.status, PurchaseOrder.Status.BRAND_ACCEPTED)
         self.assertEqual(po.entity_id, self.aditi.id)
         self.assertEqual(po.brand_id, self.manual.id)
         self.assertEqual(po.customer_id, self.aditi_customers[0].id)
@@ -216,17 +218,12 @@ class PurchaseOrderImportApiTests(TestCase):
             self.assertIsNone(line.product_id)
             self.assertIsNone(line.line_total)
 
-    def test_submit_imported_draft_allows_blank_rates(self):
+    def test_imported_po_is_ready_for_dispatch_with_blank_rates(self):
         preview = self._preview(self.aditi).json()
         created = self._commit(self.aditi, preview, order_nos=["O1"]).json()["created"][0]
-        blocked = self.client.post(
-            f"/api/purchase-orders/{created['id']}/submit/",
-            HTTP_HOST="localhost",
-        )
-        self.assertEqual(blocked.status_code, 200, blocked.content)
         self.assertEqual(
             PurchaseOrder.objects.get(pk=created["id"]).status,
-            PurchaseOrder.Status.SUBMITTED,
+            PurchaseOrder.Status.BRAND_ACCEPTED,
         )
 
 
@@ -304,6 +301,14 @@ class PurchaseOrderImportApiTests(TestCase):
         self.assertEqual(PurchaseOrder.objects.count(), 0)
         self.assertIn("changed since preview", res.json()["detail"].lower() + " " + str(res.json()))
 
+    def test_stale_branch_brand_mapping_rejects_commit(self):
+        preview = self._preview(self.aditi).json()
+        self.aditi.brands.remove(self.manual)
+        res = self._commit(self.aditi, preview, order_nos=["O1"])
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertIn("not mapped", str(res.json()).lower())
+        self.assertEqual(PurchaseOrder.objects.count(), 0)
+
     def test_digital_brand_and_operator_can_import(self):
         digital = self._preview(self.aditi, brand=self.digital)
         self.assertEqual(digital.status_code, 200, digital.content)
@@ -347,3 +352,13 @@ class PurchaseOrderImportApiTests(TestCase):
         )
         self.assertEqual(missing_brand.status_code, 400)
         self.assertTrue(missing_brand.json().get("brand_id"))
+
+    def test_preview_rejects_brand_not_mapped_to_branch(self):
+        unmapped = Brand.objects.create(
+            brand_code="UNM",
+            brand_name="Unmapped Mills",
+            order_method=Brand.OrderMethod.MANUAL_POR,
+        )
+        response = self._preview(self.gujarat, brand=unmapped)
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("not mapped", str(response.json()).lower())

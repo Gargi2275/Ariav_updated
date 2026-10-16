@@ -11,12 +11,12 @@ function persistAuthSession(
     role?: string;
     user?: { name?: string; role?: string };
   },
-  fallbackRole: 'admin' | 'operator',
+  fallbackRole: 'admin' | 'staff',
 ) {
   if (data.token) localStorage.setItem('ariav_auth_token', data.token);
   markSessionAuthenticated();
   const raw = data.user?.role || data.role || fallbackRole;
-  const role = raw === 'admin' ? 'admin' : 'operator';
+  const role = raw === 'admin' ? 'admin' : 'staff';
   localStorage.setItem('ariav_auth_role', role);
   if (data.user?.name) localStorage.setItem('ariav_auth_name', data.user.name);
 }
@@ -38,7 +38,11 @@ export interface PythonHealthInfo {
 export interface CheckCredentialsResponse {
   success: boolean;
   user_type?: 'admin' | 'user';
-  role?: 'admin' | 'operator' | 'user';
+  role?: 'admin' | 'staff' | 'user';
+  login_bypass?: boolean;
+  token?: string;
+  expires_at?: number;
+  user?: { name?: string; role?: string; can_edit?: boolean; can_delete?: boolean };
   message?: string;
   temp_token?: string;
   username?: string;
@@ -143,6 +147,9 @@ export const authApi = {
         body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
+      if (res.ok && data.success && data.login_bypass && data.token) {
+        persistAuthSession(data, 'staff');
+      }
       return data;
     } catch (e: any) {
       return { success: false, error: e.message || 'Network connection failed' };
@@ -199,6 +206,7 @@ export const authApi = {
   async checkRequestStatus(requestId: string): Promise<{
     success: boolean;
     status: 'pending' | 'approved' | 'rejected' | 'completed' | 'expired' | 'not_found';
+    seconds_remaining?: number;
     error?: string;
   }> {
     try {
@@ -266,7 +274,7 @@ export const authApi = {
   async verifyVerbalOtp(requestId: string, otpCode: string): Promise<{
     success: boolean;
     token?: string;
-    role?: 'operator';
+    role?: 'staff';
     user?: { operatorCode: string; name: string; branch: string; role?: string };
     error?: string;
     message?: string;
@@ -279,7 +287,7 @@ export const authApi = {
       });
       const data = await res.json();
       if (res.ok && data.success && data.token) {
-        persistAuthSession(data, 'operator');
+        persistAuthSession(data, 'staff');
       }
       return data;
     } catch (e: any) {
@@ -289,7 +297,7 @@ export const authApi = {
 
   async me(): Promise<{
     success: boolean;
-    role?: 'admin' | 'operator';
+    role?: 'admin' | 'staff';
     user?: {
       id: string;
       name: string;
@@ -298,6 +306,8 @@ export const authApi = {
       branch: string;
       branch_id?: number | null;
       branch_code?: string;
+      can_edit?: boolean;
+      can_delete?: boolean;
     };
     error?: string;
   }> {

@@ -1,6 +1,11 @@
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 
 from . import views
+from .staff_views import StaffViewSet
+
+router = DefaultRouter()
+router.register(r"staff", StaffViewSet, basename="staff")
 
 urlpatterns = [
     path("api/auth/health", views.health),
@@ -35,4 +40,5 @@ urlpatterns = [
     path("api/auth/me/", views.session_me),
     path("api/auth/logout", views.logout_view),
     path("api/auth/audit-trail", views.audit_trail),
+    path("api/", include(router.urls)),
 ]

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { BookCopy, Download } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { LedgerMetricStrip, LedgerMetricItem } from '../../components/common/LedgerMetricStrip';
 import { StatusChip, StatusChipType } from '../../components/common/StatusChip';
@@ -32,7 +33,8 @@ const GOLD_BTN =
   'px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer hover:bg-[var(--erp-gold-soft)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--erp-gold)]';
 
 export const CustomerLedgerScreen: React.FC = () => {
-  const { navigateTo, selectedEntityId, entityReady } = useErp();
+  const { navigateTo, selectedEntityId, entityReady, getPeriod } = useErp();
+  const period = getPeriod();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [customerId, setCustomerId] = useState<number | ''>('');
@@ -64,7 +66,7 @@ export const CustomerLedgerScreen: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const data = await customersApi.ledger(id);
+      const data = await customersApi.ledger(id, { from: period.from, to: period.to });
       setPayload(data);
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load party ledger.');
@@ -73,7 +75,7 @@ export const CustomerLedgerScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [period.from, period.to]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(CUSTOMER_LEDGER_KEY);
@@ -85,10 +87,15 @@ export const CustomerLedgerScreen: React.FC = () => {
     void loadLedger(id);
   }, [loadLedger]);
 
+  useEffect(() => {
+    if (!customerId) return;
+    void loadLedger(Number(customerId));
+  }, [customerId, loadLedger]);
+
   const openPdf = async () => {
     if (!customerId) return;
     try {
-      const blob = await customersApi.ledgerPdf(Number(customerId));
+      const blob = await customersApi.ledgerPdf(Number(customerId), { from: period.from, to: period.to });
       window.open(URL.createObjectURL(blob), '_blank', 'noopener');
     } catch (err) {
       notifyApiError(err, 'Could not generate statement PDF.');
@@ -200,6 +207,7 @@ export const CustomerLedgerScreen: React.FC = () => {
             </select>
           </label>
         </div>
+        <PeriodScope />
         {noCustomers ? (
           <p className="text-[11px] font-mono text-[var(--erp-muted)]">
             No parties found — add one in{' '}

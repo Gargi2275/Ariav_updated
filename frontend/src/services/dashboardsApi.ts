@@ -91,6 +91,8 @@ export interface SnapshotDashboard {
   debtors: DebtorRow[];
   top_products: TopProductRow[];
   entities: DashboardEntityOption[];
+  as_of: string;
+  period: { from: string | null; to: string | null };
 }
 
 export interface StaffPoRow {
@@ -141,9 +143,10 @@ export interface StaffDashboard {
 }
 
 export const dashboardsApi = {
-  admin: (entityId?: number | 'all') => {
+  admin: (entityId?: number | 'all', period?: { from: string; to: string }) => {
     const q = !entityId || entityId === 'all' ? 'all' : String(entityId);
-    return request<SnapshotDashboard>(`/api/dashboards/admin/?entity_id=${encodeURIComponent(q)}`);
+    const dates = period ? `&from=${encodeURIComponent(period.from)}&to=${encodeURIComponent(period.to)}` : '';
+    return request<SnapshotDashboard>(`/api/dashboards/admin/?entity_id=${encodeURIComponent(q)}${dates}`);
   },
   entity: (entityId?: number | 'all') => {
     const q = !entityId || entityId === 'all' ? 'all' : String(entityId);

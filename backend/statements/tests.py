@@ -77,7 +77,7 @@ class StatementLoadTests(TestCase):
         CustomerEntity.objects.create(customer=self.customer, entity=self.entity, primary_entity=True)
         self.client = APIClient()
         self.admin = AuthUser.objects.create_user(username="statement-admin", password="test", role=AuthUser.Role.ADMIN)
-        self.operator = AuthUser.objects.create_user(username="statement-operator", password="test", role=AuthUser.Role.OPERATOR)
+        self.operator = AuthUser.objects.create_user(username="statement-operator", password="test", role=AuthUser.Role.STAFF)
 
     def write_file(self, content):
         file = NamedTemporaryFile(suffix=".xlsx", delete=False)

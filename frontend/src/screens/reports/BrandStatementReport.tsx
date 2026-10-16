@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, SlidersHorizontal, Users, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { LedgerMetricStrip, LedgerMetricItem } from '../../components/common/LedgerMetricStrip';
 import { MasterLoading, emptyTableProps } from '../masters/MasterStatus';
@@ -13,15 +14,14 @@ function money(value: string | number | null | undefined): string {
 }
 
 export const BrandStatementReport: React.FC = () => {
-  const { selectedEntityId, entityReady } = useErp();
+  const { selectedEntityId, entityReady, getPeriod } = useErp();
+  const period = getPeriod();
   const entityId = selectedEntityId === 'all' ? null : selectedEntityId;
   const [rows, setRows] = useState<BrandStatementReportRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
   const [filter, setFilter] = useState<'all' | 'nonzero' | 'zero' | 'opening_debit' | 'opening_credit'>('all');
 
   const load = useCallback(async () => {
@@ -32,8 +32,8 @@ export const BrandStatementReport: React.FC = () => {
         entity_id: entityId,
         customer_code: code || undefined,
         customer_name: name || undefined,
-        period_from: from || undefined,
-        period_to: to || undefined,
+        period_from: period.from,
+        period_to: period.to,
       });
       setRows(response.rows);
       setLoaded(true);
@@ -43,7 +43,7 @@ export const BrandStatementReport: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [code, entityId, entityReady, from, name, to]);
+  }, [code, entityId, entityReady, name, period.from, period.to]);
 
   useEffect(() => {
     if (!entityReady || !entityId) {
@@ -94,8 +94,6 @@ export const BrandStatementReport: React.FC = () => {
   const resetFilters = () => {
     setCode('');
     setName('');
-    setFrom('');
-    setTo('');
     setFilter('all');
     setRows([]);
     setLoaded(false);
@@ -162,8 +160,7 @@ export const BrandStatementReport: React.FC = () => {
         <div className="grid grid-cols-1 items-end gap-2 p-2 sm:grid-cols-2 lg:grid-cols-[minmax(170px,1.2fr)_minmax(130px,.8fr)_minmax(180px,1.2fr)_minmax(135px,.8fr)_minmax(135px,.8fr)_auto]">
           <label className="flex flex-col gap-1 text-[10px] font-mono text-[var(--erp-muted)]">Party code<input value={code} onChange={e => setCode(e.target.value)} placeholder="Search code…" className="h-8 w-full px-2 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none" /></label>
           <label className="flex flex-col gap-1 text-[10px] font-mono text-[var(--erp-muted)]">Party name<input value={name} onChange={e => setName(e.target.value)} placeholder="Search name…" className="h-8 w-full px-2 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none" /></label>
-          <label className="flex flex-col gap-1 text-[10px] font-mono text-[var(--erp-muted)]">Date from<input type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 w-full px-2 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none" /></label>
-          <label className="flex flex-col gap-1 text-[10px] font-mono text-[var(--erp-muted)]">Date to<input type="date" value={to} onChange={e => setTo(e.target.value)} className="h-8 w-full px-2 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none" /></label>
+          <div className="flex h-8 items-center"><PeriodScope /></div>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 px-3 py-1.5 text-[10px] font-mono text-[var(--erp-muted)]">
           <span className="uppercase tracking-wider text-[10px] text-[var(--erp-faint)]">Show</span>

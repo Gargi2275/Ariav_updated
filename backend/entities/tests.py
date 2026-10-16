@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import AuthUser
 from entities.models import Entity
+from brands.models import Brand
 
 
 def _entity(**kwargs):
@@ -128,12 +129,17 @@ class EntityUniquenessApiTests(TestCase):
         self.client.force_authenticate(self.admin)
 
     def _post(self, **kwargs):
+        brand, _ = Brand.objects.get_or_create(
+            brand_code="TEST",
+            defaults={"brand_name": "Test Brand"},
+        )
         payload = {
             "short_code": "GUJ",
             "entity_name": "Gujarat",
             "entity_type": "Branch",
             "status": "Active",
             "parent_entity_id": None,
+            "brand_ids": [brand.id],
         }
         payload.update(kwargs)
         return self.client.post("/api/entities/", payload, format="json", HTTP_HOST="localhost")

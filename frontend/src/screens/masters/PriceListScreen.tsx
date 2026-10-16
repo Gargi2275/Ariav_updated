@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Edit2, Eye, Plus, Trash2, Upload, X } from 'lucide-react';
+import { Download, Edit2, Eye, Plus, Trash2, Upload, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable, Column } from '../../components/common/DataTable';
@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { MasterError, MasterLoading, emptyTableProps } from './MasterStatus';
 import { BrandRow, brandsApi } from '../../services/brandsApi';
 import { ProductRow, productsApi } from '../../services/productsApi';
-import { PriceBasis, PriceListEntryRow, PriceListRow, priceListsApi } from '../../services/priceListsApi';
+import { PriceBasis, PriceListEntryRow, PriceListRow, QualityPriceRow, priceListsApi } from '../../services/priceListsApi';
 import { notifyApiError, notifySuccess } from '../../services/notify';
 import { num } from '../../services/mastersApi';
 import { PriceListImportModal } from './PriceListImportModal';
@@ -28,6 +28,8 @@ export const PriceListScreen: React.FC = () => {
   const [mode, setMode] = useState<'list' | 'form' | 'detail'>('list');
   const [form, setForm] = useState<Partial<PriceListRow>>({ status: 'Draft', season_label: '', valid_from: '', valid_to: '', brand_id: undefined, entries: [] });
   const [detail, setDetail] = useState<PriceListRow | null>(null);
+  const [qualityRows, setQualityRows] = useState<QualityPriceRow[]>([]);
+  const [qualitySearch, setQualitySearch] = useState('');
   const [entry, setEntry] = useState<Partial<PriceListEntryRow>>(emptyEntry());
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PriceListRow | null>(null);
@@ -49,8 +51,9 @@ export const PriceListScreen: React.FC = () => {
 
   const openCreate = () => { setForm({ status: 'Draft', season_label: '', valid_from: '', valid_to: '', brand_id: undefined, entries: [] }); setEntry(emptyEntry()); setFormError(''); setMode('form'); };
   const openEdit = async (id: number) => { try { setForm(await priceListsApi.retrieve(id)); setEntry(emptyEntry()); setFormError(''); setMode('form'); } catch (e) { notifyApiError(e); } };
-  const openView = async (id: number) => { try { setDetail(await priceListsApi.retrieve(id)); setMode('detail'); } catch (e) { notifyApiError(e); } };
+  const openView = async (id: number) => { try { const row = await priceListsApi.retrieve(id); setDetail(row); setQualityRows(row.quality_entry_count ? await priceListsApi.qualityEntries(id) : []); setMode('detail'); } catch (e) { notifyApiError(e); } };
   const selectedProduct = products.find(product => product.id === entry.product_id);
+  const visibleQualityRows = qualityRows.filter(row => !qualitySearch.trim() || `${row.quality_no} ${row.shades_raw}`.toLowerCase().includes(qualitySearch.trim().toLowerCase()));
   const calculated = useMemo(() => {
     const length = num(entry.taka_length_meters);
     const value = num(entry.price_value);
@@ -92,14 +95,14 @@ export const PriceListScreen: React.FC = () => {
     { header: 'Brand', accessorKey: 'brand_name' },
     { header: 'Season Label', accessorKey: 'season_label', render: row => <span className="font-medium">{row.season_label}</span> },
     { header: 'Valid From - To', render: row => <span className="font-mono text-xs">{row.valid_from} → {row.valid_to}</span> },
-    { header: 'Entries', accessorKey: 'entry_count', align: 'right' },
+    { header: 'Entries', render: row => <span>{row.entry_count}{row.quality_entry_count ? <span className="ml-1 text-[var(--erp-gold)]">· {row.quality_entry_count} quality</span> : null}</span>, align: 'right' },
     { header: 'Status', render: row => <StatusChip status={row.status === 'Active' ? 'active' : row.status === 'Draft' ? 'pending' : 'inactive'} label={row.status.toUpperCase()} /> },
     { header: '', align: 'right', render: row => <div className="flex justify-end gap-2"><button type="button" title="View" aria-label={`View ${row.season_label}`} onClick={() => void openView(row.id)}><Eye className="w-4 h-4" /></button>{canWrite ? <><button type="button" title="Edit" onClick={() => void openEdit(row.id)}><Edit2 className="w-4 h-4" /></button>{row.status === 'Draft' && <button type="button" title="Delete" onClick={() => setPendingDelete(row)}><Trash2 className="w-4 h-4 text-[var(--erp-negative)]" /></button>}</> : null}</div> },
   ];
 
   if (mode === 'detail' && detail) return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-      <section role="dialog" aria-modal="true" aria-labelledby="price-list-detail-title" className="w-full max-w-6xl max-h-[90vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6">
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <section role="dialog" aria-modal="true" aria-labelledby="price-list-detail-title" className="w-full max-w-6xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto rounded-t-xl sm:rounded-lg bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-4 sm:p-6">
         <div className="flex items-start justify-between gap-4 border-b border-[var(--erp-hairline)] pb-4">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--erp-gold)]">Price List Details</p>
@@ -107,7 +110,7 @@ export const PriceListScreen: React.FC = () => {
           </div>
           <button type="button" title="Close" aria-label="Close price list details" onClick={() => setMode('list')}><X className="w-5 h-5" /></button>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-5 border-b border-[var(--erp-hairline)]">
+        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 py-4 sm:py-5 border-b border-[var(--erp-hairline)]">
           <div><div className="text-[10px] font-mono uppercase text-[var(--erp-muted)]">Brand</div><div className="mt-1 text-sm">{detail.brand_name}</div></div>
           <div><div className="text-[10px] font-mono uppercase text-[var(--erp-muted)]">Season Label</div><div className="mt-1 text-sm">{detail.season_label}</div></div>
           <div><div className="text-[10px] font-mono uppercase text-[var(--erp-muted)]">Valid From - To</div><div className="mt-1 text-sm font-mono">{detail.valid_from} → {detail.valid_to}</div></div>
@@ -121,7 +124,8 @@ export const PriceListScreen: React.FC = () => {
           </table>
           {!detail.entries.length && <p className="py-8 text-center text-sm text-[var(--erp-muted)]">No entries in this Price List.</p>}
         </div>
-        <div className="flex justify-end gap-2 pt-5 mt-5 border-t border-[var(--erp-hairline)]"><button type="button" onClick={() => setMode('list')} className="px-4 py-2 border border-[var(--erp-hairline)]">Close</button>{canWrite && <button type="button" onClick={() => void openEdit(detail.id)} className="px-4 py-2 bg-[var(--erp-gold)] text-black font-semibold"><Edit2 className="w-4 h-4 inline mr-1" /> Edit</button>}</div>
+        {detail.quality_entry_count ? <div className="pt-5 border-t border-[var(--erp-hairline)]"><div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4"><div><p className="text-[10px] font-mono uppercase tracking-wider text-[var(--erp-gold)]">Imported quality catalogue</p><h3 className="font-display text-lg font-bold">Quality prices <span className="text-sm font-normal text-[var(--erp-muted)]">({visibleQualityRows.length} of {qualityRows.length})</span></h3><p className="mt-1 text-xs text-[var(--erp-muted)]">Search by quality number or shade.</p></div>        <div className="flex flex-col sm:flex-row gap-2"><input value={qualitySearch} onChange={event => setQualitySearch(event.target.value)} placeholder="Search quality no. or shade" aria-label="Search quality prices" className="w-full sm:w-64 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-3 py-2 text-sm" /><button type="button" onClick={() => void priceListsApi.downloadQualityEntries(detail.id).catch(error => notifyApiError(error, 'Could not export quality prices.'))} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 border border-[var(--erp-hairline)] text-xs whitespace-nowrap"><Download className="w-3.5 h-3.5" /> Export</button></div></div><div className="hidden md:block overflow-x-auto rounded border border-[var(--erp-hairline)]"><table className="w-full text-xs"><thead><tr className="border-b border-[var(--erp-hairline-strong)] text-left font-mono uppercase text-[var(--erp-muted)]"><th className="p-3">Collection</th><th className="p-3">Quality No.</th><th className="p-3">Shades</th><th className="p-3">Delivery</th><th className="p-3 text-right">Ex-Mill</th><th className="p-3 text-right">W/S</th><th className="p-3 text-right">Retail</th></tr></thead><tbody>{visibleQualityRows.map(row => <tr key={row.id} className="border-b border-[var(--erp-hairline)] last:border-0 align-top"><td className="p-3">{row.collection_name}<span className="block font-mono text-[10px] text-[var(--erp-muted)]">{row.collection_code}</span></td><td className="p-3 font-mono whitespace-nowrap">{row.quality_no}</td><td className="p-3 max-w-[360px] break-words">{row.shades_raw || '—'}</td><td className="p-3 whitespace-nowrap">{row.delivery_raw || '—'}</td><td className="p-3 text-right font-mono whitespace-nowrap">{row.ex_mill || '—'}</td><td className="p-3 text-right font-mono whitespace-nowrap">{row.wholesale || '—'}</td><td className="p-3 text-right font-mono whitespace-nowrap">{row.retail || '—'}</td></tr>)}</tbody></table></div><div className="md:hidden space-y-2">{visibleQualityRows.map(row => <article key={row.id} className="rounded border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] p-3"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-sm font-semibold break-all">{row.quality_no}</p><p className="mt-0.5 text-xs text-[var(--erp-muted)]">{row.collection_name}{row.collection_code ? ` · ${row.collection_code}` : ''}</p></div><span className="shrink-0 rounded bg-[var(--erp-surface)] px-2 py-1 text-[10px] font-mono text-[var(--erp-muted)]">{row.delivery_raw || 'No delivery'}</span></div><p className="mt-3 text-xs leading-5 break-words"><span className="font-mono text-[10px] uppercase text-[var(--erp-muted)]">Shades </span>{row.shades_raw || '—'}</p><div className="mt-3 grid grid-cols-3 gap-2 border-t border-[var(--erp-hairline)] pt-3 text-xs"><div><span className="block text-[10px] uppercase text-[var(--erp-muted)]">Ex-Mill</span><span className="font-mono">{row.ex_mill || '—'}</span></div><div><span className="block text-[10px] uppercase text-[var(--erp-muted)]">W/S</span><span className="font-mono">{row.wholesale || '—'}</span></div><div><span className="block text-[10px] uppercase text-[var(--erp-muted)]">Retail</span><span className="font-mono">{row.retail || '—'}</span></div></div></article>)}</div>{!visibleQualityRows.length && <p className="rounded border border-dashed border-[var(--erp-hairline-strong)] py-8 text-center text-sm text-[var(--erp-muted)]">No quality prices match your search.</p>}</div> : null}
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-5 mt-5 border-t border-[var(--erp-hairline)]"><button type="button" onClick={() => setMode('list')} className="w-full sm:w-auto px-4 py-2 border border-[var(--erp-hairline)]">Close</button>{canWrite && <button type="button" onClick={() => void openEdit(detail.id)} className="w-full sm:w-auto px-4 py-2 bg-[var(--erp-gold)] text-black font-semibold"><Edit2 className="w-4 h-4 inline mr-1" /> Edit</button>}</div>
       </section>
     </div>
   );

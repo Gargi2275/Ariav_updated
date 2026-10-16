@@ -52,6 +52,26 @@ class DispatchLine(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.01"))],
     )
+    dispatched_meters = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        null=True,
+        blank=True,
+    )
+    source_rate = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Sales order price from the plant dispatch. Null means the rate was not recorded.",
+    )
+    net_rate = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Net rate per metre after discount. Not used as the PO rate comparison.",
+    )
 
     class Meta:
         db_table = "dispatches_dispatchline"

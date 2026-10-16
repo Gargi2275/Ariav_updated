@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Eye, Plus, Search, Trash2, Wallet, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip } from '../../components/common/StatusChip';
 import { FormField, RequiredLegend, TextInput } from '../../components/common/FormControls';
@@ -47,8 +48,8 @@ function stampDate(iso?: string | null): string {
 }
 
 export const PaymentScreen: React.FC = () => {
-  const { userRole, selectedEntityId, entityReady } = useErp();
-  const canWrite = userRole === 'admin' || userRole === 'operator';
+  const { userRole, selectedEntityId, entityReady, getPeriod } = useErp();
+  const canWrite = userRole === 'admin' || userRole === 'staff';
   const canDelete = userRole === 'admin';
 
   const [rows, setRows] = useState<PaymentRow[]>([]);
@@ -57,8 +58,7 @@ export const PaymentScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [modeFilter, setModeFilter] = useState('');
   const [listPartyFilter, setListPartyFilter] = useState<number | ''>(() => readCustomerListFilter());
-  const [listDateFrom, setListDateFrom] = useState('');
-  const [listDateTo, setListDateTo] = useState('');
+  const period = getPeriod();
   const [allocationFilter, setAllocationFilter] = useState('');
   const [mode, setMode] = useState<'list' | 'form' | 'detail'>('list');
   const [detail, setDetail] = useState<PaymentRow | null>(null);
@@ -113,8 +113,8 @@ export const PaymentScreen: React.FC = () => {
         payment_mode: modeFilter || undefined,
         customer_id: listPartyFilter || undefined,
         entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
-        date_from: listDateFrom || undefined,
-        date_to: listDateTo || undefined,
+        date_from: period.from,
+        date_to: period.to,
         allocation_status: allocationFilter ? allocationFilter as 'allocated' | 'unallocated' : undefined,
       }));
     } catch (e) {
@@ -123,7 +123,7 @@ export const PaymentScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, modeFilter, listPartyFilter, listDateFrom, listDateTo, allocationFilter, selectedEntityId, entityReady]);
+  }, [search, modeFilter, listPartyFilter, period.from, period.to, allocationFilter, selectedEntityId, entityReady]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -143,8 +143,6 @@ export const PaymentScreen: React.FC = () => {
     setSearch('');
     setModeFilter('');
     setListPartyFilter('');
-    setListDateFrom('');
-    setListDateTo('');
     setAllocationFilter('');
   };
 
@@ -457,9 +455,8 @@ export const PaymentScreen: React.FC = () => {
           <option value="allocated">Allocated</option>
           <option value="unallocated">Unallocated</option>
         </select>
-        <input type="date" value={listDateFrom} onChange={e => setListDateFrom(e.target.value)} aria-label="Payment date from" className="h-9 min-w-0 px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs" />
-        <input type="date" value={listDateTo} onChange={e => setListDateTo(e.target.value)} aria-label="Payment date to" className="h-9 min-w-0 px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs" />
-        {(search || modeFilter || listPartyFilter || listDateFrom || listDateTo || allocationFilter) ? (
+        <div className="flex h-9 items-center"><PeriodScope /></div>
+        {(search || modeFilter || listPartyFilter || allocationFilter) ? (
           <button type="button" onClick={clearListFilters} className="h-9 whitespace-nowrap px-2 text-[11px] font-mono text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer">
             Clear filters
           </button>

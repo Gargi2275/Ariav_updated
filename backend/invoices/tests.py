@@ -27,7 +27,7 @@ class InvoiceApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="inv-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client = APIClient()
         self.client.force_authenticate(self.admin)

@@ -24,7 +24,7 @@ class PurchaseOrderApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="po-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
@@ -55,6 +55,7 @@ class PurchaseOrderApiTests(TestCase):
             brand_name="Manual Mills",
             order_method=Brand.OrderMethod.MANUAL_POR,
         )
+        self.entity.brands.add(self.digital, self.manual)
         root = Category.objects.create(category_code="YRN", category_name="Yarn")
         sub = Category.objects.create(
             category_code="CTN",
@@ -136,6 +137,17 @@ class PurchaseOrderApiTests(TestCase):
             lines=[{"product_id": self.p_manual.id, "quantity": "1.00", "rate": "10.00"}],
         )
         self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(PurchaseOrder.objects.count(), 0)
+
+    def test_unmapped_brand_is_rejected_for_selected_branch(self):
+        unmapped = Brand.objects.create(
+            brand_code="UNM",
+            brand_name="Unmapped Mills",
+            order_method=Brand.OrderMethod.DIGITAL_PO,
+        )
+        res = self._create(brand_id=unmapped.id)
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertIn("not mapped", str(res.json()).lower())
         self.assertEqual(PurchaseOrder.objects.count(), 0)
 
     def test_duplicate_po_number(self):
@@ -326,7 +338,7 @@ class PurchaseOrderApiTests(TestCase):
         self.assertEqual(again.status_code, 400)
         self.assertEqual(PurchaseOrder.objects.get(pk=pid).status, "Cancelled")
 
-    def test_delete_draft_ok_submitted_blocked(self):
+    def test_delete_draft_and_cancelled_ok_submitted_blocked(self):
         pid = self._create().json()["id"]
         gone = self.client.delete(f"/api/purchase-orders/{pid}/", HTTP_HOST="localhost")
         self.assertEqual(gone.status_code, 204)
@@ -337,6 +349,17 @@ class PurchaseOrderApiTests(TestCase):
         blocked = self.client.delete(f"/api/purchase-orders/{pid}/", HTTP_HOST="localhost")
         self.assertEqual(blocked.status_code, 400)
         self.assertTrue(PurchaseOrder.objects.filter(pk=pid).exists())
+
+        pid = self._create(po_number="PO-CANCELLED").json()["id"]
+        self.client.post(
+            f"/api/purchase-orders/{pid}/status/",
+            {"status": "Cancelled"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        cancelled = self.client.delete(f"/api/purchase-orders/{pid}/", HTTP_HOST="localhost")
+        self.assertEqual(cancelled.status_code, 204)
+        self.assertFalse(PurchaseOrder.objects.filter(pk=pid).exists())
 
     def test_filters_search(self):
         self._create()

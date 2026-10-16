@@ -1,5 +1,11 @@
 {
   "already_imported": {
+    "counts": {
+      "excluded": 1,
+      "importable": 0,
+      "rows": 1,
+      "sample": 0
+    },
     "excluded": [
       {
         "customer_code": "DSP-C1",
@@ -10,7 +16,7 @@
         "order_code": "ALREADY-IMPORTED",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3287,
+        "po_id": "<id>",
         "po_number": "ALREADY-IMPORTED",
         "reason": "Dispatch for ALREADY-IMPORTED and invoice INV-ALREADY is already imported",
         "source_rows": [
@@ -18,12 +24,20 @@
         ]
       }
     ],
+    "format_id": "<id>",
+    "format_name": "OCM Dispatch",
     "importable": [],
     "preview_token": "<preview-token>",
     "skipped": [],
     "warnings": []
   },
   "customer_item_fallback": {
+    "counts": {
+      "excluded": 1,
+      "importable": 0,
+      "rows": 1,
+      "sample": 0
+    },
     "excluded": [
       {
         "customer_code": "DSP-C1",
@@ -38,6 +52,8 @@
         ]
       }
     ],
+    "format_id": "<id>",
+    "format_name": "OCM Dispatch",
     "importable": [],
     "preview_token": "<preview-token>",
     "skipped": [],
@@ -50,7 +66,15 @@
     "status_code": 400
   },
   "out_of_scope": {
+    "counts": {
+      "excluded": 0,
+      "importable": 1,
+      "rows": 1,
+      "sample": 0
+    },
     "excluded": [],
+    "format_id": "<id>",
+    "format_name": "OCM Dispatch",
     "importable": [
       {
         "challan_reference": "INV-SCOPE",
@@ -67,7 +91,7 @@
             "description": "A-B-C-T-S",
             "po_line_description": "A-B-C-T-S",
             "product_code": "",
-            "purchase_order_line_id": 6803,
+            "purchase_order_line_id": "<id>",
             "quantity": "4.00",
             "shade": "C"
           }
@@ -79,7 +103,7 @@
         "order_code": "OUT-OF-SCOPE",
         "po_entity_code": "OTH",
         "po_entity_name": "Other",
-        "po_id": 3288,
+        "po_id": "<id>",
         "po_number": "OUT-OF-SCOPE",
         "transporter": "VRL Logistics"
       }
@@ -89,6 +113,12 @@
     "warnings": []
   },
   "wrong_customer": {
+    "counts": {
+      "excluded": 1,
+      "importable": 0,
+      "rows": 1,
+      "sample": 0
+    },
     "excluded": [
       {
         "customer_code": "DSP-C2",
@@ -99,7 +129,7 @@
         "order_code": "WRONG-CUSTOMER-PO",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3286,
+        "po_id": "<id>",
         "po_number": "WRONG-CUSTOMER-PO",
         "reason": "Customer mismatch: file CustomerCd 'DSP-C2' does not match PO customer code 'DSP-C1' for WRONG-CUSTOMER-PO.",
         "source_rows": [
@@ -107,6 +137,8 @@
         ]
       }
     ],
+    "format_id": "<id>",
+    "format_name": "OCM Dispatch",
     "importable": [],
     "preview_token": "<preview-token>",
     "skipped": [],

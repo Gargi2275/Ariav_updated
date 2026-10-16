@@ -7,10 +7,11 @@ Preview is read-only. Commit re-validates and writes one Dispatch per
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 from collections import OrderedDict, defaultdict
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
 from django.core.cache import cache
@@ -37,6 +38,19 @@ from .services import (
     qty_label,
     sync_purchase_order_dispatch_status,
 )
+
+def _exact_money(value: str) -> str | None:
+    raw = _cell_str(value).replace(",", "").strip()
+    if not raw or raw in {"-", "–"}:
+        return None
+    try:
+        parsed = Decimal(raw)
+    except InvalidOperation:
+        return None
+    if parsed != parsed.quantize(Decimal("0.01")):
+        return None
+    return format(parsed.quantize(Decimal("0.01")), "f")
+
 
 PREVIEW_CACHE_PREFIX = "dispatch_import_preview:"
 PREVIEW_TTL_SECONDS = 30 * 60
@@ -174,7 +188,7 @@ def _norm_match(value: str) -> str:
     return " ".join(_cell_str(value).lower().replace("-", " ").split())
 
 
-def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str], list[dict]]:
+def _parse_ocm_workbook(file_bytes: bytes) -> tuple[list[dict], list[str], list[dict]]:
     warnings: list[str] = []
     skipped_by_reason: OrderedDict[str, list[int]] = OrderedDict()
     try:
@@ -299,10 +313,169 @@ def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str], list[dict]
     return list(grouped.values()), warnings, skipped
 
 
+OCM_SIGNATURE_HEADERS = {"ordercode", "invoiceno"}
+ARVIND_SIGNATURE_HEADERS = {"plantinvoiceline", "pono|line", "soldtoparty"}
+
+
+def _header_key(value: Any) -> str:
+    return " ".join(_cell_str(value).casefold().split())
+
+
+def _dispatch_header_key(value: Any) -> str:
+    return re.sub(r"\s+", " ", _cell_str(value).casefold()).strip()
+
+
+def _read_dispatch_rows(file_bytes: bytes) -> tuple[list[list[str]], bool]:
+    if file_bytes.startswith(b"\x50\x4b\x03\x04"):
+        workbook = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
+        try:
+            return [list(row) for row in workbook.active.iter_rows(values_only=True)], True
+        finally:
+            workbook.close()
+    if file_bytes.startswith(b"\xd0\xcf\x11\xe0"):
+        raise ValidationError({"file": "Legacy .xls is not supported; open it in Excel and save as .xlsx"})
+    encoding = "utf-16" if file_bytes.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig"
+    try:
+        text = file_bytes.decode(encoding)
+    except UnicodeDecodeError as exc:
+        raise ValidationError({"file": f"Could not read the delimited dispatch file: {exc}"}) from exc
+    rows = []
+    for line in text.splitlines():
+        if line.strip():
+            rows.append([cell.strip() for cell in line.split("\t")])
+    if not rows:
+        raise ValidationError({"file": "The dispatch file is empty."})
+    return rows, False
+
+
+def detect_dispatch_format(file_bytes: bytes) -> dict:
+    rows, is_xlsx = _read_dispatch_rows(file_bytes)
+    headers = [_dispatch_header_key(value) for value in rows[0]]
+    compact = {re.sub(r"[^a-z0-9|]+", "", value) for value in headers}
+    if compact & OCM_SIGNATURE_HEADERS:
+        return {"id": "ocm_dispatch", "name": "OCM Dispatch", "headers": headers, "rows": rows, "is_xlsx": is_xlsx}
+    if ARVIND_SIGNATURE_HEADERS <= compact:
+        return {"id": "arvind_dispatch", "name": "Arvind Dispatch", "headers": headers, "rows": rows, "is_xlsx": is_xlsx}
+    po_markers = {"customercode", "customername", "customer code", "customer name"}
+    if len(set(headers) & po_markers) >= 2:
+        raise ValidationError({"file": "This looks like a purchase order file; use PO > Import from file"})
+    known = {
+        *OCM_SIGNATURE_HEADERS,
+        *ARVIND_SIGNATURE_HEADERS,
+        "customercode",
+        "customername",
+    }
+    missing = sorted(known - set(compact))
+    closest = "OCM Dispatch" if len(set(compact) & OCM_SIGNATURE_HEADERS) >= len(set(compact) & ARVIND_SIGNATURE_HEADERS) else "Arvind Dispatch"
+    raise ValidationError({
+        "file": f"No dispatch format matched. Headers found: {', '.join(_cell_str(value) for value in rows[0]) or '(none)'}. Closest profile: {closest}; missing headers: {', '.join(missing) or '(none)'}.",
+    })
+
+
+def _arvind_value(row: list, headers: list[str], name: str) -> str:
+    aliases = {
+        "invoice": {"plant invoice / line", "plant invoice/line"},
+        "invoice_date": {"plant invoice date"},
+        "customer_code": {"sold to party"},
+        "customer_name": {"sold to party name"},
+        "order": {"po no.|line", "po no. | line", "po no.| line"},
+        "item": {"customer reference"},
+        "pieces": {"no. of pieces", "no of pieces"},
+        "meters": {"batch qty.", "batch qty"},
+        "lr_number": {"lr no.", "lr no"},
+        "so_price": {"so price"},
+        "net_rate": {"net rate per mts", "net rate per mts."},
+        "lr_date": {"lr date"},
+        "transporter": {"transporter"},
+        "invoice_type": {"inv. type desc.", "inv type desc."},
+    }
+    wanted = aliases[name]
+    for index, header in enumerate(headers):
+        if header in wanted:
+            return _cell_str(row[index] if index < len(row) else "")
+    return ""
+
+
+def _arvind_date(value: str) -> tuple[date | None, str | None]:
+    try:
+        return datetime.strptime(value, "%d.%m.%Y").date(), None
+    except ValueError:
+        return None, f"Invalid date {value!r}; expected DD.MM.YYYY."
+
+
+def _parse_arvind_dispatch(rows: list[list[str]]) -> tuple[list[dict], list[dict]]:
+    headers = [_dispatch_header_key(value) for value in rows[0]]
+    grouped: OrderedDict[str, dict] = OrderedDict()
+    skipped: list[dict] = []
+    for row_number, row in enumerate(rows[1:], start=2):
+        invoice_raw = _arvind_value(row, headers, "invoice")
+        order_raw = _arvind_value(row, headers, "order")
+        invoice = invoice_raw.split("/", 1)[0].strip()
+        order = order_raw.split("|", 1)[0].strip()
+        invoice_type = _arvind_value(row, headers, "invoice_type")
+        if "sample" in invoice_type.casefold():
+            skipped.append({"reason": "Sample invoice, not a PO dispatch", "row_numbers": [row_number]})
+            continue
+        if not invoice or not order:
+            skipped.append({"reason": "Plant Invoice / Line or PO No.|Line is blank", "row_numbers": [row_number]})
+            continue
+        dispatch_date, date_error = _arvind_date(_arvind_value(row, headers, "invoice_date"))
+        key = group_key(order, invoice)
+        group = grouped.setdefault(key, {
+            "group_key": key,
+            "order_code": order,
+            "invoice_no": invoice,
+            "customer_codes": [],
+            "customer_name": _arvind_value(row, headers, "customer_name"),
+            "transporter": _arvind_value(row, headers, "transporter"),
+            "lr_number": _arvind_value(row, headers, "lr_number"),
+            "lr_date": _arvind_value(row, headers, "lr_date"),
+            "invoice_date": dispatch_date,
+            "date_error": date_error,
+            "lines": [],
+            "source_rows": [],
+            "profile": "arvind_dispatch",
+        })
+        group["source_rows"].append(row_number)
+        customer_code = _arvind_value(row, headers, "customer_code")
+        if customer_code.isdigit():
+            customer_code = customer_code.zfill(10)
+        if customer_code and customer_code not in group["customer_codes"]:
+            group["customer_codes"].append(customer_code)
+        pieces = _parse_qty(_arvind_value(row, headers, "pieces"))
+        meters = _cell_str(_arvind_value(row, headers, "meters"))
+        try:
+            meter_value = Decimal(meters).quantize(Decimal("0.001")) if meters else None
+        except InvalidOperation:
+            meter_value = None
+        item = _arvind_value(row, headers, "item").strip()
+        if pieces is None or not item:
+            skipped.append({"reason": "Customer Reference or No. of Pieces is missing or invalid", "row_numbers": [row_number]})
+            continue
+        group["lines"].append({
+            "description": item,
+            "product_code": item,
+            "client_item_key": item,
+            "quantity": str(pieces),
+            "meters": str(meter_value) if meter_value is not None else None,
+            "source_rate": _exact_money(_arvind_value(row, headers, "so_price")),
+            "net_rate": _exact_money(_arvind_value(row, headers, "net_rate")),
+            "excel_row": row_number,
+        })
+    return list(grouped.values()), skipped
+
+
+def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str], list[dict]]:
+    detected = detect_dispatch_format(file_bytes)
+    if detected["id"] != "ocm_dispatch":
+        raise ValidationError({"file": "This file uses the Arvind dispatch format; select the Arvind brand."})
+    return _parse_ocm_workbook(file_bytes)
+
+
 def _po_by_number(user) -> dict[str, list[PurchaseOrder]]:
     """Index visible POs by exact brand order code and internal PO number."""
     mapping: dict[str, list[PurchaseOrder]] = defaultdict(list)
-    qs = scope_to_visible_customers(PurchaseOrder.objects.all(), user).select_related("customer", "entity").prefetch_related(
+    qs = scope_to_visible_customers(PurchaseOrder.objects.all(), user).select_related("customer", "entity", "brand").prefetch_related(
         "lines__product",
         "lines__dispatch_lines",
     )
@@ -436,6 +609,127 @@ def _order_code_exists_outside_scope(order_code: str, pos: dict[str, list[Purcha
     return PurchaseOrder.objects.filter(
         Q(po_number__iexact=key) | Q(brand_order_code__iexact=key)
     ).exists()
+
+
+def _arvind_item_match(file_item: str, line: PurchaseOrderLine) -> bool:
+    wanted = _cell_str(file_item).casefold().strip()
+    candidates = [line.product_description]
+    if line.product_id:
+        candidates.extend([line.product.product_code, line.product.product_name])
+    return bool(wanted) and any(wanted == _cell_str(value).casefold().strip() for value in candidates)
+
+
+def _arvind_customer_item_candidates(
+    group: dict,
+    pos: dict[str, list[PurchaseOrder]],
+) -> list[PurchaseOrder]:
+    customer_code = _cell_str(group["customer_codes"][0] if group["customer_codes"] else "").casefold().strip()
+    customer_name = _cell_str(group.get("customer_name")).casefold().strip()
+    candidates: dict[int, PurchaseOrder] = {}
+    for matches in pos.values():
+        for po in matches:
+            if po.brand.brand_code.casefold() != "avd":
+                continue
+            po_code = _cell_str(po.customer.customer_code).casefold().strip()
+            po_name = _cell_str(po.customer.customer_name).casefold().strip()
+            if not customer_code or po_code != customer_code:
+                continue
+            if customer_name and po_name != customer_name:
+                continue
+            if all(
+                any(_arvind_item_match(source_line["client_item_key"], line) for line in po.lines.all())
+                for source_line in group["lines"]
+            ):
+                candidates[po.id] = po
+    return list(candidates.values())
+
+
+def _evaluate_arvind_group(group: dict, pos: dict[str, list[PurchaseOrder]]) -> tuple[dict | None, dict | None]:
+    base = {
+        "group_key": group["group_key"],
+        "order_code": group["order_code"],
+        "invoice_no": group["invoice_no"],
+        "customer_code": group["customer_codes"][0] if group["customer_codes"] else "",
+        "customer_name": group["customer_name"],
+        "line_count": len(group["lines"]),
+        "source_rows": group["source_rows"],
+    }
+    if group.get("date_error"):
+        return None, {**base, "reason": group["date_error"]}
+    candidates = pos.get(f"brand:{group['order_code'].casefold()}", []) + pos.get(f"po:{group['order_code'].casefold()}", [])
+    candidates = list({po.id: po for po in candidates}.values())
+    if not candidates:
+        candidates = _arvind_customer_item_candidates(group, pos)
+        if not candidates:
+            all_candidates = [
+                po for matches in pos.values() for po in matches
+                if (
+                    po.brand_order_code
+                    and po.brand_order_code.casefold() == group["order_code"].casefold()
+                )
+                or po.po_number.casefold() == group["order_code"].casefold()
+            ]
+            if all_candidates:
+                return None, {**base, "reason": "PO belongs to another brand"}
+            return None, {**base, "reason": "No matching Purchase Order"}
+    arvind = [po for po in candidates if po.brand.brand_code.casefold() == "avd"]
+    if not arvind:
+        return None, {**base, "reason": "PO belongs to another brand"}
+    if len(arvind) > 1:
+        return None, {**base, "reason": f"Ambiguous Purchase Order match for {group['order_code']}"}
+    po = arvind[0]
+    customer_code = base["customer_code"]
+    if (po.customer.customer_code or "").strip().casefold() != customer_code.casefold():
+        return None, {**base, "reason": f"Customer mismatch: file Sold To Party '{customer_code}' does not match PO customer code '{po.customer.customer_code}'."}
+    if Dispatch.objects.filter(purchase_order=po, challan_reference=group["invoice_no"]).exists():
+        return None, {**base, "reason": f"Dispatch for {po.po_number} and invoice {group['invoice_no']} is already imported"}
+    status_error = _status_reason(po)
+    if status_error:
+        return None, {**base, "reason": status_error}
+    matched = []
+    allocated: dict[int, Decimal] = defaultdict(lambda: Decimal("0.00"))
+    for source_line in group["lines"]:
+        matches = [line for line in po.lines.all() if _arvind_item_match(source_line["client_item_key"], line)]
+        if not matches:
+            return None, {**base, "reason": f"No matching PO line for item key '{source_line['client_item_key']}' on {po.po_number}."}
+        if len(matches) > 1:
+            return None, {**base, "reason": f"Ambiguous PO line match for '{source_line['client_item_key']}' on {po.po_number}."}
+        line = matches[0]
+        quantity = Decimal(source_line["quantity"])
+        allocated[line.id] += quantity
+        matched.append({
+            "description": source_line["description"],
+            "product_code": source_line["product_code"],
+            "quantity": str(quantity),
+            "meters": source_line["meters"],
+            "source_rate": source_line.get("source_rate"),
+            "net_rate": source_line.get("net_rate"),
+            "purchase_order_line_id": line.id,
+            "po_line_description": line.product_description,
+        })
+    for line_id, quantity in allocated.items():
+        line = next(line for line in po.lines.all() if line.id == line_id)
+        pending = line_pending_quantity(line)
+        if quantity > pending:
+            return None, {**base, "reason": f"Cannot dispatch {qty_label(quantity)} pieces — only {qty_label(pending)} pieces pending for this line."}
+    return {
+        **base,
+        "po_id": po.id,
+        "po_number": po.po_number,
+        "po_entity_code": po.entity.short_code,
+        "po_entity_name": po.entity.entity_name,
+        "customer_code": po.customer.customer_code,
+        "customer_name": po.customer.customer_name,
+        "lr_number": group["lr_number"],
+        "lr_date": group["lr_date"],
+        "transporter": group["transporter"],
+        "challan_reference": group["invoice_no"],
+        "dispatch_date": group["invoice_date"].isoformat() if group["invoice_date"] else "",
+        "opening_pending_quantity": str(sum(allocated.values())),
+        "closing_pending_quantity": "0.00",
+        "lines": matched,
+        "format_id": "arvind_dispatch",
+    }, None
 
 
 def _file_keys(line: dict) -> set[str]:
@@ -707,7 +1001,46 @@ def evaluate_group(group: dict, pos: dict[str, list[PurchaseOrder]], user) -> tu
 
 
 def build_preview(file_bytes: bytes, *, user) -> dict:
-    groups, parse_warnings, skipped = parse_workbook(file_bytes)
+    detected = detect_dispatch_format(file_bytes)
+    if detected["id"] == "arvind_dispatch":
+        groups, skipped = _parse_arvind_dispatch(detected["rows"])
+        pos = _po_by_number(user)
+        importable: list[dict] = []
+        excluded: list[dict] = []
+        for skipped_row in skipped:
+            for row_number in skipped_row["row_numbers"]:
+                excluded.append({
+                    "group_key": f"row-{row_number}",
+                    "order_code": "",
+                    "invoice_no": "",
+                    "customer_code": "",
+                    "customer_name": "",
+                    "reason": skipped_row["reason"],
+                    "line_count": 1,
+                    "source_rows": [row_number],
+                })
+        for group in groups:
+            row, skip = _evaluate_arvind_group(group, pos)
+            if skip:
+                excluded.append(skip)
+            else:
+                importable.append(row)
+        return {
+            "file_sha256": hashlib.sha256(file_bytes).hexdigest(),
+            "format_id": detected["id"],
+            "format_name": detected["name"],
+            "importable": importable,
+            "excluded": excluded,
+            "warnings": [],
+            "skipped": [],
+            "counts": {
+                "rows": len(detected["rows"]) - 1,
+                "importable": sum(row["line_count"] for row in importable),
+                "sample": sum(len(item["source_rows"]) for item in excluded if item["reason"] == "Sample invoice, not a PO dispatch"),
+                "excluded": sum(len(item["source_rows"]) for item in excluded if item["reason"] != "Sample invoice, not a PO dispatch"),
+            },
+        }
+    groups, parse_warnings, skipped = _parse_ocm_workbook(file_bytes)
     pos = _po_by_number(user)
     importable: list[dict] = []
     excluded: list[dict] = []
@@ -722,10 +1055,18 @@ def build_preview(file_bytes: bytes, *, user) -> dict:
 
     return {
         "file_sha256": hashlib.sha256(file_bytes).hexdigest(),
+        "format_id": "ocm_dispatch",
+        "format_name": "OCM Dispatch",
         "importable": importable,
         "excluded": excluded,
         "warnings": warnings,
         "skipped": skipped,
+        "counts": {
+            "rows": sum(len(group["source_rows"]) for group in groups) + sum(len(item["row_numbers"]) for item in skipped),
+            "importable": sum(row["line_count"] for row in importable),
+            "sample": 0,
+            "excluded": sum(row["line_count"] for row in excluded),
+        },
     }
 
 
@@ -754,8 +1095,7 @@ def drop_preview(token: str) -> None:
 def public_preview_payload(preview: dict, token: str) -> dict:
     importable = []
     for row in preview["importable"]:
-        importable.append(
-            {
+        item = {
                 "group_key": row["group_key"],
                 "order_code": row["order_code"],
                 "invoice_no": row["invoice_no"],
@@ -779,14 +1119,22 @@ def public_preview_payload(preview: dict, token: str) -> dict:
                 "closing_pending_quantity": row["closing_pending_quantity"],
                 "lines": row["lines"],
             }
-        )
-    return {
+        if row.get("format_id") == "arvind_dispatch":
+            item["dispatch_date"] = row["dispatch_date"]
+            for line in item["lines"]:
+                line["meters"] = line.get("meters")
+        importable.append(item)
+    payload = {
         "preview_token": token,
         "importable": importable,
         "excluded": preview["excluded"],
         "warnings": preview["warnings"],
         "skipped": preview["skipped"],
     }
+    for key in ("format_id", "format_name", "counts"):
+        if key in preview:
+            payload[key] = preview[key]
+    return payload
 
 
 def _revalidate_importable(row: dict, pos: dict[str, list[PurchaseOrder]]) -> str | None:
@@ -833,6 +1181,63 @@ def _revalidate_importable(row: dict, pos: dict[str, list[PurchaseOrder]]) -> st
     return match_err
 
 
+def _commit_arvind_import(*, user, token: str, cached: dict, to_create: list[dict], skipped_excluded: list[dict]) -> dict:
+    created: list[dict] = []
+    with transaction.atomic():
+        for row in to_create:
+            po = PurchaseOrder.objects.select_for_update().select_related("brand", "customer").get(id=row["po_id"])
+            if po.brand.brand_code.casefold() != "avd":
+                raise ValidationError({"detail": "PO belongs to another brand"})
+            if Dispatch.objects.filter(purchase_order=po, challan_reference=row["invoice_no"]).exists():
+                raise ValidationError({"detail": f"Dispatch for {po.po_number} and invoice {row['invoice_no']} is already imported"})
+            status_err = _status_reason(po)
+            if status_err:
+                raise ValidationError({"detail": status_err})
+            dispatch = Dispatch.objects.create(
+                purchase_order=po,
+                dispatch_date=date.fromisoformat(row["dispatch_date"]),
+                lr_number=row.get("lr_number", ""),
+                transporter=row.get("transporter", ""),
+                challan_reference=row["challan_reference"],
+                created_by=user if getattr(user, "is_authenticated", False) else None,
+            )
+            for line in row["lines"]:
+                DispatchLine.objects.create(
+                    dispatch=dispatch,
+                    purchase_order_line_id=line["purchase_order_line_id"],
+                    dispatched_quantity=Decimal(str(line["quantity"])),
+                    dispatched_meters=Decimal(str(line["meters"])) if line.get("meters") not in (None, "") else None,
+                    source_rate=Decimal(str(line["source_rate"])) if line.get("source_rate") not in (None, "") else None,
+                    net_rate=Decimal(str(line["net_rate"])) if line.get("net_rate") not in (None, "") else None,
+                )
+            sync_purchase_order_dispatch_status(po, user=user, source=PurchaseOrderStatusChange.Source.IMPORT)
+            po.refresh_from_db()
+            from notifications.services import notify_dispatch_created
+
+            notify_dispatch_created(dispatch)
+            created.append(
+                {
+                    "id": dispatch.id,
+                    "po_id": po.id,
+                    "po_number": po.po_number,
+                    "po_status": po.status,
+                    "lr_number": dispatch.lr_number,
+                    "invoice_no": row["invoice_no"],
+                    "customer_name": po.customer.customer_name,
+                    "line_count": len(row["lines"]),
+                }
+            )
+    drop_preview(token)
+    remaining_excluded = list(cached["excluded"])
+    return {
+        "created": created,
+        "created_count": len(created),
+        "excluded": remaining_excluded,
+        "excluded_count": len(remaining_excluded),
+        "skipped_excluded_group_keys": [row["group_key"] for row in skipped_excluded],
+    }
+
+
 def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
     cached = load_preview(token)
     if not cached:
@@ -864,6 +1269,15 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
 
     to_create = [importable_by_key[key] for key in approved if key in importable_by_key]
     skipped_excluded = [excluded_by_key[key] for key in approved if key in excluded_by_key]
+
+    if cached.get("format_id") == "arvind_dispatch":
+        return _commit_arvind_import(
+            user=user,
+            token=token,
+            cached=cached,
+            to_create=to_create,
+            skipped_excluded=skipped_excluded,
+        )
 
     pos = _po_by_number(user)
     stale: list[str] = []

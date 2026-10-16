@@ -1,8 +1,10 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
+from accounts.access import can_delete_records, can_edit_records
+
 
 class PurchaseOrderPermission(BasePermission):
-    """Authenticated staff may read, create/edit/submit Draft POs, and delete Drafts.
+    """Authenticated staff may read, create/edit/submit Draft POs, and delete Drafts or Cancelled POs.
 
     Status overrides (Sent to Brand, Reject, Cancel after submit, On Hold, …)
     are admin-only. Operator = operational staff. Operators only reach POs of
@@ -31,6 +33,10 @@ class PurchaseOrderPermission(BasePermission):
             "Fully Dispatched",
         }:
             return True
+        if action in {"update", "partial_update"}:
+            return can_edit_records(user)
+        if action == "destroy":
+            return can_delete_records(user)
         if action in self.STAFF_ACTIONS:
             return True
         return bool(getattr(user, "is_admin_role", False))

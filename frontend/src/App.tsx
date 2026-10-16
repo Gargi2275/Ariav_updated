@@ -16,7 +16,7 @@ import { VerbalOtpScreen } from './screens/auth/VerbalOtpScreen';
 // Admin Screens (5 - 10)
 import { ApprovalQueueScreen } from './screens/admin/ApprovalQueueScreen';
 import { AnalyticsDashboardScreen } from './screens/admin/AnalyticsDashboardScreen';
-import { MenuRightsScreen } from './screens/admin/MenuRightsScreen';
+import { StaffManagementScreen } from './screens/admin/StaffManagementScreen';
 import { AuditLogScreen } from './screens/admin/AuditLogScreen';
 import { BackupScreen } from './screens/admin/BackupScreen';
 import { YearEndClosingScreen } from './screens/admin/YearEndClosingScreen';
@@ -81,7 +81,7 @@ const ScreenDispatcher: React.FC = () => {
     case 6:
       return <AnalyticsDashboardScreen />;
     case 7:
-      return <MenuRightsScreen />;
+      return <StaffManagementScreen />;
     case 8:
       return <AuditLogScreen />;
     case 9:

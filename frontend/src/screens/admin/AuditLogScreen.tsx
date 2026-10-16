@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { AuditLogEntry } from '../../types/erp';
 import { FileText, Search, Shield, Filter, Download } from 'lucide-react';
+import { notifyInfo } from '../../services/notify';
 
 export const AuditLogScreen: React.FC = () => {
   const { auditLogs } = useErp();
@@ -101,7 +102,7 @@ export const AuditLogScreen: React.FC = () => {
         subtitle="Every transaction, delete attempt, override authorization and configuration event is cryptographically sealed."
         actions={
           <button
-            onClick={() => alert('Exporting signed audit archive (.CSV + SHA256 checksum)...')}
+            onClick={() => notifyInfo('Exporting signed audit archive (.CSV + SHA256 checksum)...')}
             className="px-3.5 py-1.5 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] hover:border-[var(--erp-gold)] text-xs font-mono text-[var(--erp-text)] flex items-center gap-1.5 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-[var(--erp-gold)]" />

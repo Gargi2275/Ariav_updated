@@ -17,7 +17,7 @@ class CustomerMasterApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="cust-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.guj = Entity.objects.create(
             short_code="GUJ",

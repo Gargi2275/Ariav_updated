@@ -131,16 +131,16 @@ export const DispatchImportModal: React.FC<DispatchImportModalProps> = ({ onClos
         {step === 'setup' && (
           <div className="space-y-5">
             <p className="text-sm text-[var(--erp-muted)]">
-              Rows are matched to existing Purchase Orders by Order Code. No new POs are created.
-              GST and invoice-value columns are ignored.
+              Rows are matched to existing Purchase Orders using the detected dispatch format. No new POs are created.
+              Value, tax and invoice-value columns are ignored.
             </p>
             <FileDropZone
               id="dispatch-import-file"
               label="Source file"
               required
               error={fileError}
-              helper="Excel (.xlsx) — e.g. aditi_and_shriva_dispatch_ocm.xlsx"
-              accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              helper="Excel or delimited text (.xlsx, .xls, .txt). The format is detected from the file headers."
+              accept=".xlsx,.xlsm,.xls,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain"
               file={file}
               onChange={next => {
                 setFile(next);
@@ -164,7 +164,7 @@ export const DispatchImportModal: React.FC<DispatchImportModalProps> = ({ onClos
         {step === 'preview' && preview && (
           <div className="space-y-5">
             <p className="text-sm font-mono text-[var(--erp-muted)]">
-              {preview.importable.length} dispatches importable, {preview.excluded.length} groups excluded, {skippedRowCount(preview.skipped)} rows skipped.
+              {preview.format_name ? `${preview.format_name} · ` : ''}{preview.counts?.importable ?? preview.importable.length} dispatches importable, {preview.counts?.excluded ?? preview.excluded.length} groups excluded, {preview.counts?.sample ?? 0} sample rows, {skippedRowCount(preview.skipped)} rows skipped.
             </p>
 
             <section>

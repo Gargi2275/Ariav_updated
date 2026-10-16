@@ -13,6 +13,7 @@ from openpyxl import load_workbook
 from rest_framework.exceptions import ValidationError
 
 from brands.models import Brand
+from entities.models import Entity
 from products.models import Product
 
 from .models import PriceList, PriceListEntry
@@ -37,6 +38,24 @@ HEADER_ALIASES = {
     "valid from": "valid_from",
     "valid to": "valid_to",
 }
+
+
+def season_details(year: int, season: str) -> dict:
+    if not isinstance(year, int) or isinstance(year, bool) or not 2000 <= year <= 2100:
+        raise ValidationError({"year": "Year must be an integer from 2000 to 2100."})
+    if season not in ("Summer", "Winter"):
+        raise ValidationError({"season": "Season must be Summer or Winter."})
+    if season == "Summer":
+        valid_from, valid_to = date(year, 1, 1), date(year, 6, 30)
+    else:
+        valid_from, valid_to = date(year, 7, 1), date(year, 12, 31)
+    return {
+        "year": year,
+        "season": season,
+        "label": f"{season} {year}",
+        "valid_from": valid_from,
+        "valid_to": valid_to,
+    }
 
 
 def _cell_str(value) -> str:
@@ -107,7 +126,7 @@ def parse_workbook(file_bytes: bytes) -> tuple[list[dict], list[str]]:
             raise ValidationError({"file": "The spreadsheet is empty."}) from None
         detected_headers = [_display_header(cell) for cell in (header or ())]
         mapping = {index: HEADER_ALIASES[_norm_header(cell)] for index, cell in enumerate(header or ()) if _norm_header(cell) in HEADER_ALIASES}
-        required = {"brand_code", "product_code", "taka_length_meters", "price_basis", "price_value", "season_label", "valid_from", "valid_to"}
+        required = {"brand_code", "product_code", "taka_length_meters", "price_basis", "price_value"}
         missing = sorted(required - set(mapping.values()))
         if missing:
             raise ValidationError({
@@ -145,6 +164,29 @@ def _product_by_code(code: str) -> list[Product]:
 
 def _group_key(record: dict) -> str:
     return "||".join((record["brand_code"].lower(), record["season_label"], record["valid_from"], record["valid_to"]))
+
+
+def _season_row_reason(record: dict, details: dict) -> str | None:
+    selected_label = details["label"]
+    file_label = record.get("season_label", "")
+    if file_label and file_label.casefold() != selected_label.casefold():
+        return f"File says season {file_label}, you selected {selected_label}"
+
+    selected_from = details["valid_from"]
+    selected_to = details["valid_to"]
+    file_from_raw = record.get("valid_from", "")
+    file_to_raw = record.get("valid_to", "")
+    file_from = _parse_date(file_from_raw) if file_from_raw else None
+    file_to = _parse_date(file_to_raw) if file_to_raw else None
+    if file_from_raw and file_from is None:
+        return f"File date '{_cell_str(file_from_raw)}' is invalid; you selected {selected_label}"
+    if file_to_raw and file_to is None:
+        return f"File date '{_cell_str(file_to_raw)}' is invalid; you selected {selected_label}"
+    if (file_from and file_from != selected_from) or (file_to and file_to != selected_to):
+        shown_from = file_from.isoformat() if file_from else selected_from.isoformat()
+        shown_to = file_to.isoformat() if file_to else selected_to.isoformat()
+        return f"File says {shown_from} to {shown_to}, you selected {selected_label}"
+    return None
 
 
 def _row_reason(record: dict, brands: dict[str, Brand], seen: set[tuple[str, str]]) -> tuple[Brand | None, Product | None, str | None]:
@@ -209,26 +251,79 @@ def _public_entry(record: dict, product: Product) -> dict:
     }
 
 
-def build_preview(file_bytes: bytes) -> dict:
+def build_preview(file_bytes: bytes, year: int, season: str, branch_id: int, brand_id: int) -> dict:
+    details = season_details(year, season)
+    branch = Entity.objects.filter(pk=branch_id, status=Entity.Status.ACTIVE).first()
+    if branch is None:
+        raise ValidationError({"branch_id": "Select an active Branch."})
+    selected_brand = Brand.objects.filter(pk=brand_id, status=Brand.Status.ACTIVE).first()
+    if selected_brand is None:
+        raise ValidationError({"brand_id": "Select an active Brand."})
+    if not branch.brands.filter(pk=selected_brand.pk).exists():
+        raise ValidationError({"brand_id": "The selected Brand is not mapped to the selected Branch."})
     records, warnings = parse_workbook(file_bytes)
     brands = _brand_map()
     groups: OrderedDict[str, dict] = OrderedDict()
     excluded = []
     seen: set[tuple[str, str]] = set()
+    duplicate_warned: set[int] = set()
+    overlap_warned: set[int] = set()
     for record in records:
-        key = _group_key(record)
-        group = groups.setdefault(key, {"import_key": key, "brand_code": record["brand_code"], "season_label": record["season_label"], "valid_from": record["valid_from"], "valid_to": record["valid_to"], "brand_id": None, "brand_name": record["brand_code"], "entries": []})
+        record_brand = brands.get(record["brand_code"].lower())
+        if record_brand is not None and record_brand.id != selected_brand.id:
+            excluded.append({"source_row": record["excel_row"], "brand_code": record["brand_code"], "product_code": record["product_code"], "reason": f"Brand {record['brand_code']} is not the selected Brand for this Branch"})
+            continue
+        brand = brands.get(record["brand_code"].lower())
+        season_reason = _season_row_reason(record, details)
+        record["season_label"] = details["label"]
+        record["valid_from"] = details["valid_from"].isoformat()
+        record["valid_to"] = details["valid_to"].isoformat()
         brand, product, reason = _row_reason(record, brands, seen)
+        if season_reason:
+            reason = season_reason
+        key = _group_key(record)
+        group = groups.setdefault(key, {"import_key": key, "brand_code": record["brand_code"], "season_label": details["label"], "valid_from": details["valid_from"].isoformat(), "valid_to": details["valid_to"].isoformat(), "brand_id": None, "brand_name": record["brand_code"], "entries": []})
         if brand:
             group["brand_id"] = brand.id
             group["brand_name"] = brand.brand_name
+            existing = PriceList.objects.filter(
+                brand=brand,
+                season_label=details["label"],
+                valid_from=details["valid_from"],
+                valid_to=details["valid_to"],
+            ).first()
+            if existing:
+                reason = f"A {details['label']} list for {brand.brand_name} already exists ({existing.status})"
+                if brand.id not in duplicate_warned:
+                    warnings.append(reason)
+                    duplicate_warned.add(brand.id)
+            elif brand.id not in overlap_warned and PriceList.objects.filter(
+                brand=brand,
+                status=PriceList.Status.ACTIVE,
+                valid_from__lte=details["valid_to"],
+                valid_to__gte=details["valid_from"],
+            ).exists():
+                warnings.append(f"This {details['label']} import overlaps an Active list for {brand.brand_name}.")
+                overlap_warned.add(brand.id)
         if reason:
             excluded.append({"source_row": record["excel_row"], "brand_code": record["brand_code"], "product_code": record["product_code"], "reason": reason})
             continue
         seen.add((key, record["product_code"].lower()))
         group["entries"].append(_public_entry(record, product))
     importable = [group for group in groups.values() if group["entries"]]
-    return {"file_sha256": hashlib.sha256(file_bytes).hexdigest(), "importable": importable, "excluded": excluded, "warnings": warnings}
+    return {
+        "file_sha256": hashlib.sha256(file_bytes).hexdigest(),
+        "year": details["year"],
+        "season": details["season"],
+        "season_label": details["label"],
+        "valid_from": details["valid_from"].isoformat(),
+        "valid_to": details["valid_to"].isoformat(),
+        "branch_id": branch.id,
+        "brand_id": selected_brand.id,
+        "importable": importable,
+        "excluded": excluded,
+        "warnings": warnings,
+    }
 
 
 def store_preview(user_id: int, preview: dict) -> str:
@@ -243,13 +338,40 @@ def load_preview(token: str) -> dict | None:
 
 
 def public_preview_payload(preview: dict, token: str) -> dict:
-    return {"preview_token": token, "importable": preview["importable"], "excluded": preview["excluded"], "warnings": preview["warnings"]}
+    return {
+        "preview_token": token,
+        "year": preview["year"],
+        "season": preview["season"],
+        "season_label": preview["season_label"],
+        "valid_from": preview["valid_from"],
+        "valid_to": preview["valid_to"],
+        "importable": preview["importable"],
+        "excluded": preview["excluded"],
+        "warnings": preview["warnings"],
+    }
 
 
-def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
+def commit_import(*, user, token: str, group_keys: list[str], year: int, season: str, branch_id: int, brand_id: int) -> dict:
     cached = load_preview(token)
     if not cached or cached.get("user_id") != getattr(user, "id", None):
         raise ValidationError({"detail": "Preview has expired or was not found. Run preview again before committing."})
+    details = season_details(year, season)
+    branch = Entity.objects.filter(pk=branch_id, status=Entity.Status.ACTIVE).first()
+    selected_brand = Brand.objects.filter(pk=brand_id, status=Brand.Status.ACTIVE).first()
+    if branch is None:
+        raise ValidationError({"branch_id": "Select an active Branch."})
+    if selected_brand is None or not branch.brands.filter(pk=selected_brand.pk).exists():
+        raise ValidationError({"brand_id": "The selected Brand is not mapped to the selected Branch."})
+    if (
+        cached.get("year") != details["year"]
+        or cached.get("season") != details["season"]
+        or cached.get("season_label") != details["label"]
+        or cached.get("valid_from") != details["valid_from"].isoformat()
+        or cached.get("valid_to") != details["valid_to"].isoformat()
+        or cached.get("branch_id") != branch.id
+        or cached.get("brand_id") != selected_brand.id
+    ):
+        raise ValidationError({"detail": "The selected Year and Season do not match the preview. Run preview again."})
     approved = [str(key) for key in group_keys if str(key)]
     groups = {group["import_key"]: group for group in cached["importable"]}
     unknown = [key for key in approved if key not in groups]

@@ -29,7 +29,7 @@ class NotificationApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="note-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client = APIClient()
         self.client.force_authenticate(self.admin)

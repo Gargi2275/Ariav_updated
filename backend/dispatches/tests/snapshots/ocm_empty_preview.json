@@ -1,36 +1,21 @@
 {
+  "counts": {
+    "excluded": 38,
+    "importable": 0,
+    "rows": 38,
+    "sample": 0
+  },
   "excluded": [
     {
-      "customer_code": "703388",
-      "customer_name": "DHIRAJ STORES",
-      "group_key": "ATS26RG0093||DOM2601161",
-      "invoice_no": "DOM2601161",
-      "line_count": 6,
-      "order_code": "ATS26RG0093",
-      "reason": "No matching Purchase Order found for Order Code ATS26RG0093",
+      "customer_code": "700701",
+      "customer_name": "TEENAGERS TEXTORIUM",
+      "group_key": "ATS26RG0011||DOM2601322",
+      "invoice_no": "DOM2601322",
+      "line_count": 1,
+      "order_code": "ATS26RG0011",
+      "reason": "No matching Purchase Order found for Order Code ATS26RG0011",
       "source_rows": [
-        2,
-        3,
-        4,
-        5,
-        6,
-        7
-      ]
-    },
-    {
-      "customer_code": "703388",
-      "customer_name": "DHIRAJ STORES",
-      "group_key": "ATS26RG0093||DOM2601174",
-      "invoice_no": "DOM2601174",
-      "line_count": 5,
-      "order_code": "ATS26RG0093",
-      "reason": "No matching Purchase Order found for Order Code ATS26RG0093",
-      "source_rows": [
-        8,
-        9,
-        10,
-        11,
-        12
+        22
       ]
     },
     {
@@ -58,99 +43,6 @@
       ]
     },
     {
-      "customer_code": "703388",
-      "customer_name": "DHIRAJ STORES",
-      "group_key": "ATS26RG0092||DOM2601249",
-      "invoice_no": "DOM2601249",
-      "line_count": 5,
-      "order_code": "ATS26RG0092",
-      "reason": "No matching Purchase Order found for Order Code ATS26RG0092",
-      "source_rows": [
-        15,
-        16,
-        17,
-        18,
-        19
-      ]
-    },
-    {
-      "customer_code": "703388",
-      "customer_name": "DHIRAJ STORES",
-      "group_key": "ATS26RG0093||DOM2601308",
-      "invoice_no": "DOM2601308",
-      "line_count": 2,
-      "order_code": "ATS26RG0093",
-      "reason": "No matching Purchase Order found for Order Code ATS26RG0093",
-      "source_rows": [
-        20,
-        21
-      ]
-    },
-    {
-      "customer_code": "700701",
-      "customer_name": "TEENAGERS TEXTORIUM",
-      "group_key": "ATS26RG0011||DOM2601322",
-      "invoice_no": "DOM2601322",
-      "line_count": 1,
-      "order_code": "ATS26RG0011",
-      "reason": "No matching Purchase Order found for Order Code ATS26RG0011",
-      "source_rows": [
-        22
-      ]
-    },
-    {
-      "customer_code": "702550",
-      "customer_name": "ASHIRWAD ENTERPRISE",
-      "group_key": "ATS26RG0006||DOM2601323",
-      "invoice_no": "DOM2601323",
-      "line_count": 1,
-      "order_code": "ATS26RG0006",
-      "reason": "No matching Purchase Order found for Order Code ATS26RG0006",
-      "source_rows": [
-        23
-      ]
-    },
-    {
-      "customer_code": "700829",
-      "customer_name": "NIPPON TAILOR & TEXTORIUM",
-      "group_key": "ATS26RG4933||DOM2601617",
-      "invoice_no": "DOM2601617",
-      "line_count": 1,
-      "order_code": "ATS26RG4933",
-      "reason": "No matching Purchase Order found for Order Code ATS26RG4933",
-      "source_rows": [
-        24
-      ]
-    },
-    {
-      "customer_code": "703388",
-      "customer_name": "DHIRAJ STORES",
-      "group_key": "ATS26RG0038||DOM2601858",
-      "invoice_no": "DOM2601858",
-      "line_count": 3,
-      "order_code": "ATS26RG0038",
-      "reason": "No matching Purchase Order found for Order Code ATS26RG0038",
-      "source_rows": [
-        25,
-        26,
-        27
-      ]
-    },
-    {
-      "customer_code": "703984",
-      "customer_name": "KUMAR & CO",
-      "group_key": "ATS26RN0006||DOM2602378",
-      "invoice_no": "DOM2602378",
-      "line_count": 3,
-      "order_code": "ATS26RN0006",
-      "reason": "No matching Purchase Order found for Order Code ATS26RN0006",
-      "source_rows": [
-        28,
-        29,
-        30
-      ]
-    },
-    {
       "customer_code": "700750",
       "customer_name": "EVERNEW",
       "group_key": "ATS26RN0018||DOM2602381",
@@ -169,8 +61,124 @@
         38,
         39
       ]
+    },
+    {
+      "customer_code": "700829",
+      "customer_name": "NIPPON TAILOR & TEXTORIUM",
+      "group_key": "ATS26RG4933||DOM2601617",
+      "invoice_no": "DOM2601617",
+      "line_count": 1,
+      "order_code": "ATS26RG4933",
+      "reason": "No matching Purchase Order found for Order Code ATS26RG4933",
+      "source_rows": [
+        24
+      ]
+    },
+    {
+      "customer_code": "702550",
+      "customer_name": "ASHIRWAD ENTERPRISE",
+      "group_key": "ATS26RG0006||DOM2601323",
+      "invoice_no": "DOM2601323",
+      "line_count": 1,
+      "order_code": "ATS26RG0006",
+      "reason": "No matching Purchase Order found for Order Code ATS26RG0006",
+      "source_rows": [
+        23
+      ]
+    },
+    {
+      "customer_code": "703388",
+      "customer_name": "DHIRAJ STORES",
+      "group_key": "ATS26RG0038||DOM2601858",
+      "invoice_no": "DOM2601858",
+      "line_count": 3,
+      "order_code": "ATS26RG0038",
+      "reason": "No matching Purchase Order found for Order Code ATS26RG0038",
+      "source_rows": [
+        25,
+        26,
+        27
+      ]
+    },
+    {
+      "customer_code": "703388",
+      "customer_name": "DHIRAJ STORES",
+      "group_key": "ATS26RG0092||DOM2601249",
+      "invoice_no": "DOM2601249",
+      "line_count": 5,
+      "order_code": "ATS26RG0092",
+      "reason": "No matching Purchase Order found for Order Code ATS26RG0092",
+      "source_rows": [
+        15,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "customer_code": "703388",
+      "customer_name": "DHIRAJ STORES",
+      "group_key": "ATS26RG0093||DOM2601161",
+      "invoice_no": "DOM2601161",
+      "line_count": 6,
+      "order_code": "ATS26RG0093",
+      "reason": "No matching Purchase Order found for Order Code ATS26RG0093",
+      "source_rows": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "customer_code": "703388",
+      "customer_name": "DHIRAJ STORES",
+      "group_key": "ATS26RG0093||DOM2601174",
+      "invoice_no": "DOM2601174",
+      "line_count": 5,
+      "order_code": "ATS26RG0093",
+      "reason": "No matching Purchase Order found for Order Code ATS26RG0093",
+      "source_rows": [
+        10,
+        11,
+        12,
+        8,
+        9
+      ]
+    },
+    {
+      "customer_code": "703388",
+      "customer_name": "DHIRAJ STORES",
+      "group_key": "ATS26RG0093||DOM2601308",
+      "invoice_no": "DOM2601308",
+      "line_count": 2,
+      "order_code": "ATS26RG0093",
+      "reason": "No matching Purchase Order found for Order Code ATS26RG0093",
+      "source_rows": [
+        20,
+        21
+      ]
+    },
+    {
+      "customer_code": "703984",
+      "customer_name": "KUMAR & CO",
+      "group_key": "ATS26RN0006||DOM2602378",
+      "invoice_no": "DOM2602378",
+      "line_count": 3,
+      "order_code": "ATS26RN0006",
+      "reason": "No matching Purchase Order found for Order Code ATS26RN0006",
+      "source_rows": [
+        28,
+        29,
+        30
+      ]
     }
   ],
+  "format_id": "<id>",
+  "format_name": "OCM Dispatch",
   "importable": [],
   "preview_token": "<preview-token>",
   "skipped": [],

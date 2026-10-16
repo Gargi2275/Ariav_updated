@@ -8,14 +8,14 @@ class AuthUser(AbstractUser):
 
     class Role(models.TextChoices):
         ADMIN = "admin", "Admin"
-        OPERATOR = "operator", "Operator"
+        STAFF = "staff", "Staff"
 
     phone = models.CharField(
         max_length=128,
         blank=True,
         help_text="Hashed admin PIN (phone column repurposed). Empty for staff.",
     )
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.OPERATOR)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.STAFF)
     display_name = models.CharField(max_length=160, blank=True)
     operator_code = models.CharField(max_length=20, blank=True)
     branch = models.ForeignKey(
@@ -25,6 +25,19 @@ class AuthUser(AbstractUser):
         on_delete=models.SET_NULL,
         related_name="users",
     )
+    entity = models.ForeignKey(
+        "entities.Entity",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="staff_users",
+    )
+    login_bypass = models.BooleanField(
+        default=False,
+        help_text="When set, this staff account signs in with a password only. Admin approval and the verbal OTP are skipped.",
+    )
+    can_edit = models.BooleanField(default=False)
+    can_delete = models.BooleanField(default=False)
 
     class Meta:
         db_table = "accounts_authuser"

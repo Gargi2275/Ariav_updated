@@ -63,7 +63,8 @@ function opsStrip(
 }
 
 export const AnalyticsDashboardScreen: React.FC = () => {
-  const { navigateTo, userRole, selectedEntityId, selectedBranch, entityReady } = useErp();
+  const { navigateTo, userRole, selectedEntityId, selectedBranch, entityReady, getPeriod } = useErp();
+  const period = getPeriod();
   const isAdmin = userRole === 'admin';
   const [snapshot, setSnapshot] = useState<SnapshotDashboard | null>(null);
   const [staff, setStaff] = useState<StaffDashboard | null>(null);
@@ -79,7 +80,7 @@ export const AnalyticsDashboardScreen: React.FC = () => {
         setStaff(await dashboardsApi.staff());
         setSnapshot(null);
       } else {
-        setSnapshot(await dashboardsApi.admin(selectedEntityId));
+        setSnapshot(await dashboardsApi.admin(selectedEntityId, { from: period.from, to: period.to }));
         setStaff(null);
       }
     } catch (e) {
@@ -90,7 +91,7 @@ export const AnalyticsDashboardScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedEntityId, isAdmin, entityReady]);
+  }, [selectedEntityId, isAdmin, entityReady, period.from, period.to]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -105,7 +106,7 @@ export const AnalyticsDashboardScreen: React.FC = () => {
       render: r => (
         <button type="button" className="text-left cursor-pointer" onClick={() => openLedger(r.customer_id)}>
           <span className="font-body font-medium text-[var(--erp-gold)] hover:underline">{r.customer_name}</span>
-          <span className="text-[11px] font-mono text-[var(--erp-muted)] block">{r.customer_code}</span>
+          <span className="text-xs font-mono text-[var(--erp-muted)] block">{r.customer_code}</span>
         </button>
       ),
     },
@@ -139,19 +140,18 @@ export const AnalyticsDashboardScreen: React.FC = () => {
   ];
 
   return (
-    <div className="p-4 lg:p-5 flex flex-col gap-4 text-left">
+    <div className="dashboard-page p-4 lg:p-6 flex flex-col gap-5 text-left">
       <PageHeader
         moduleNumber="06"
         section={isAdmin ? 'Dashboard' : 'Staff'}
         title={isAdmin ? 'Business Analytics & Position' : 'Staff Activity'}
-        compact
+        className="dashboard-page-header"
         subtitle={
           isAdmin
             ? `Live totals scoped to ${selectedBranch.name} from the header branch dropdown`
             : 'Your purchase orders, invoices, dispatches and payments — records you created'
         }
       />
-
       {error && <MasterError message={error} onRetry={() => void load()} />}
       {loading ? (
         <MasterLoading label="Loading dashboard…" />
@@ -163,20 +163,19 @@ export const AnalyticsDashboardScreen: React.FC = () => {
           <LedgerMetricStrip
             compact
             metrics={opsStrip(snapshot, navigateTo, selectedEntityId === 'all')}
-            className={selectedEntityId === 'all' ? 'lg:grid-cols-7' : 'lg:grid-cols-6'}
           />
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+          <div className="dashboard-aging-section space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h3 className="font-display text-sm font-bold text-[var(--erp-text)] flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-[var(--erp-negative)]" />
+                <h3 className="font-display text-lg font-semibold text-[var(--erp-text)] flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-[var(--erp-negative)]" />
                   Debtor Outstanding & Credit Aging
                 </h3>
-                <p className="text-[11px] text-[var(--erp-muted)] font-sans">
+                <p className="text-xs text-[var(--erp-muted)] font-sans mt-1">
                   Parties with unpaid issued invoices, sorted by outstanding descending.
                 </p>
               </div>
-              <button type="button" onClick={() => navigateTo(44)} className="text-xs font-mono text-[var(--erp-gold)] hover:underline cursor-pointer">
+              <button type="button" onClick={() => navigateTo(44)} className="text-sm font-body font-medium text-[var(--erp-gold)] hover:underline cursor-pointer whitespace-nowrap">
                 Open Party Ledger →
               </button>
             </div>
@@ -219,8 +218,8 @@ function StaffPanels({
   return (
     <>
       <LedgerMetricStrip metrics={metrics} className="lg:grid-cols-4" />
-      <p className="text-[11px] font-mono text-[var(--erp-muted)]">Showing records you created. Party assignment will apply once roles exist.</p>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <p className="text-xs font-body text-[var(--erp-muted)]">Showing records you created. Party assignment will apply once roles exist.</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <MiniTable
           title="Recent purchase orders"
           empty="No purchase orders you created."
@@ -297,11 +296,11 @@ function MiniTable<T extends { id: number }>({
   onOpen: (row: T) => void;
 }) {
   return (
-    <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-4" style={{ boxShadow: 'var(--erp-shadow)' }}>
-      <h4 className="font-display text-sm font-bold mb-3">{title}</h4>
+    <div className="dashboard-mini-panel border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-4">
+      <h4 className="font-display text-base font-bold mb-3">{title}</h4>
       {rows.length ? (
         <table className="w-full text-left text-xs">
-          <thead className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">
+          <thead className="font-mono text-xs uppercase tracking-wider text-[var(--erp-muted)]">
             <tr>{columns.map(c => <th key={c} className="pb-2">{c}</th>)}</tr>
           </thead>
           <tbody>
@@ -313,7 +312,7 @@ function MiniTable<T extends { id: number }>({
                     <button type="button" className="font-mono text-[var(--erp-gold)] hover:underline cursor-pointer" onClick={() => onOpen(row)}>{cells[0]}</button>
                   </td>
                   {cells.slice(1).map((cell, i) => (
-                    <td key={i} className="py-2 font-mono">{cell}</td>
+                    <td key={i} className="py-2 text-[13px] font-mono">{cell}</td>
                   ))}
                 </tr>
               );
@@ -321,7 +320,7 @@ function MiniTable<T extends { id: number }>({
           </tbody>
         </table>
       ) : (
-        <p className="text-xs font-mono text-[var(--erp-muted)]">{empty}</p>
+        <p className="text-[13px] font-body text-[var(--erp-muted)]">{empty}</p>
       )}
     </div>
   );

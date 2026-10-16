@@ -20,7 +20,7 @@ interface LedgerMetricStripProps {
 export const LedgerMetricStrip: React.FC<LedgerMetricStripProps> = ({ metrics, className = '', compact = false }) => {
   return (
     <div
-      className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 divide-x divide-y lg:divide-y-0 border text-left bg-[var(--erp-surface)] border-[var(--erp-hairline-strong)] ${className}`}
+      className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 text-left ${className}`}
       style={{
         borderColor: 'var(--erp-hairline-strong)',
       }}
@@ -41,8 +41,7 @@ export const LedgerMetricStrip: React.FC<LedgerMetricStripProps> = ({ metrics, c
         return (
           <div
             key={idx}
-            className={`${compact ? 'min-h-[68px] p-2' : 'p-3.5'} transition-colors hover:bg-[var(--erp-surface-2)] flex flex-col justify-between ${semanticBorder} ${metric.onClick ? 'cursor-pointer group/kpi' : ''}`}
-            style={{ borderColor: 'var(--erp-hairline)' }}
+            className={`dashboard-kpi-card ${compact ? 'min-h-[96px] p-4' : 'p-4'} flex flex-col justify-between ${semanticBorder} ${metric.onClick ? 'cursor-pointer group/kpi' : ''}`}
             onClick={metric.onClick}
             onKeyDown={metric.onClick ? event => {
               if (event.key === 'Enter' || event.key === ' ') {
@@ -52,11 +51,12 @@ export const LedgerMetricStrip: React.FC<LedgerMetricStripProps> = ({ metrics, c
             } : undefined}
             role={metric.onClick ? 'link' : undefined}
             tabIndex={metric.onClick ? 0 : undefined}
+            aria-label={metric.onClick ? `Open ${metric.hrefLabel || metric.label}` : undefined}
             title={metric.onClick ? `Open ${metric.hrefLabel || metric.label}` : undefined}
           >
             {/* Header: Micro-Label without truncation and clean line wrap */}
-            <div className={`${compact ? 'mb-1 min-h-[16px]' : 'mb-2 min-h-[26px]'} flex items-start justify-between gap-1.5`}>
-              <span className={`font-body ${compact ? 'text-[10px]' : 'text-[10px] sm:text-[11px]'} font-semibold uppercase tracking-wider leading-tight ${metric.onClick ? 'text-[var(--erp-gold)] group-hover/kpi:underline' : 'text-[var(--erp-muted)]'}`}>
+            <div className={`${compact ? 'mb-2 min-h-[18px]' : 'mb-2 min-h-[26px]'} flex items-start justify-between gap-1.5`}>
+              <span className={`font-body ${compact ? 'text-xs' : 'text-xs sm:text-[13px]'} font-semibold uppercase tracking-wide leading-tight ${metric.onClick ? 'text-[var(--erp-gold)] group-hover/kpi:text-[var(--erp-gold-soft)]' : 'text-[var(--erp-muted)]'}`}>
                 {metric.label}
               </span>
               {metric.badge && (
@@ -68,11 +68,11 @@ export const LedgerMetricStrip: React.FC<LedgerMetricStripProps> = ({ metrics, c
             
             {/* Hero Number (Large, Bold Monospace) */}
             <div className="my-0.5">
-              <div className={`font-mono ${compact ? 'text-[17px] lg:text-[19px]' : 'text-2xl lg:text-[26px]'} font-bold tracking-tight leading-none ${metric.onClick ? 'text-[var(--erp-text)] group-hover/kpi:text-[var(--erp-gold)]' : 'text-[var(--erp-text)]'}`}>
+              <div className={`font-mono ${compact ? 'text-xl lg:text-2xl' : 'text-2xl lg:text-[26px]'} font-bold tracking-tight leading-tight ${metric.onClick ? 'text-[var(--erp-text)] group-hover/kpi:text-[var(--erp-gold-soft)]' : 'text-[var(--erp-text)]'}`}>
                 {metric.value}
               </div>
               {metric.subValue && (
-                <span className="font-mono text-[11px] text-[var(--erp-muted)] mt-1 block">
+                <span className="font-body text-xs text-[var(--erp-muted)] mt-1 block leading-snug">
                   {metric.subValue}
                 </span>
               )}

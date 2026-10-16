@@ -57,6 +57,8 @@ export interface BrandRow {
   payment_terms: string;
   credit_days: number;
   order_method: OrderMethod | string;
+  branch_ids?: number[];
+  branches?: Array<{ id: number; short_code: string; entity_name: string }>;
 }
 
 export const emptyBrand = (): Partial<BrandRow> => ({
@@ -75,6 +77,7 @@ export const emptyBrand = (): Partial<BrandRow> => ({
   payment_terms: '',
   credit_days: 0,
   order_method: 'Digital PO',
+  branch_ids: [],
 });
 
 function qs(params: Record<string, string | number | undefined | null>): string {

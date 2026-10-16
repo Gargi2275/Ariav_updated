@@ -13,7 +13,7 @@ from products.models import Product
 class PriceListApiTests(TestCase):
     def setUp(self):
         self.admin = AuthUser.objects.create_user(username="price-admin", password="pass12345", role=AuthUser.Role.ADMIN)
-        self.operator = AuthUser.objects.create_user(username="price-op", password="pass12345", role=AuthUser.Role.OPERATOR)
+        self.operator = AuthUser.objects.create_user(username="price-op", password="pass12345", role=AuthUser.Role.STAFF)
         self.brand = Brand.objects.create(brand_code="BR-1", brand_name="Brand One", order_method="Digital PO")
         self.other_brand = Brand.objects.create(brand_code="BR-2", brand_name="Brand Two", order_method="Digital PO")
         self.parent = Category.objects.create(category_code="CAT", category_name="Fabric")

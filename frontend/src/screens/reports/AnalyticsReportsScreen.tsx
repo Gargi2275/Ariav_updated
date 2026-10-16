@@ -7,6 +7,7 @@ import { ReportChart } from '../../components/common/ReportChart';
 import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterStatus';
 import { num } from '../../services/mastersApi';
 import { notifyApiError } from '../../services/notify';
+import { currentFinancialYear } from '../../utils/dateFilters';
 import { BrandStatementReport } from './BrandStatementReport';
 import {
   BrandPerfRow,
@@ -19,20 +20,6 @@ import {
 } from '../../services/reportsApi';
 
 const COLORS = ['var(--erp-gold)', 'var(--erp-positive)', 'var(--erp-muted)', '#7aa2c8', '#c9a24e', '#8f6b4a', '#d9635a', '#6b8f71', '#b07c9e', '#5c7a8a'];
-
-function iso(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function defaultRange(): { from: string; to: string } {
-  const to = new Date();
-  const from = new Date(to);
-  from.setFullYear(from.getFullYear() - 1);
-  return { from: iso(from), to: iso(to) };
-}
 
 function money(value: string | number | null | undefined): string {
   return `₹${num(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -55,18 +42,16 @@ function allZero(values: number[]): boolean {
 }
 
 export const AnalyticsReportsScreen: React.FC = () => {
-  const { selectedEntityId, selectedBranch, entityReady } = useErp();
-  const initial = defaultRange();
+  const { selectedEntityId, selectedBranch, entityReady, getPeriod } = useErp();
   const tab: ReportTab = 'party-balance';
-  const [from, setFrom] = useState(initial.from);
-  const [to, setTo] = useState(initial.to);
+  const period = getPeriod();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [payload, setPayload] = useState<unknown>(null);
 
   const filters: ReportFilters = useMemo(
-    () => ({ from, to, entityId: selectedEntityId }),
-    [from, to, selectedEntityId],
+    () => ({ from: period.from, to: period.to, entityId: selectedEntityId }),
+    [period.from, period.to, selectedEntityId],
   );
 
   const load = useCallback(async () => {
@@ -118,20 +103,17 @@ export const AnalyticsReportsScreen: React.FC = () => {
         }
       />
 
-      {tab !== 'party-balance' && <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-[11px] font-mono text-[var(--erp-muted)]">
-          From
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="px-2 py-1.5 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]" />
-        </label>
-        <label className="flex flex-col gap-1 text-[11px] font-mono text-[var(--erp-muted)]">
-          To
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="px-2 py-1.5 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]" />
-        </label>
+      <div className="flex flex-wrap items-end gap-3">
+        <span className="border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2 py-1.5 text-[11px] font-mono text-[var(--erp-muted)]">
+          {period.month === '' ? `FY ${period.fy} (all months)` : `${period.from} to ${period.to}`}
+        </span>
+        {tab === 'party-balance' && <span className="text-[11px] font-mono text-[var(--erp-muted)]">Outstanding as of today</span>}
+        {period.fy !== currentFinancialYear() && <span className="text-[var(--erp-muted)]">Viewing a past financial year</span>}
         <p className="text-[11px] font-mono text-[var(--erp-muted)] pb-1.5">
           Branch: <span className="text-[var(--erp-text)]">{selectedBranch.name}</span>
           <span className="text-[var(--erp-muted)]"> (header)</span>
         </p>
-      </div>}
+      </div>
 
       {error && <MasterError message={error} onRetry={() => void load()} />}
       {tab === 'party-balance' ? <BrandStatementReport /> : loading ? <MasterLoading label="Loading report…" /> : <ReportBody tab={tab} payload={payload} />}

@@ -146,7 +146,7 @@ class CategoryMasterApiTests(TestCase):
         operator = AuthUser.objects.create_user(
             username="cat-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client.force_authenticate(operator)
         res = self.client.delete(

@@ -18,6 +18,7 @@ from invoices.services import invoice_is_overdue, money
 from payments.models import Payment, PaymentAllocation
 from products.models import Product
 from purchase_orders.models import PurchaseOrder
+from dispatches.models import Dispatch
 
 SALES_STATUSES = (
     Invoice.Status.ISSUED,
@@ -99,11 +100,19 @@ def _remaining_by_invoice(invoices) -> dict[int, Decimal]:
     return remaining
 
 
-def _kpis(entity_id=None, customer_ids=None) -> dict:
+def _kpis(entity_id=None, customer_ids=None, date_from=None, date_to=None) -> dict:
     invoices = _invoice_qs(entity_id, customer_ids)
     payments = _payment_qs(entity_id, customer_ids)
     pos = _po_qs(entity_id, customer_ids)
+    period_invoices = invoices
+    period_payments = payments
+    period_pos = pos
+    if date_from and date_to:
+        period_invoices = period_invoices.filter(invoice_date__range=(date_from, date_to))
+        period_payments = period_payments.filter(payment_date__range=(date_from, date_to))
+        period_pos = period_pos.filter(po_date__range=(date_from, date_to))
     sales = invoices.filter(status__in=SALES_STATUSES)
+    period_sales = period_invoices.filter(status__in=SALES_STATUSES)
     unpaid = list(invoices.filter(status__in=UNPAID_STATUSES))
     remaining = _remaining_by_invoice(unpaid)
     outstanding = sum((remaining.get(inv.id, Decimal("0.00")) for inv in unpaid), Decimal("0.00"))
@@ -113,7 +122,7 @@ def _kpis(entity_id=None, customer_ids=None) -> dict:
     )
     advance = _sum(payments, "unallocated_amount")
     po_rows = list(
-        pos.prefetch_related(
+        period_pos.prefetch_related(
             "invoices__allocations",
             "lines__dispatch_lines",
         )
@@ -136,6 +145,10 @@ def _kpis(entity_id=None, customer_ids=None) -> dict:
             clear_pos += 1
         else:
             pending_financial_pos += 1
+    dispatched = Dispatch.objects.filter(
+        purchase_order__in=period_pos,
+        dispatch_date__range=(date_from, date_to),
+    ) if date_from and date_to else Dispatch.objects.filter(purchase_order__in=pos)
     customers = scope_customers(Customer.objects.filter(status=Customer.Status.ACTIVE), customer_ids, "id")
     brands = Brand.objects.filter(status=Brand.Status.ACTIVE)
     products = Product.objects.filter(status=Product.Status.ACTIVE)
@@ -151,21 +164,21 @@ def _kpis(entity_id=None, customer_ids=None) -> dict:
         ).distinct()
         entities = entities.filter(pk=entity_id)
     return {
-        "total_sales": money_str(_sum(sales, "net_amount")),
-        "total_invoices": sales.count(),
-        "total_collections": money_str(_sum(payments, "amount")),
+        "total_sales": money_str(_sum(period_sales, "net_amount")),
+        "total_invoices": period_sales.count(),
+        "total_collections": money_str(_sum(period_payments, "amount")),
         "total_outstanding": money_str(outstanding),
         "total_overdue": money_str(overdue),
         "total_advance": money_str(advance),
         "unadjusted_payments": money_str(advance),
         "bad_debt": None,
-        "total_pos": pos.count(),
-        "pending_pos": pos.filter(status__in=PENDING_PO_STATUSES).count(),
+        "total_pos": period_pos.count(),
+        "pending_pos": period_pos.filter(status__in=PENDING_PO_STATUSES).count(),
         "pending_financial_pos": pending_financial_pos,
         "clear_pos": clear_pos,
-        "dispatched_pos": pos.filter(status=PurchaseOrder.Status.FULLY_DISPATCHED).count(),
-        "partially_dispatched_pos": pos.filter(status=PurchaseOrder.Status.PARTIALLY_DISPATCHED).count(),
-        "unpriced_po_lines": pos.filter(lines__rate__isnull=True).count(),
+        "dispatched_pos": dispatched.filter(purchase_order__status=PurchaseOrder.Status.FULLY_DISPATCHED).values("purchase_order_id").distinct().count(),
+        "partially_dispatched_pos": dispatched.filter(purchase_order__status=PurchaseOrder.Status.PARTIALLY_DISPATCHED).values("purchase_order_id").distinct().count(),
+        "unpriced_po_lines": period_pos.filter(lines__rate__isnull=True).count(),
         "active_customers": customers.distinct().count(),
         "active_brands": brands.count(),
         "active_products": products.count(),
@@ -173,10 +186,12 @@ def _kpis(entity_id=None, customer_ids=None) -> dict:
     }
 
 
-def _entity_turnover(entity_id=None) -> list[dict]:
+def _entity_turnover(entity_id=None, date_from=None, date_to=None) -> list[dict]:
     sales = Invoice.objects.filter(status__in=SALES_STATUSES)
     if entity_id:
         sales = sales.filter(entity_id=entity_id)
+    if date_from and date_to:
+        sales = sales.filter(invoice_date__range=(date_from, date_to))
     rows = list(
         sales.values("entity_id", "entity__short_code", "entity__entity_name")
         .annotate(total=Coalesce(Sum("net_amount"), Decimal("0.00")))
@@ -199,13 +214,15 @@ def _entity_turnover(entity_id=None) -> list[dict]:
     return out
 
 
-def _category_share(entity_id=None) -> list[dict]:
+def _category_share(entity_id=None, date_from=None, date_to=None) -> list[dict]:
     lines = InvoiceLine.objects.filter(
         invoice__status__in=SALES_STATUSES,
         product_id__isnull=False,
     )
     if entity_id:
         lines = lines.filter(invoice__entity_id=entity_id)
+    if date_from and date_to:
+        lines = lines.filter(invoice__invoice_date__range=(date_from, date_to))
     grouped = {}
     for line in lines.select_related("product__category__parent_category"):
         category = line.product.category if line.product_id else None
@@ -331,13 +348,15 @@ def _debtors(entity_id=None) -> list[dict]:
     return rows
 
 
-def _top_products(entity_id=None, limit=5) -> list[dict]:
+def _top_products(entity_id=None, date_from=None, date_to=None, limit=5) -> list[dict]:
     lines = InvoiceLine.objects.filter(
         invoice__status__in=SALES_STATUSES,
         product_id__isnull=False,
     )
     if entity_id:
         lines = lines.filter(invoice__entity_id=entity_id)
+    if date_from and date_to:
+        lines = lines.filter(invoice__invoice_date__range=(date_from, date_to))
     rows = (
         lines.values("product_id", "product__product_code", "product__product_name")
         .annotate(quantity=Sum("quantity"))
@@ -365,14 +384,20 @@ def _entity_options() -> list[dict]:
     ]
 
 
-def admin_snapshot(entity_id=None) -> dict:
+def admin_snapshot(entity_id=None, date_from=None, date_to=None) -> dict:
+    today = timezone.localdate()
     return {
-        "kpis": _kpis(entity_id),
-        "entity_turnover": _entity_turnover(entity_id),
-        "category_share": _category_share(entity_id),
+        "kpis": _kpis(entity_id, date_from=date_from, date_to=date_to),
+        "entity_turnover": _entity_turnover(entity_id, date_from, date_to),
+        "category_share": _category_share(entity_id, date_from, date_to),
         "debtors": _debtors(entity_id),
-        "top_products": _top_products(entity_id),
+        "top_products": _top_products(entity_id, date_from, date_to),
         "entities": _entity_options(),
+        "as_of": today.isoformat(),
+        "period": {
+            "from": date_from.isoformat() if date_from else None,
+            "to": date_to.isoformat() if date_to else None,
+        },
     }
 
 

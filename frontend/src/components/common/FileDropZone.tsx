@@ -34,7 +34,9 @@ export interface FileDropZoneProps {
   className?: string;
   id?: string;
   emptyTitle?: string;
+  emptyHint?: string;
   disabled?: boolean;
+  compact?: boolean;
   existingHint?: React.ReactNode;
   onFileRejected?: (message: string) => void;
   rejectionMessage?: string;
@@ -52,7 +54,9 @@ export const FileDropZone: React.FC<FileDropZoneProps> = ({
   className = '',
   id,
   emptyTitle = 'Click to upload or drag and drop',
+  emptyHint,
   disabled = false,
+  compact = false,
   existingHint,
   onFileRejected,
   rejectionMessage = 'This file type is not allowed.',
@@ -123,6 +127,14 @@ export const FileDropZone: React.FC<FileDropZoneProps> = ({
           <button
             type="button"
             disabled={disabled}
+            onClick={openPicker}
+            className="px-2 py-1 text-[11px] font-mono text-[var(--erp-muted)] hover:text-[var(--erp-text)] border border-[var(--erp-hairline)]"
+          >
+            Replace
+          </button>
+          <button
+            type="button"
+            disabled={disabled}
             onClick={() => applyFile(null)}
             className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] cursor-pointer"
             title="Remove file"
@@ -140,11 +152,12 @@ export const FileDropZone: React.FC<FileDropZoneProps> = ({
           onDragLeave={onDrag}
           onDragOver={onDrag}
           onDrop={onDrop}
-          className={`w-full border-2 border-dashed p-6 text-center transition-colors rounded-none cursor-pointer ${borderClass} disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`w-full border-2 border-dashed ${compact ? 'p-4' : 'p-6'} text-center transition-colors rounded-none cursor-pointer ${borderClass} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           <span className="flex flex-col items-center justify-center gap-2 pointer-events-none">
             <UploadCloud className="w-8 h-8 text-[var(--erp-gold)]" />
             <span className="text-sm font-medium text-[var(--erp-text)]">{emptyTitle}</span>
+            {emptyHint ? <span className="text-[11px] text-[var(--erp-muted)]">{emptyHint}</span> : null}
           </span>
         </button>
       )}

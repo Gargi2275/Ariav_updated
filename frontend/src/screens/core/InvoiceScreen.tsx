@@ -23,13 +23,7 @@ import {
   todayIso,
 } from '../../services/invoicesApi';
 import { InvoiceTraceabilityPanel } from './InvoiceTraceabilityPanel';
-import {
-  FINANCIAL_MONTHS,
-  FINANCIAL_YEARS,
-  customDateRange,
-  financialYearRange,
-  isDateRangeInvalid,
-} from '../../utils/dateFilters';
+import { FINANCIAL_MONTHS } from '../../utils/dateFilters';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
 
@@ -69,8 +63,9 @@ type LineDraft = {
 };
 
 export const InvoiceScreen: React.FC = () => {
-  const { userRole, selectedBranch, selectedEntityId, entityReady } = useErp();
-  const canWrite = userRole === 'admin' || userRole === 'operator';
+  const { userRole, selectedBranch, selectedEntityId, entityReady, financialYear, periodMonth, getPeriod, canDeleteRecords } = useErp();
+  const canWrite = userRole === 'admin' || userRole === 'staff';
+  const canDelete = userRole === 'admin' || (userRole === 'staff' && canDeleteRecords);
   const canCancel = userRole === 'admin';
 
   const [rows, setRows] = useState<InvoiceRow[]>([]);
@@ -79,10 +74,6 @@ export const InvoiceScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [customerFilter, setCustomerFilter] = useState<number | ''>(() => readCustomerListFilter());
-  const [yearFilter, setYearFilter] = useState('');
-  const [monthFilter, setMonthFilter] = useState<number | ''>('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const [mode, setMode] = useState<'list' | 'form' | 'detail'>('list');
   const [detail, setDetail] = useState<InvoiceRow | null>(null);
   const [detailTab, setDetailTab] = useState<'details' | 'trace'>('details');
@@ -110,28 +101,17 @@ export const InvoiceScreen: React.FC = () => {
   const numberRef = useRef<HTMLInputElement>(null);
   const listRequest = useRef<{ id: number; controller: AbortController } | null>(null);
 
-  const dateRange = useMemo(
-    () => dateFrom || dateTo
-      ? customDateRange(dateFrom, dateTo)
-      : financialYearRange(yearFilter, monthFilter),
-    [dateFrom, dateTo, monthFilter, yearFilter],
-  );
-  const dateRangeInvalid = isDateRangeInvalid(dateFrom, dateTo);
-  const dateFilterActive = Boolean(yearFilter || monthFilter || dateFrom || dateTo);
-  const anyFilterActive = Boolean(search || statusFilter || customerFilter || dateFilterActive || selectedEntityId !== 'all');
+  const period = getPeriod();
+  const anyFilterActive = Boolean(search || statusFilter || customerFilter || selectedEntityId !== 'all');
 
   const clearFilters = () => {
     setSearch('');
     setStatusFilter('');
     setCustomerFilter('');
-    setYearFilter('');
-    setMonthFilter('');
-    setDateFrom('');
-    setDateTo('');
   };
 
   const load = useCallback(async () => {
-    if (!entityReady || dateRangeInvalid) return;
+    if (!entityReady) return;
     const requestId = (listRequest.current?.id || 0) + 1;
     listRequest.current?.controller.abort();
     const controller = new AbortController();
@@ -144,8 +124,8 @@ export const InvoiceScreen: React.FC = () => {
         search: search || undefined,
         customer_id: customerFilter || undefined,
         entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
-        date_from: dateRange.date_from,
-        date_to: dateRange.date_to,
+        date_from: period.from,
+        date_to: period.to,
       }, { signal: controller.signal });
       if (!shouldApplyInvoiceListResponse(requestId, listRequest.current?.id || 0)) return;
       setRows(nextRows);
@@ -156,7 +136,7 @@ export const InvoiceScreen: React.FC = () => {
     } finally {
       if (shouldApplyInvoiceListResponse(requestId, listRequest.current?.id || 0)) setLoading(false);
     }
-  }, [statusFilter, search, customerFilter, selectedEntityId, entityReady, dateRange, dateRangeInvalid]);
+  }, [statusFilter, search, customerFilter, selectedEntityId, entityReady, period.from, period.to]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => () => listRequest.current?.controller.abort(), []);
@@ -327,7 +307,7 @@ export const InvoiceScreen: React.FC = () => {
       render: r => (
         <div className="flex justify-end gap-1">
           <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" title="View" onClick={() => void openDetail(r.id)}><Eye className="w-3.5 h-3.5" /></button>
-          {canWrite && r.status === 'Draft' && (
+          {canDelete && r.status === 'Draft' && (
             <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] cursor-pointer" title="Delete draft" onClick={() => setPendingDelete(r)}><Trash2 className="w-3.5 h-3.5" /></button>
           )}
         </div>
@@ -351,61 +331,28 @@ export const InvoiceScreen: React.FC = () => {
         }
       />
       {error && <MasterError message={error} onRetry={() => void load()} />}
-      <div className="grid grid-cols-1 gap-2.5 rounded-md border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-2.5 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-[minmax(240px,1.8fr)_minmax(130px,1fr)_minmax(120px,0.95fr)_minmax(110px,0.9fr)_minmax(145px,1fr)_minmax(145px,1fr)_auto]">
-        <div className="relative min-w-0 sm:col-span-2 lg:col-span-2 2xl:col-span-1">
+      <div className="flex flex-col gap-2.5 rounded-md border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-2.5 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
           <label htmlFor="invoice-search" className="sr-only">Search invoices</label>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--erp-muted)]" />
           <input id="invoice-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoice, party code, PO…" className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] pl-9 pr-3 text-xs text-[var(--erp-text)] placeholder:text-[var(--erp-muted)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 font-mono" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 sm:w-48 sm:shrink-0">
           <label htmlFor="invoice-status-filter" className="sr-only">Invoice status</label>
           <select id="invoice-status-filter" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 font-mono">
           <option value="">All statuses</option>
           {INVOICE_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
-        <div className="min-w-0">
-          <label htmlFor="invoice-year-filter" className="sr-only">Financial year</label>
-          <select id="invoice-year-filter"
-          value={dateFrom || dateTo ? '' : yearFilter}
-          disabled={Boolean(dateFrom || dateTo)}
-          onChange={e => { setYearFilter(e.target.value); setMonthFilter(''); }}
-          className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 disabled:cursor-not-allowed disabled:opacity-50 font-mono">
-          <option value="">All years</option>
-          {FINANCIAL_YEARS.map(year => <option key={year} value={year}>FY {year}</option>)}
-          </select>
-        </div>
-        <div className="min-w-0">
-          <label htmlFor="invoice-month-filter" className="sr-only">Month</label>
-          <select id="invoice-month-filter"
-          value={dateFrom || dateTo ? '' : monthFilter}
-          disabled={!yearFilter || Boolean(dateFrom || dateTo)}
-          onChange={e => setMonthFilter(e.target.value ? Number(e.target.value) : '')}
-          className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 disabled:cursor-not-allowed disabled:opacity-50 font-mono">
-          <option value="">All months</option>
-          {FINANCIAL_MONTHS.map(month => <option key={month.value} value={month.value}>{month.label}</option>)}
-          </select>
-        </div>
-        <div className="min-w-0">
-          <label htmlFor="invoice-from-date" className="sr-only">From date</label>
-          <input id="invoice-from-date" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setYearFilter(''); setMonthFilter(''); }} className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 font-mono" aria-label="From date" />
-        </div>
-        <div className="min-w-0">
-          <label htmlFor="invoice-to-date" className="sr-only">To date</label>
-          <input id="invoice-to-date" type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setYearFilter(''); setMonthFilter(''); }} className="h-9 w-full min-w-0 border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-xs text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none focus:ring-1 focus:ring-[var(--erp-gold)]/30 font-mono" aria-label="To date" />
-        </div>
         {anyFilterActive ? (
-          <button type="button" onClick={clearFilters} className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap px-2 text-[11px] text-[var(--erp-muted)] transition-colors hover:text-[var(--erp-gold)] cursor-pointer 2xl:justify-self-end font-mono">
+          <button type="button" onClick={clearFilters} className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap px-2 text-[11px] text-[var(--erp-muted)] transition-colors hover:text-[var(--erp-gold)] cursor-pointer sm:ml-auto font-mono">
             <RotateCcw className="h-3.5 w-3.5" /> Clear filters
           </button>
         ) : null}
       </div>
-      {dateRangeInvalid && <p className="text-xs text-[var(--erp-negative)]">From date cannot be after To date.</p>}
       <p className="text-[11px] font-mono text-[var(--erp-muted)]">
         {rows.length} invoice{rows.length === 1 ? '' : 's'} · {selectedBranch.name}
-        {yearFilter && ` · FY ${yearFilter}`}
-        {monthFilter && ` · ${FINANCIAL_MONTHS.find(month => month.value === monthFilter)?.label}`}
-        {(dateFrom || dateTo) && ` · ${dateFrom || '…'} to ${dateTo || '…'}`}
+        {' · '}FY {financialYear}{periodMonth ? ` · ${FINANCIAL_MONTHS.find(month => month.value === periodMonth)?.label}` : ' · All months'}
       </p>
       {loading ? (
         <MasterLoading label="Loading invoices…" />
@@ -657,7 +604,7 @@ export const InvoiceScreen: React.FC = () => {
                 {detail.status === 'Draft' && canWrite && (
                   <>
                     <button type="button" onClick={() => void invoicesApi.issue(detail.id).then(row => { notifySuccess('Invoice issued.'); setDetail(row); void load(); }).catch(notifyApiError)} className="px-4 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">Issue</button>
-                    <button type="button" onClick={() => setPendingDelete(detail)} className="px-4 py-2 border border-[var(--erp-negative)]/40 text-[var(--erp-negative)] text-xs font-mono">Delete draft</button>
+                    {canDelete && <button type="button" onClick={() => setPendingDelete(detail)} className="px-4 py-2 border border-[var(--erp-negative)]/40 text-[var(--erp-negative)] text-xs font-mono">Delete draft</button>}
                   </>
                 )}
                 {canCancel && (detail.status === 'Draft' || detail.status === 'Issued') && (

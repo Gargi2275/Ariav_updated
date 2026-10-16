@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Eye, FileText, Kanban, Plus, Search, Table2, Trash2, Truck, Upload, X } from 'lucide-react';
+import { BarChart3, CheckCircle2, Clock3, Download, Eye, FileText, LayoutDashboard, Plus, Search, ShoppingCart, Table2, Trash2, Truck, Upload, X, XCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip, StatusChipType } from '../../components/common/StatusChip';
 import { CustomerPicker } from '../../components/common/CustomerPicker';
@@ -10,9 +11,10 @@ import { SelectOption } from '../../components/common/AccessibleSelectModal';
 import { TextInput, FormField, RequiredLegend } from '../../components/common/FormControls';
 import { FileDropZone } from '../../components/common/FileDropZone';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { InputDialog } from '../../components/common/InputDialog';
 import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterStatus';
 import { num } from '../../services/mastersApi';
-import { notifyApiError, notifyError, notifySuccess } from '../../services/notify';
+import { notifyApiError, notifySuccess } from '../../services/notify';
 import { acquireSaveLock, releaseSaveLock } from '../../services/saveLock';
 import { clearFieldMessage, collectRequired, REQUIRED_MSG } from '../../services/requiredFields';
 import { BrandRow, brandsApi } from '../../services/brandsApi';
@@ -22,7 +24,6 @@ import { ProductRow, productsApi } from '../../services/productsApi';
 import { priceListsApi } from '../../services/priceListsApi';
 import {
   PO_STATUSES,
-  PipelineSummary,
   OPEN_PO_KEY,
   PurchaseOrderRow,
   PurchaseOrderLineRow,
@@ -32,7 +33,6 @@ import {
 } from '../../services/purchaseOrdersApi';
 import { RateNotSetBadge, rateIsUnset } from '../../components/common/RateNotSetBadge';
 import { ImportExcludedReport, PurchaseOrderImportModal } from './PurchaseOrderImportModal';
-import { PurchaseOrderPipeline, PurchaseOrderPipelineHandle } from './PurchaseOrderPipeline';
 import {
   DispatchRow,
   canRecordDispatch,
@@ -84,6 +84,46 @@ function money(value: string | number | null | undefined): string {
   return `₹${num(value).toFixed(2)}`;
 }
 
+function BrandChoice({
+  brands,
+  value,
+  onChange,
+}: {
+  brands: BrandRow[];
+  value?: number;
+  onChange: (id: number) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const visible = brands.length > 4
+    ? brands.filter(brand => `${brand.brand_code} ${brand.brand_name}`.toLowerCase().includes(query.toLowerCase().trim()))
+    : brands;
+  if (brands.length === 1) {
+    const brand = brands[0];
+    return (
+      <div className="px-3 py-2.5 border border-[var(--erp-gold)]/45 bg-[var(--erp-gold)]/10 text-sm text-[var(--erp-text)]" aria-label={`Selected brand ${brand.brand_name}`}>
+        <span className="font-mono text-[var(--erp-gold)]">{brand.brand_code}</span>
+        <span className="mx-2 text-[var(--erp-muted)]">·</span>
+        {brand.brand_name}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      {brands.length > 4 && (
+        <input aria-label="Search allowed brands" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search allowed brands…" className="w-full px-3 py-2 text-sm bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)]" />
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Allowed brands">
+        {visible.map(brand => (
+          <button key={brand.id} type="button" role="radio" aria-checked={value === brand.id} onClick={() => onChange(brand.id)} className={`flex items-center justify-between gap-3 px-3 py-2 text-left border text-xs ${value === brand.id ? 'border-[var(--erp-gold)] bg-[var(--erp-gold)]/10 text-[var(--erp-text)]' : 'border-[var(--erp-hairline)] text-[var(--erp-muted)] hover:border-[var(--erp-gold)]/60'}`}>
+            <span><span className="font-mono text-[var(--erp-gold)]">{brand.brand_code}</span> · {brand.brand_name}</span>
+            <span aria-hidden className={`h-2 w-2 rounded-full shrink-0 ${value === brand.id ? 'bg-[var(--erp-gold)]' : 'border border-[var(--erp-muted)]'}`} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function newLine(manualEntry = false): LineDraft {
   return {
     key: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -94,6 +134,132 @@ function newLine(manualEntry = false): LineDraft {
     quantity: '',
     rate: '',
   };
+}
+
+type PurchaseOrderViewMode = 'graphical' | 'table';
+
+const PENDING_PO_STATUSES = new Set(['Draft', 'Submitted', 'Sent to Brand']);
+const COMPLETED_PO_STATUSES = new Set(['Fully Dispatched', 'Closed']);
+const REJECTED_PO_STATUSES = new Set(['Rejected', 'Cancelled']);
+
+function poQuantities(row: PurchaseOrderRow) {
+  const ordered = row.lines.reduce((total, line) => total + num(line.quantity), 0);
+  const hasDispatchData = row.lines.length > 0 && row.lines.every(line => line.total_dispatched !== undefined && line.total_dispatched !== null);
+  const dispatched = hasDispatchData
+    ? row.lines.reduce((total, line) => total + num(line.total_dispatched), 0)
+    : null;
+  const hasRemainingData = row.lines.length > 0 && row.lines.every(line => line.pending_quantity !== undefined && line.pending_quantity !== null);
+  const remaining = hasRemainingData
+    ? row.lines.reduce((total, line) => total + Math.max(0, num(line.pending_quantity)), 0)
+    : dispatched === null ? null : Math.max(0, ordered - dispatched);
+  const percentage = dispatched !== null && ordered > 0
+    ? Math.min(100, Math.max(0, (dispatched / ordered) * 100))
+    : null;
+  return { ordered, dispatched, remaining, percentage };
+}
+
+function statusTone(status: string): string {
+  if (['Closed', 'Fully Dispatched'].includes(status)) return 'var(--erp-positive)';
+  if (['Rejected', 'Cancelled'].includes(status)) return 'var(--erp-negative)';
+  if (['Partially Dispatched', 'Brand Accepted'].includes(status)) return 'var(--erp-gold)';
+  return 'var(--erp-muted)';
+}
+
+function ProgressView({ rows, onOpen }: { rows: PurchaseOrderRow[]; onOpen: (id: number) => void }) {
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+      {rows.map(row => {
+        const quantities = poQuantities(row);
+        return (
+          <button key={row.id} type="button" onClick={() => onOpen(row.id)} className="flex min-w-0 h-full flex-col text-left rounded-lg border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-4 shadow-[0_2px_10px_rgba(0,0,0,0.08)] hover:border-[var(--erp-gold)]">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-mono text-base font-semibold text-[var(--erp-gold)] truncate">{row.po_number}</div>
+                <div className="mt-1 text-xs text-[var(--erp-text)] truncate">{row.customer_name} · {row.brand_name}</div>
+              </div>
+              <span className="shrink-0"><StatusChip status={poChipStatus(row.status)} label={row.status} /></span>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[var(--erp-muted)]">
+              <span>{row.po_date}</span>
+              <span className="font-mono font-semibold text-[var(--erp-text)]">{money(row.total_amount)}</span>
+            </div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--erp-surface-2)]">
+              <div className="h-full" style={{ width: `${quantities.percentage ?? 0}%`, backgroundColor: statusTone(row.status) }} />
+            </div>
+            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-3 text-[11px] font-mono text-[var(--erp-muted)]">
+              <span>{quantities.ordered.toFixed(2)} ordered · {quantities.dispatched === null ? '—' : quantities.dispatched.toFixed(2)} dispatched</span>
+              <span className="text-right">{quantities.percentage === null ? '—' : `${quantities.percentage.toFixed(0)}%`}</span>
+            </div>
+            <div className="mt-2 border-t border-[var(--erp-hairline)] pt-2 text-[11px] font-mono text-[var(--erp-muted)]">Remaining: {quantities.remaining === null ? '—' : quantities.remaining.toFixed(2)}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function StatusOverview({ rows, onStatus }: { rows: PurchaseOrderRow[]; onStatus: (status: string) => void }) {
+  const summary = PO_STATUSES.map(status => ({
+    status,
+    count: rows.filter(row => row.status === status).length,
+    amount: rows.filter(row => row.status === status).reduce((total, row) => total + num(row.total_amount), 0),
+  }));
+  const max = Math.max(1, ...summary.map(item => item.count));
+  const completed = rows.filter(row => COMPLETED_PO_STATUSES.has(row.status));
+  const rejected = rows.filter(row => REJECTED_PO_STATUSES.has(row.status));
+  const pending = rows.filter(row => PENDING_PO_STATUSES.has(row.status));
+  const kpis = [
+    { label: 'Total Purchase Orders', value: rows.length, supporting: money(rows.reduce((total, row) => total + num(row.total_amount), 0)), icon: ShoppingCart, color: 'var(--erp-gold)' },
+    { label: 'Pending Orders', value: pending.length, supporting: money(pending.reduce((total, row) => total + num(row.total_amount), 0)), icon: Clock3, color: 'var(--erp-muted)' },
+    { label: 'Completed Orders', value: completed.length, supporting: money(completed.reduce((total, row) => total + num(row.total_amount), 0)), icon: CheckCircle2, color: 'var(--erp-positive)' },
+    { label: 'Rejected Orders', value: rejected.length, supporting: money(rejected.reduce((total, row) => total + num(row.total_amount), 0)), icon: XCircle, color: 'var(--erp-negative)' },
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {kpis.map(item => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="flex min-h-[138px] flex-col rounded-lg border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]" style={{ borderTopColor: item.color, borderTopWidth: 3 }}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 text-sm font-semibold text-[var(--erp-muted)]">{item.label}</div>
+                <Icon className="h-4 w-4 shrink-0" style={{ color: item.color }} />
+              </div>
+              <div className="mt-auto pt-4 font-mono text-3xl font-semibold tracking-tight text-[var(--erp-text)]">{item.value}</div>
+              <div className="mt-1 font-mono text-xs text-[var(--erp-muted)]">{item.supporting}</div>
+            </div>
+          );
+        })}
+      </div>
+      <section className="rounded-lg border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-4 sm:p-5">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div><h3 className="font-display text-lg font-bold text-[var(--erp-text)]">Purchase Order Status Distribution</h3><p className="mt-1 text-xs text-[var(--erp-muted)]">Select a status to filter the purchase order list.</p></div>
+            <BarChart3 className="h-5 w-5 shrink-0 text-[var(--erp-gold)]" />
+          </div>
+          <div className="w-full space-y-2">
+            {summary.map(item => (
+              <button key={item.status} type="button" onClick={() => onStatus(item.status)} title={`Filter by ${item.status}`} className="grid min-w-0 w-full grid-cols-[minmax(150px,0.3fr)_minmax(0,1fr)_40px] items-center gap-3 text-left text-xs">
+                <span className="truncate text-[var(--erp-muted)]">{item.status}</span>
+                <span className="h-2.5 min-w-0 overflow-hidden rounded-full bg-[var(--erp-surface-2)]"><span className="block h-full rounded-full" style={{ width: `${(item.count / max) * 100}%`, backgroundColor: statusTone(item.status) }} /></span>
+                <span className="font-mono text-right text-[var(--erp-text)]">{item.count}</span>
+              </button>
+            ))}
+          </div>
+      </section>
+    </div>
+  );
+}
+
+function GraphicalView({ rows, onStatus, onOpen }: { rows: PurchaseOrderRow[]; onStatus: (status: string) => void; onOpen: (id: number) => void }) {
+  return (
+    <div className="space-y-4">
+      <StatusOverview rows={rows} onStatus={onStatus} />
+      <div className="rounded-lg border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-4 sm:p-5">
+        <div className="mb-4"><h3 className="font-display text-lg font-bold text-[var(--erp-text)]">Dispatch Progress</h3><p className="mt-1 text-xs text-[var(--erp-muted)]">Ordered, dispatched, and remaining quantities for the filtered orders.</p></div>
+        <ProgressView rows={rows} onOpen={onOpen} />
+      </div>
+    </div>
+  );
 }
 
 const ADMIN_STATUS_LABELS: Record<string, string> = {
@@ -108,9 +274,24 @@ const ADMIN_STATUS_LABELS: Record<string, string> = {
   Submitted: 'Return to Submitted',
 };
 
+function normalizedOrderType(value: string | undefined): 'Manual' | 'Digital' {
+  return String(value || '').trim().toLowerCase() === 'manual' ? 'Manual' : 'Digital';
+}
+
+function normalizedOrderTypeFilter(value: string): '' | 'Manual' | 'Digital' {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'manual' ? 'Manual' : normalized === 'digital' ? 'Digital' : '';
+}
+
+function isManualOrderBrand(brand: BrandRow): boolean {
+  return String(brand.order_method || '').trim().toLowerCase() === 'manual/por';
+}
+
 export const PurchaseOrderScreen: React.FC = () => {
-  const { userRole, sessionUserName, navigateTo, selectedEntityId, entityReady } = useErp();
-  const canDraftWrite = userRole === 'admin' || userRole === 'operator';
+  const { userRole, sessionUserName, navigateTo, selectedEntityId, entityReady, canEditRecords, canDeleteRecords, getPeriod } = useErp();
+  const canDraftWrite = userRole === 'admin' || userRole === 'staff';
+  const canEdit = userRole === 'admin' || (userRole === 'staff' && canEditRecords);
+  const canDelete = userRole === 'admin' || (userRole === 'staff' && canDeleteRecords);
   const canStatusOverride = userRole === 'admin';
 
   const [rows, setRows] = useState<PurchaseOrderRow[]>([]);
@@ -127,17 +308,17 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [brandFilter, setBrandFilter] = useState<number | ''>('');
   const [unpricedOnly, setUnpricedOnly] = useState(false);
   const [orderTypeFilter, setOrderTypeFilter] = useState(() => (
-    localStorage.getItem(`po-type:${sessionUserName || userRole}`) || ''
+    normalizedOrderTypeFilter(localStorage.getItem(`po-type:${sessionUserName || userRole}`) || '')
   ));
-  const pipelineRef = useRef<PurchaseOrderPipelineHandle>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'pipeline'>(() => (
-    localStorage.getItem(`po-view:${sessionUserName || userRole}`) === 'pipeline' ? 'pipeline' : 'list'
-  ));
-  const [pipelineRows, setPipelineRows] = useState<Record<string, PurchaseOrderRow[]>>({});
-  const [pipelineSummary, setPipelineSummary] = useState<PipelineSummary['statuses']>({});
-  const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
-  const [pipelineOffsets, setPipelineOffsets] = useState<Record<string, number>>({});
-  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<PurchaseOrderViewMode>(() => {
+    const saved = localStorage.getItem(`po-view:${sessionUserName || userRole}`);
+    if (saved === 'list') return 'table';
+    if (saved === 'pipeline' || saved === 'kanban') return 'table';
+    if (saved === 'overview' || saved === 'progress' || saved === 'timeline') return 'graphical';
+    return saved === 'graphical' || saved === 'table'
+      ? saved
+      : 'table';
+  });
   const [handyFile, setHandyFile] = useState<File | null>(null);
 
   const [mode, setMode] = useState<'list' | 'form' | 'detail'>('list');
@@ -168,17 +349,50 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [dispatchQtys, setDispatchQtys] = useState<Record<number, string>>({});
   const [dispatchMessages, setDispatchMessages] = useState<Record<string, string>>({});
   const [pendingDeleteDispatch, setPendingDeleteDispatch] = useState<DispatchRow | null>(null);
+  const [pendingRateLine, setPendingRateLine] = useState<PurchaseOrderLineRow | null>(null);
+  const [lineImportConfirmation, setLineImportConfirmation] = useState<'upload' | 'replace' | null>(null);
+  const [pendingLineImportFile, setPendingLineImportFile] = useState<File | null>(null);
   const dispatchLock = useRef(false);
   const savingLock = useRef(false);
   const numberRef = useRef<HTMLInputElement>(null);
 
-  const activeBrands = useMemo(
-    () => brands.filter(b => b.status === 'Active' || b.id === form.brand_id || b.id === brandFilter),
-    [brands, form.brand_id, brandFilter],
+  const activeBranch = useMemo(
+    () => {
+      const workflowEntityId = form.id ? form.entity_id : selectedEntityId === 'all' ? undefined : selectedEntityId;
+      return workflowEntityId ? entities.find(entity => entity.id === workflowEntityId) : undefined;
+    },
+    [entities, form.entity_id, form.id, selectedEntityId],
   );
+  const headerBranch = useMemo(
+    () => selectedEntityId === 'all'
+      ? undefined
+      : entities.find(entity => entity.id === selectedEntityId),
+    [entities, selectedEntityId],
+  );
+  const headerBrandOptions = useMemo(() => {
+    if (!headerBranch) return brands.filter(brand => brand.status === 'Active');
+    const allowedIds = new Set((headerBranch.brand_ids || []).map(id => Number(id)));
+    return brands.filter(brand => brand.status === 'Active' && allowedIds.has(Number(brand.id)));
+  }, [brands, headerBranch]);
+  const activeBrands = useMemo(() => {
+    const allowed = activeBranch?.brand_ids || [];
+    const allowedIds = new Set(allowed.map(id => Number(id)));
+    return brands.filter(brand => brand.status === 'Active' && allowedIds.has(Number(brand.id)));
+  }, [activeBranch, brands]);
+  const manualBrands = useMemo(
+    () => activeBrands.filter(isManualOrderBrand),
+    [activeBrands],
+  );
+  const manualCreateAvailable = selectedEntityId === 'all' || manualBrands.length > 0;
   const selectedBrand = activeBrands.find(b => b.id === form.brand_id);
   const isManual = selectedBrand?.order_method === 'Manual/POR';
   const isDigitalPo = isDigitalPoBrand(selectedBrand);
+
+  useEffect(() => {
+    if (brandFilter !== '' && !headerBrandOptions.some(brand => brand.id === brandFilter)) {
+      setBrandFilter('');
+    }
+  }, [brandFilter, headerBrandOptions]);
 
   useEffect(() => {
     if (!isDigitalPo) {
@@ -189,6 +403,19 @@ export const PurchaseOrderScreen: React.FC = () => {
       setLineImportSkipped([]);
     }
   }, [isDigitalPo]);
+
+  useEffect(() => {
+    if (mode !== 'form' || form.id) return;
+    const entityId = selectedEntityId === 'all' ? undefined : selectedEntityId;
+    setForm(current => ({
+      ...current,
+      entity_id: entityId,
+      brand_id: current.brand_id && activeBrands.some(brand => brand.id === current.brand_id)
+        ? current.brand_id
+        : activeBrands.length === 1 ? activeBrands[0].id : undefined,
+      customer_id: current.entity_id === entityId ? current.customer_id : undefined,
+    }));
+  }, [activeBrands, form.id, mode, selectedEntityId]);
 
   const loadLookups = useCallback(async () => {
     try {
@@ -203,6 +430,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     }
   }, []);
 
+  const period = getPeriod();
   const load = useCallback(async () => {
     if (!entityReady) return;
     setLoading(true);
@@ -213,8 +441,9 @@ export const PurchaseOrderScreen: React.FC = () => {
         entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
         customer_id: customerFilter || undefined,
         brand_id: brandFilter || undefined,
-        order_type: orderTypeFilter || undefined,
         has_unpriced: unpricedOnly || undefined,
+        date_from: period.from,
+        date_to: period.to,
       }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load purchase orders.');
@@ -222,87 +451,22 @@ export const PurchaseOrderScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, selectedEntityId, customerFilter, brandFilter, orderTypeFilter, unpricedOnly, entityReady]);
+  }, [statusFilter, selectedEntityId, customerFilter, brandFilter, unpricedOnly, entityReady, period.from, period.to]);
 
   useEffect(() => { void loadLookups(); }, [loadLookups]);
   useEffect(() => {
-    if (viewMode === 'list') void load();
-  }, [load, viewMode]);
+    void load();
+  }, [load]);
 
-  const pipelineFilters = useMemo(() => ({
-    entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
-    customer_id: customerFilter || undefined,
-    brand_id: brandFilter || undefined,
-    order_type: orderTypeFilter || undefined,
-    search: search.trim() || undefined,
-    has_unpriced: unpricedOnly || undefined,
-  }), [selectedEntityId, customerFilter, brandFilter, orderTypeFilter, search, unpricedOnly, entityReady]);
-
-  const loadPipeline = useCallback(async () => {
-    if (!entityReady) return;
-    setPipelineLoading(true);
-    setError('');
-    try {
-      const [summary, ...columns] = await Promise.all([
-        purchaseOrdersApi.pipelineSummary(pipelineFilters),
-        ...PO_STATUSES.map(status => purchaseOrdersApi.list({ ...pipelineFilters, status, limit: 20, offset: 0 })),
-      ]);
-      const nextRows: Record<string, PurchaseOrderRow[]> = {};
-      const nextOffsets: Record<string, number> = {};
-      PO_STATUSES.forEach((status, index) => {
-        nextRows[status] = columns[index];
-        nextOffsets[status] = columns[index].length;
-      });
-      setPipelineSummary(summary.statuses);
-      setTypeCounts(summary.type_counts);
-      setPipelineRows(nextRows);
-      setPipelineOffsets(nextOffsets);
-    } catch (e) {
-      const parsed = notifyApiError(e, 'Could not load purchase order pipeline.');
-      setError(parsed.message);
-    } finally {
-      setPipelineLoading(false);
-    }
-  }, [entityReady, pipelineFilters]);
-
-  useEffect(() => {
-    if (viewMode === 'pipeline') void loadPipeline();
-  }, [loadPipeline, viewMode]);
-
-  const setPurchaseOrderView = (next: 'list' | 'pipeline') => {
+  const setPurchaseOrderView = (next: PurchaseOrderViewMode) => {
     setViewMode(next);
     localStorage.setItem(`po-view:${sessionUserName || userRole}`, next);
   };
 
   const setPurchaseOrderType = (next: string) => {
-    setOrderTypeFilter(next);
-    localStorage.setItem(`po-type:${sessionUserName || userRole}`, next);
-  };
-
-  const typeCountFilters = useMemo(() => ({
-    entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
-    customer_id: customerFilter || undefined,
-    brand_id: brandFilter || undefined,
-    search: search.trim() || undefined,
-  }), [selectedEntityId, customerFilter, brandFilter, search, entityReady]);
-
-  useEffect(() => {
-    if (viewMode === 'list' && entityReady) {
-      void purchaseOrdersApi.pipelineSummary(typeCountFilters)
-        .then(response => setTypeCounts(response.type_counts))
-        .catch(error => notifyApiError(error, 'Could not load purchase order type counts.'));
-    }
-  }, [entityReady, typeCountFilters, viewMode]);
-
-  const loadPipelineMore = async (status: string) => {
-    const offset = pipelineOffsets[status] || 0;
-    try {
-      const more = await purchaseOrdersApi.list({ ...pipelineFilters, status, limit: 20, offset });
-      setPipelineRows(previous => ({ ...previous, [status]: [...(previous[status] || []), ...more] }));
-      setPipelineOffsets(previous => ({ ...previous, [status]: offset + more.length }));
-    } catch (e) {
-      notifyApiError(e, 'Could not load more purchase orders.');
-    }
+    const normalized = normalizedOrderTypeFilter(next);
+    setOrderTypeFilter(normalized);
+    localStorage.setItem(`po-type:${sessionUserName || userRole}`, normalized);
   };
 
   useEffect(() => {
@@ -314,10 +478,18 @@ export const PurchaseOrderScreen: React.FC = () => {
     }).then(setListCustomers).catch(notifyApiError);
   }, [selectedEntityId, entityReady]);
 
-  const filtered = rows.filter(r => {
+  const searchedRows = rows.filter(r => {
     const q = search.toLowerCase().trim();
     return !q || r.po_number.toLowerCase().includes(q) || r.customer_name.toLowerCase().includes(q);
   });
+  const typeCounts = useMemo(() => searchedRows.reduce<Record<string, number>>((counts, row) => {
+    const type = normalizedOrderType(row.order_type);
+    counts[type] = (counts[type] || 0) + 1;
+    return counts;
+  }, {}), [searchedRows]);
+  const filtered = searchedRows.filter(row => (
+    !orderTypeFilter || normalizedOrderType(row.order_type) === orderTypeFilter
+  ));
 
   useEffect(() => {
     if (!form.entity_id) {
@@ -364,7 +536,10 @@ export const PurchaseOrderScreen: React.FC = () => {
   }, [lines]);
 
   const openCreate = () => {
-    setForm(emptyPurchaseOrder());
+    const initial = emptyPurchaseOrder();
+    if (selectedEntityId !== 'all') initial.entity_id = selectedEntityId;
+    if (activeBrands.length === 1) initial.brand_id = activeBrands[0].id;
+    setForm(initial);
     setCustomerStatementSummary(null);
     setLines([newLine()]);
     setLineEntryMode('manual');
@@ -567,11 +742,6 @@ export const PurchaseOrderScreen: React.FC = () => {
   const applyStatus = async (row: PurchaseOrderRow, next: string) => {
     try {
       if (next === 'Submitted' && row.status === 'Draft') {
-        if (row.lines.some(l => rateIsUnset(l.rate))) {
-          notifyError('Every line must have a rate before the purchase order can be submitted. Rate is not set on one or more lines.');
-          setPendingStatus(null);
-          return;
-        }
         const submitted = await purchaseOrdersApi.submit(row.id);
         notifySuccess('Purchase Order submitted.');
         setDetail(submitted);
@@ -669,12 +839,16 @@ export const PurchaseOrderScreen: React.FC = () => {
 
   const setLineRate = async (line: PurchaseOrderLineRow) => {
     if (!detail?.id || !line.id) return;
-    const value = window.prompt('Enter rate', '');
-    if (value === null || !value.trim()) return;
+    setPendingRateLine(line);
+  };
+
+  const saveLineRate = async (value: string) => {
+    if (!detail?.id || !pendingRateLine?.id) return;
     try {
-      const updated = await purchaseOrdersApi.setRate(detail.id, line.id, value.trim());
+      const updated = await purchaseOrdersApi.setRate(detail.id, pendingRateLine.id, value);
       setDetail(updated);
       notifySuccess('Rate set.');
+      setPendingRateLine(null);
     } catch (e) {
       notifyApiError(e, 'Could not set rate.');
     }
@@ -719,17 +893,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     setFieldMessages(prev => clearFieldMessage(prev, `line_${index}_product`));
   };
 
-  const handleLineImport = async (file: File | null) => {
-    if (!file) {
-      setLineImportFile(null);
-      setLineImportLoaded(false);
-      setLines([newLine()]);
-      setLineImportError('');
-      setLineImportSkipped([]);
-      return;
-    }
-    const existingLines = lines.some(line => line.product_id || line.product_description.trim());
-    if (existingLines && !window.confirm('Replace the existing line items with the uploaded file?')) return;
+  const importLineFile = async (file: File) => {
     setLineImportFile(file);
     setLineImportLoaded(false);
     setLineImportBusy(true);
@@ -761,6 +925,24 @@ export const PurchaseOrderScreen: React.FC = () => {
     }
   };
 
+  const handleLineImport = async (file: File | null) => {
+    if (!file) {
+      setLineImportFile(null);
+      setLineImportLoaded(false);
+      setLines([newLine()]);
+      setLineImportError('');
+      setLineImportSkipped([]);
+      return;
+    }
+    const existingLines = lines.some(line => line.product_id || line.product_description.trim());
+    if (existingLines) {
+      setPendingLineImportFile(file);
+      setLineImportConfirmation('upload');
+      return;
+    }
+    await importLineFile(file);
+  };
+
   const removeLineImport = () => {
     setLineImportFile(null);
     setLineImportLoaded(false);
@@ -770,8 +952,7 @@ export const PurchaseOrderScreen: React.FC = () => {
   };
 
   const replaceLineImport = () => {
-    if (!window.confirm('Replace the loaded line items with a new file?')) return;
-    removeLineImport();
+    setLineImportConfirmation('replace');
   };
 
   const downloadLineTemplate = () => {
@@ -792,24 +973,26 @@ export const PurchaseOrderScreen: React.FC = () => {
   };
 
   const columns: Column<PurchaseOrderRow>[] = [
-    { header: 'PO Number', accessorKey: 'po_number', mono: true, width: '140px', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.po_number}</span> },
+    { header: 'PO Number', accessorKey: 'po_number', sortable: true, mono: true, width: '140px', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.po_number}</span> },
     {
       header: 'Type',
       width: '100px',
       render: r => (
         <StatusChip
-          status={r.order_type === 'Manual' ? 'notice' : 'active'}
-          label={r.order_type === 'Manual' ? 'MANUAL' : 'DIGITAL'}
+          status={normalizedOrderType(r.order_type) === 'Manual' ? 'notice' : 'active'}
+          label={normalizedOrderType(r.order_type).toUpperCase()}
         />
       ),
     },
     { header: 'Branch', render: r => <span className="font-mono text-xs">{r.entity_code} · {r.entity_name}</span> },
     { header: 'Party', render: r => <span>{r.customer_name}</span> },
     { header: 'Brand', render: r => <span>{r.brand_name}</span> },
-    { header: 'PO Date', accessorKey: 'po_date', mono: true, width: '110px' },
+    { header: 'PO Date', accessorKey: 'po_date', sortable: true, mono: true, width: '110px' },
     { header: 'Total', align: 'right', mono: true, width: '110px', render: r => money(r.total_amount) },
     {
       header: 'Status',
+      accessorKey: 'status',
+      sortable: true,
       width: '160px',
       render: r => <StatusChip status={poChipStatus(r.status)} label={r.status.toUpperCase()} />,
     },
@@ -820,8 +1003,8 @@ export const PurchaseOrderScreen: React.FC = () => {
       render: r => (
         <div className="flex justify-end gap-1">
           <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" title="View" onClick={() => void openDetail(r.id)}><Eye className="w-3.5 h-3.5" /></button>
-          {canDraftWrite && r.status === 'Draft' && (
-            <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] cursor-pointer" title="Delete draft" onClick={() => setPendingDelete(r)}><Trash2 className="w-3.5 h-3.5" /></button>
+          {canDelete && ['Draft', 'Cancelled'].includes(r.status) && (
+            <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] cursor-pointer" title={`Delete ${r.status.toLowerCase()} purchase order`} onClick={() => setPendingDelete(r)}><Trash2 className="w-3.5 h-3.5" /></button>
           )}
         </div>
       ),
@@ -832,7 +1015,8 @@ export const PurchaseOrderScreen: React.FC = () => {
   const statusActions = detail?.allowed_transitions || [];
 
   return (
-    <div className={`${viewMode === 'pipeline' ? 'h-full min-h-0 flex-1' : 'min-h-full'} p-3 flex flex-col gap-3 text-left`}>
+    <div className="min-h-full p-3 flex flex-col gap-3 text-left">
+      <PeriodScope />
       <PageHeader
         moduleNumber="40"
         section="Orders"
@@ -848,7 +1032,14 @@ export const PurchaseOrderScreen: React.FC = () => {
               >
                 <Upload className="w-3.5 h-3.5" /> Import from file
               </button>
-              <button type="button" onClick={openCreate} className="h-8 px-2.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+              <button
+                type="button"
+                onClick={openCreate}
+                disabled={!manualCreateAvailable}
+                title={!manualCreateAvailable ? 'Manual PO creation is unavailable because this branch has no active Manual/POR brand.' : undefined}
+                aria-disabled={!manualCreateAvailable}
+                className="h-8 px-2.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
+              >
                 <Plus className="w-3.5 h-3.5" /> Create PO
               </button>
             </div>
@@ -859,19 +1050,22 @@ export const PurchaseOrderScreen: React.FC = () => {
       {importReport && importReport.excluded.length > 0 && mode === 'list' && (
         <ImportExcludedReport excluded={importReport.excluded} onDismiss={() => setImportReport(null)} />
       )}
-      <div className="flex flex-wrap items-center gap-1.5 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-1.5">
-        <div className="relative w-64 shrink-0">
-          <Search className="w-4 h-4 text-[var(--erp-muted)] absolute left-3 top-2.5" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search PO number…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
+      <div className="grid min-w-0 items-center gap-2 rounded-lg border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-2 sm:flex sm:flex-wrap xl:grid xl:grid-cols-[minmax(220px,2fr)_auto_auto_minmax(150px,1.35fr)_minmax(120px,1fr)_minmax(120px,1fr)_auto] xl:flex-nowrap">
+        <div className="relative min-w-0 sm:flex-1 sm:basis-[240px]">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--erp-muted)]" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search PO number…" className="box-border h-9 w-full min-w-0 pl-9 pr-3 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs">
-          <div className="flex border border-[var(--erp-hairline)]">
-            <button type="button" onClick={() => setPurchaseOrderView('list')} className={`px-2 py-1 flex items-center gap-1 ${viewMode === 'list' ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}><Table2 className="w-3.5 h-3.5" /> Table</button>
-            <button type="button" onClick={() => setPurchaseOrderView('pipeline')} className={`px-2 py-1 flex items-center gap-1 ${viewMode === 'pipeline' ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}><Kanban className="w-3.5 h-3.5" /> Purchase Order Pipeline</button>
-          </div>
-          <div className="flex items-center gap-1 border border-[var(--erp-hairline)] p-0.5" aria-label="Purchase order type">
+        <div className="flex h-9 shrink-0 items-stretch border border-[var(--erp-hairline)] font-mono text-xs">
+            {([
+              ['table', Table2, 'Table'],
+              ['graphical', LayoutDashboard, 'Analytics'],
+            ] as const).map(([value, Icon, label]) => (
+              <button key={value} type="button" onClick={() => setPurchaseOrderView(value)} className={`box-border min-w-[92px] whitespace-nowrap px-3 flex items-center justify-center gap-1.5 ${viewMode === value ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)] hover:text-[var(--erp-text)]'}`}><Icon className="w-3.5 h-3.5" /> {label}</button>
+            ))}
+        </div>
+        <div className="flex h-9 shrink-0 items-center gap-1 border border-[var(--erp-hairline)] p-0.5 font-mono text-xs" aria-label="Purchase order type">
             {[
-              ['', `All ${typeCounts.Digital + typeCounts.Manual || 0}`],
+              ['', `All ${(typeCounts.Digital || 0) + (typeCounts.Manual || 0)}`],
               ['Digital', `Digital ${typeCounts.Digital || 0}`],
               ['Manual', `Manual ${typeCounts.Manual || 0}`],
             ].map(([value, label]) => (
@@ -880,12 +1074,12 @@ export const PurchaseOrderScreen: React.FC = () => {
                 type="button"
                 onClick={() => setPurchaseOrderType(value)}
                 aria-pressed={orderTypeFilter === value}
-                className={`px-2 py-1 ${orderTypeFilter === value ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)] hover:text-[var(--erp-text)]'}`}
+                className={`box-border h-7 whitespace-nowrap px-2 ${orderTypeFilter === value ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)] hover:text-[var(--erp-text)]'}`}
               >
                 {label}
               </button>
             ))}
-          </div>
+        </div>
           <CustomerPicker
             compact
             allowAll
@@ -894,36 +1088,34 @@ export const PurchaseOrderScreen: React.FC = () => {
             onChange={setCustomerFilter}
             allLabel="All parties"
             placeholder="All parties"
+            className="w-full sm:flex-1 sm:basis-[180px] xl:min-w-0"
           />
-          <select value={brandFilter} onChange={e => setBrandFilter(e.target.value ? Number(e.target.value) : '')} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
-            <option value="">All brands</option>
-            {activeBrands.map(b => <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name}</option>)}
-          </select>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
+          {headerBrandOptions.length === 1 ? (
+            <div
+              className="flex h-9 min-w-[140px] max-w-full items-center border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2 text-xs text-[var(--erp-text)]"
+              aria-label={`Brand filter: ${headerBrandOptions[0].brand_code} · ${headerBrandOptions[0].brand_name}`}
+            >
+              {headerBrandOptions[0].brand_code} · {headerBrandOptions[0].brand_name}
+            </div>
+          ) : (
+            <select value={brandFilter} onChange={e => setBrandFilter(e.target.value ? Number(e.target.value) : '')} className="box-border h-9 min-w-[140px] max-w-full bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] px-2 text-[var(--erp-text)]">
+              <option value="">All brands</option>
+              {headerBrandOptions.map(b => <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name}</option>)}
+            </select>
+          )}
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="box-border h-9 min-w-[140px] max-w-full bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] px-2 text-[var(--erp-text)]">
             <option value="">All statuses</option>
             {PO_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
-          <button type="button" onClick={() => setUnpricedOnly(value => !value)} aria-pressed={unpricedOnly} className={`px-2 py-1 border border-[var(--erp-hairline)] ${unpricedOnly ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}>Unpriced</button>
-          <div className="ml-auto flex gap-1">
-            <button type="button" onClick={() => pipelineRef.current?.scrollBy(-1)} aria-label="Scroll pipeline left" title="Scroll left" className="h-7 w-7 border border-[var(--erp-hairline)] text-[var(--erp-muted)]">‹</button>
-            <button type="button" onClick={() => pipelineRef.current?.scrollBy(1)} aria-label="Scroll pipeline right" title="Scroll right" className="h-7 w-7 border border-[var(--erp-hairline)] text-[var(--erp-muted)]">›</button>
-          </div>
-        </div>
+          <button type="button" onClick={() => setUnpricedOnly(value => !value)} aria-pressed={unpricedOnly} className={`box-border h-9 shrink-0 whitespace-nowrap border border-[var(--erp-hairline)] px-3 ${unpricedOnly ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}>Unpriced</button>
       </div>
 
-      {viewMode === 'pipeline' ? (
-        <PurchaseOrderPipeline
-          ref={pipelineRef}
-          rowsByStatus={pipelineRows}
-          summary={pipelineSummary}
-          orderTypeFilter={orderTypeFilter}
-          loading={pipelineLoading}
-          onLoadMore={status => void loadPipelineMore(status)}
-          onOpen={id => void openDetail(id)}
-          onRefresh={loadPipeline}
-        />
-      ) : loading ? (
+      {loading ? (
         <MasterLoading label="Loading purchase orders…" />
+      ) : filtered.length === 0 ? (
+        <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] py-14 text-center text-xs text-[var(--erp-muted)]">No purchase orders match the active filters.</div>
+      ) : viewMode === 'graphical' ? (
+        <GraphicalView rows={filtered} onStatus={setStatusFilter} onOpen={id => void openDetail(id)} />
       ) : (
         <DataTable
           columns={columns}
@@ -941,7 +1133,7 @@ export const PurchaseOrderScreen: React.FC = () => {
         />
       )}
 
-      {mode === 'form' && canDraftWrite && (
+      {mode === 'form' && (form.id ? canEdit : canDraftWrite) && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
         >
@@ -1022,27 +1214,13 @@ export const PurchaseOrderScreen: React.FC = () => {
                       setFieldMessages(prev => clearFieldMessage(prev, 'po_date'));
                     }}
                   />
-                  <FormField label="Branch" required error={fieldMessages.entity_id}>
-                    <select
-                      value={form.entity_id || ''}
-                      onChange={e => {
-                        const id = e.target.value ? Number(e.target.value) : undefined;
-                        setForm({ ...form, entity_id: id, customer_id: undefined });
-                        setFieldMessages(prev => clearFieldMessage(clearFieldMessage(prev, 'entity_id'), 'customer_id'));
-                      }}
-                      className={`${fieldSelectClass} ${fieldMessages.entity_id ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                    >
-                      <option value="">Select branch…</option>
-                      {entities.map(ent => <option key={ent.id} value={ent.id}>{ent.short_code} · {ent.entity_name}</option>)}
-                    </select>
-                  </FormField>
                   <FormField label="Brand" required error={fieldMessages.brand_id}>
-                    <select
-                      value={form.brand_id || ''}
-                      onChange={e => {
-                        const id = e.target.value ? Number(e.target.value) : undefined;
+                    {activeBrands.length > 0 ? <BrandChoice
+                      brands={activeBrands}
+                      value={form.brand_id}
+                      onChange={id => {
                         const nextBrand = activeBrands.find(brand => brand.id === id);
-                        setForm({ ...form, brand_id: id });
+                        setForm({ ...form, entity_id: activeBranch?.id, brand_id: id });
                         setLines([newLine()]);
                         setLineEntryMode(isDigitalPoBrand(nextBrand) ? 'upload' : 'manual');
                         setLineImportFile(null);
@@ -1052,13 +1230,14 @@ export const PurchaseOrderScreen: React.FC = () => {
                         setHandyFile(null);
                         setFieldMessages(prev => clearFieldMessage(prev, 'brand_id'));
                       }}
-                      className={`${fieldSelectClass} ${fieldMessages.brand_id ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                    >
-                      <option value="">Select brand…</option>
-                      {activeBrands.map(b => (
-                        <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name} ({b.order_method})</option>
-                      ))}
-                    </select>
+                    /> : (
+                      <div className="px-3 py-2.5 border border-[var(--erp-negative)]/60 text-xs text-[var(--erp-negative)]">
+                        <p>No active brands are mapped to this branch.</p>
+                        <button type="button" onClick={() => { setMode('list'); navigateTo(36); }} className="mt-2 underline text-[var(--erp-gold)]">
+                          Configure Allowed Brands in Branch Master
+                        </button>
+                      </div>
+                    )}
                     {selectedBrand && (
                         <p
                           className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono uppercase tracking-wider border border-[var(--erp-gold)]/35 bg-[var(--erp-gold)]/10 text-[var(--erp-gold)]"
@@ -1075,7 +1254,7 @@ export const PurchaseOrderScreen: React.FC = () => {
                       value={form.customer_id || ''}
                       disabled={!form.entity_id}
                       error={!!fieldMessages.customer_id}
-                      placeholder={form.entity_id ? 'Search party…' : 'Select branch first'}
+                      placeholder={form.entity_id ? 'Search party…' : 'Select a party…'}
                       onChange={id => {
                         setForm({ ...form, customer_id: id || undefined });
                         setCustomerStatementSummary(null);
@@ -1243,8 +1422,8 @@ export const PurchaseOrderScreen: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <StatusChip
-                  status={detail.order_type === 'Manual' ? 'notice' : 'active'}
-                  label={detail.order_type === 'Manual' ? 'MANUAL' : 'DIGITAL'}
+                  status={normalizedOrderType(detail.order_type) === 'Manual' ? 'notice' : 'active'}
+                  label={normalizedOrderType(detail.order_type).toUpperCase()}
                 />
                 <StatusChip status={poChipStatus(detail.status)} label={detail.status.toUpperCase()} />
                 <button type="button" onClick={() => setMode('list')}><X className="w-4 h-4" /></button>
@@ -1293,7 +1472,7 @@ export const PurchaseOrderScreen: React.FC = () => {
               </div>
             </div>
             {detail.remarks ? <p className="text-sm text-[var(--erp-muted)]"><span className="font-mono text-[10px] uppercase">Remarks</span><br />{detail.remarks}</p> : null}
-            {detail.order_type === 'Manual' && detail.handy_form_url ? (
+            {normalizedOrderType(detail.order_type) === 'Manual' && detail.handy_form_url ? (
               <div className="border border-[var(--erp-hairline)] p-3">
                 <p className="font-mono text-[10px] uppercase text-[var(--erp-muted)] mb-2">Handy form</p>
                 {/\.(png|jpe?g|webp|gif)(\?|$)/i.test(detail.handy_form_url) ? (
@@ -1356,7 +1535,7 @@ export const PurchaseOrderScreen: React.FC = () => {
                           <td className="px-3 py-2 font-mono">{row.challan_reference}</td>
                           <td className="px-3 py-2 font-mono">{row.lines.map(l => `${l.product_name} ${num(l.dispatched_quantity).toFixed(2)}`).join(', ')}</td>
                           <td className="px-3 py-2">
-                            {canDraftWrite && (
+                            {canDelete && (
                               <button type="button" className="text-[var(--erp-muted)] hover:text-[var(--erp-negative)]" title="Delete dispatch" onClick={() => setPendingDeleteDispatch(row)}><Trash2 className="w-3.5 h-3.5" /></button>
                             )}
                           </td>
@@ -1375,12 +1554,14 @@ export const PurchaseOrderScreen: React.FC = () => {
             </section>
             <div className="flex flex-wrap justify-between gap-3 pt-3 border-t border-[var(--erp-hairline)]">
               <div className="flex flex-wrap gap-2">
+                {detail.status === 'Draft' && canEdit && (
+                  <button type="button" onClick={() => void openEdit(detail.id)} className="px-4 py-2 border border-[var(--erp-hairline)] text-xs font-mono">Edit</button>
+                )}
                 {detail.status === 'Draft' && canDraftWrite && (
-                  <>
-                    <button type="button" onClick={() => void openEdit(detail.id)} className="px-4 py-2 border border-[var(--erp-hairline)] text-xs font-mono">Edit</button>
-                    <button type="button" onClick={() => void applyStatus(detail, 'Submitted')} className="px-4 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">Submit</button>
-                    <button type="button" onClick={() => setPendingDelete(detail)} className="px-4 py-2 border border-[var(--erp-negative)]/40 text-[var(--erp-negative)] text-xs font-mono">Delete draft</button>
-                  </>
+                  <button type="button" onClick={() => void applyStatus(detail, 'Submitted')} className="px-4 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">Submit</button>
+                )}
+                {['Draft', 'Cancelled'].includes(detail.status) && canDelete && (
+                  <button type="button" onClick={() => setPendingDelete(detail)} className="px-4 py-2 border border-[var(--erp-negative)]/40 text-[var(--erp-negative)] text-xs font-mono">{detail.status === 'Cancelled' ? 'Delete cancelled' : 'Delete draft'}</button>
                 )}
                 {canStatusOverride && statusActions.filter(s => s !== 'Submitted').map(next => (
                   <button
@@ -1513,6 +1694,9 @@ export const PurchaseOrderScreen: React.FC = () => {
         <PurchaseOrderImportModal
           entities={entities.filter(e => e.status === 'Active')}
           brands={brands}
+          selectedEntityId={selectedEntityId}
+          initialBrandId={typeof brandFilter === 'number' ? brandFilter : ''}
+          onConfigureBranch={() => { setImportOpen(false); navigateTo(36); }}
           onClose={() => setImportOpen(false)}
           onImported={async result => {
             setImportOpen(false);
@@ -1527,8 +1711,8 @@ export const PurchaseOrderScreen: React.FC = () => {
         open={!!pendingDelete}
         entityType="purchase order"
         entityLabel={pendingDelete ? pendingDelete.po_number : ''}
-        title="Delete draft purchase order?"
-        message={pendingDelete ? `Delete draft '${pendingDelete.po_number}'? This cannot be undone.` : ''}
+        title={pendingDelete?.status === 'Cancelled' ? 'Delete cancelled purchase order?' : 'Delete draft purchase order?'}
+        message={pendingDelete ? `Delete ${pendingDelete.status.toLowerCase()} '${pendingDelete.po_number}'? This cannot be undone.` : ''}
         confirmLabel="Delete"
         confirmTone="critical"
         onCancel={() => setPendingDelete(null)}
@@ -1581,6 +1765,42 @@ export const PurchaseOrderScreen: React.FC = () => {
           } catch (err) {
             notifyApiError(err);
           }
+        }}
+      />
+
+      <InputDialog
+        open={!!pendingRateLine}
+        title="Set line rate"
+        message="Enter the rate for this Purchase Order line."
+        label="Rate"
+        type="number"
+        initialValue={pendingRateLine?.rate ? String(pendingRateLine.rate) : ''}
+        confirmLabel="Set rate"
+        busyLabel="Saving…"
+        onCancel={() => setPendingRateLine(null)}
+        onConfirm={saveLineRate}
+      />
+
+      <ConfirmDialog
+        open={lineImportConfirmation !== null}
+        entityType="line items"
+        entityLabel="the current line items"
+        title="Replace line items?"
+        message={lineImportConfirmation === 'upload'
+          ? 'The uploaded file will replace the existing line items.'
+          : 'The current uploaded line items will be cleared so you can choose a new file.'}
+        confirmLabel="Replace"
+        confirmTone="gold"
+        onCancel={() => {
+          setLineImportConfirmation(null);
+          setPendingLineImportFile(null);
+        }}
+        onConfirm={async () => {
+          const file = pendingLineImportFile;
+          setLineImportConfirmation(null);
+          setPendingLineImportFile(null);
+          if (file) await importLineFile(file);
+          else removeLineImport();
         }}
       />
     </div>

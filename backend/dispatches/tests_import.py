@@ -112,7 +112,7 @@ class DispatchImportApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="dsp-imp-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
@@ -142,6 +142,7 @@ class DispatchImportApiTests(TestCase):
             brand_name="OCM",
             order_method=Brand.OrderMethod.MANUAL_POR,
         )
+        self.entity.brands.add(self.brand)
         root = Category.objects.create(category_code="YRN", category_name="Yarn")
         sub = Category.objects.create(
             category_code="CTN",
@@ -543,8 +544,23 @@ class DispatchImportApiTests(TestCase):
     @staticmethod
     def _snapshot_response(response):
         value = json.loads(json.dumps(response.json(), default=str))
-        if "preview_token" in value:
-            value["preview_token"] = "<preview-token>"
+        def normalize(node):
+            if isinstance(node, dict):
+                for key, item in node.items():
+                    if key == "preview_token":
+                        node[key] = "<preview-token>"
+                    elif key == "id" or key.endswith("_id") or key == "created_by":
+                        node[key] = "<id>"
+                    elif key in {"created_at", "updated_at"}:
+                        node[key] = "<timestamp>"
+                    else:
+                        normalize(item)
+            elif isinstance(node, list):
+                for item in node:
+                    normalize(item)
+                node.sort(key=lambda item: json.dumps(item, sort_keys=True, default=str))
+
+        normalize(value)
         return value
 
     @staticmethod

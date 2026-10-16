@@ -12,6 +12,20 @@ def is_admin_user(user) -> bool:
     return bool(user and getattr(user, "is_authenticated", False) and getattr(user, "is_admin_role", False))
 
 
+def can_edit_records(user) -> bool:
+    """Admin can always edit. Staff can edit only when an admin has granted it."""
+    if is_admin_user(user):
+        return True
+    return bool(getattr(user, "is_authenticated", False) and getattr(user, "can_edit", False))
+
+
+def can_delete_records(user) -> bool:
+    """Admin can always delete. Staff can delete only when an admin has granted it."""
+    if is_admin_user(user):
+        return True
+    return bool(getattr(user, "is_authenticated", False) and getattr(user, "can_delete", False))
+
+
 def customers_visible_to(user):
     """Customers whose Purchase Orders, Dispatches, Invoices and Payments this user may see.
 

@@ -49,6 +49,124 @@
   --erp-shadow: 0 4px 18px rgba(60, 48, 30, 0.08);
 }
 
+/* Shared interaction language for the dashboard surfaces. */
+.dashboard-page {
+  overflow-x: hidden;
+}
+
+.dashboard-page-header {
+  gap: 0.75rem;
+  padding-bottom: 1.25rem;
+}
+
+.dashboard-page-header h1 {
+  font-size: clamp(1.625rem, 1.2rem + 1vw, 1.875rem);
+  line-height: 1.15;
+}
+
+.dashboard-kpi-card,
+.dashboard-mini-panel {
+  border: 1px solid var(--erp-hairline-strong);
+  border-radius: 0.5rem;
+  background: var(--erp-surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition:
+    transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-kpi-card:hover,
+.dashboard-kpi-card:focus-visible,
+.dashboard-mini-panel:hover {
+  border-color: var(--erp-gold);
+  background: var(--erp-surface-2);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+}
+
+.dashboard-kpi-card:hover {
+  transform: translateY(-2px);
+}
+
+.dashboard-kpi-card:focus-visible,
+.dashboard-toolbar-control:focus-visible,
+.dashboard-nav-item:focus-visible,
+.dashboard-nav-flyout-item:focus-visible {
+  outline: 2px solid var(--erp-gold);
+  outline-offset: 2px;
+}
+
+.dashboard-aging-section {
+  margin-top: 0.5rem;
+}
+
+.dashboard-aging-section > .border {
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.dashboard-nav-item {
+  transition:
+    color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-nav-flyout-item:hover {
+  background: var(--erp-surface);
+}
+
+.dashboard-toolbar-control,
+.dashboard-page button,
+.dashboard-page select,
+.dashboard-page input {
+  transition:
+    color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-topbar select,
+.dashboard-topbar button {
+  border-radius: 0.375rem;
+}
+
+.dashboard-topbar select:hover,
+.dashboard-topbar button:hover {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-topbar select:focus-visible,
+.dashboard-topbar button:focus-visible {
+  outline: 2px solid var(--erp-gold);
+  outline-offset: 2px;
+}
+
+.dashboard-page button:focus-visible,
+.dashboard-page select:focus-visible,
+.dashboard-page input:focus-visible {
+  outline: 2px solid var(--erp-gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-kpi-card,
+  .dashboard-mini-panel,
+  .dashboard-nav-item,
+  .dashboard-toolbar-control,
+  .dashboard-page button,
+  .dashboard-page select,
+  .dashboard-page input {
+    transition: none;
+  }
+
+  .dashboard-kpi-card:hover {
+    transform: none;
+  }
+}
+
 /* Base element typography guarantees */
 html, body {
   font-family: var(--font-body) !important;
@@ -102,7 +220,7 @@ table thead {
 
 table thead th {
   font-family: var(--font-mono) !important;
-  font-size: 11px !important;
+  font-size: 12px !important;
   font-weight: 600 !important;
   letter-spacing: 0.04em !important;
   text-transform: uppercase !important;

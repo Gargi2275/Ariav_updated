@@ -41,6 +41,7 @@ class DispatchLineSerializer(serializers.ModelSerializer):
             "id",
             "purchase_order_line_id",
             "dispatched_quantity",
+            "dispatched_meters",
             "product_code",
             "product_name",
             "unit",

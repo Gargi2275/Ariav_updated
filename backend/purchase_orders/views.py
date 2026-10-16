@@ -5,11 +5,12 @@ from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from accounts.access import scope_to_visible_customers
+from config.dates import parse_query_dates
 from brands.models import Brand
 from entities.models import Entity
 
@@ -54,6 +55,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         brand_id = self.request.query_params.get("brand_id")
         order_type = self.request.query_params.get("order_type")
         has_unpriced = self.request.query_params.get("has_unpriced")
+        date_from, date_to = parse_query_dates(self.request.query_params)
         q = self.request.query_params.get("search")
         if status_filter:
             qs = qs.filter(status__iexact=status_filter)
@@ -65,6 +67,10 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             qs = qs.filter(brand_id=brand_id)
         if order_type and include_order_type:
             qs = qs.filter(order_type__iexact=order_type)
+        if date_from:
+            qs = qs.filter(po_date__gte=date_from)
+        if date_to:
+            qs = qs.filter(po_date__lte=date_to)
         if has_unpriced == "true":
             qs = qs.filter(lines__rate__isnull=True).distinct()
         if q:
@@ -90,9 +96,9 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         po = self.get_object()
-        if po.status != PurchaseOrder.Status.DRAFT:
+        if po.status not in {PurchaseOrder.Status.DRAFT, PurchaseOrder.Status.CANCELLED}:
             return Response(
-                {"detail": "Only draft purchase orders can be deleted."},
+                {"detail": "Only draft or cancelled purchase orders can be deleted."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         po.delete()
@@ -245,6 +251,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             entity, brand, upload = _require_import_context(request, require_file=True)
             format_id = (request.data.get("format_id") or "").strip() or None
             preview = build_preview(upload.read(), entity, brand, format_id)
+            preview["file_name"] = getattr(upload, "name", "")
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
         token = store_preview(request.user.id, preview)
@@ -256,7 +263,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             entity, brand, _upload = _require_import_context(request, require_file=False)
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
-        token = (request.data.get("preview_token") or "").strip()
+        token = (request.data.get("preview_token") or request.data.get("preview_id") or "").strip()
         if not token:
             return Response(
                 {
@@ -274,6 +281,9 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 {"order_nos": "order_nos must be the list of Order No values approved from preview."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        decisions = request.data.get("decisions")
+        if decisions is not None and not isinstance(decisions, dict):
+            return Response({"decisions": "decisions must be an object keyed by Party code."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             result = commit_import(
                 user=request.user,
@@ -281,9 +291,12 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 entity_id=entity.id,
                 brand_id=brand.id,
                 order_nos=order_nos,
+                decisions=decisions,
             )
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionDenied as exc:
+            return Response({"detail": str(exc.detail)}, status=status.HTTP_403_FORBIDDEN)
         return Response(result, status=status.HTTP_201_CREATED)
 
 
@@ -326,6 +339,14 @@ def _require_import_context(request, *, require_file: bool):
         lookup["brand_id"] = "Brand was not found."
     if lookup:
         raise ValidationError(lookup)
+    if entity.status != Entity.Status.ACTIVE:
+        raise ValidationError({"entity_id": "Only active branches can be used for purchase order imports."})
+    if brand.status != Brand.Status.ACTIVE:
+        raise ValidationError({"brand_id": "Only active brands can be used for purchase order imports."})
+    if not entity.brands.filter(pk=brand.pk).exists():
+        raise ValidationError(
+            {"brand_id": f"Brand {brand.brand_name} is not mapped to branch {entity.entity_name}."}
+        )
     return entity, brand, upload
 
 

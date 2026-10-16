@@ -444,6 +444,14 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"customer_id": "Party is required."})
         if brand is None:
             raise serializers.ValidationError({"brand_id": "Brand is required."})
+        if entity.status != Entity.Status.ACTIVE:
+            raise serializers.ValidationError({"entity_id": "Only active branches can be used for purchase orders."})
+        if brand.status != Brand.Status.ACTIVE:
+            raise serializers.ValidationError({"brand_id": "Only active brands can be used for purchase orders."})
+        if not entity.brands.filter(pk=brand.pk).exists():
+            raise serializers.ValidationError(
+                {"brand_id": f"Brand {brand.brand_name} is not mapped to branch {entity.entity_name}."}
+            )
 
         code = (attrs.get("brand_order_code") or "").strip()
         if code:

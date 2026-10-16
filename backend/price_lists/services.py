@@ -1,12 +1,16 @@
 from datetime import date
 
-from django.db import transaction
+from django.db.models import Q
 
 from .models import PriceList, PriceListEntry
 
 
 def expire_past_price_lists():
-    return PriceList.objects.filter(status=PriceList.Status.ACTIVE, valid_to__lt=date.today()).update(status=PriceList.Status.EXPIRED)
+    return PriceList.objects.filter(
+        status=PriceList.Status.ACTIVE,
+        valid_to__isnull=False,
+        valid_to__lt=date.today(),
+    ).update(status=PriceList.Status.EXPIRED)
 
 
 def get_current_price(product_id, lookup_date=None):
@@ -31,13 +35,15 @@ def overlapping_active_warning(price_list):
     product_ids = price_list.entries.values_list("product_id", flat=True)
     if not product_ids.exists():
         return ""
+    end = price_list.valid_to
+    overlap_end = Q(price_list__valid_from__lte=end) if end else Q()
     overlaps = PriceListEntry.objects.filter(
         product_id__in=product_ids,
         status=PriceListEntry.Status.ACTIVE,
         price_list__status=PriceList.Status.ACTIVE,
         price_list__brand_id=price_list.brand_id,
-        price_list__valid_from__lte=price_list.valid_to,
-        price_list__valid_to__gte=price_list.valid_from,
+    ).filter(overlap_end).filter(
+        Q(price_list__valid_to__isnull=True) | Q(price_list__valid_to__gte=price_list.valid_from)
     ).exclude(price_list_id=price_list.id).values_list("price_list__season_label", flat=True)
     labels = list(dict.fromkeys(overlaps))
     return f"This Active list overlaps another Active list for the same brand/product: {', '.join(labels)}." if labels else ""

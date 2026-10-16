@@ -39,12 +39,13 @@ class PriceListSerializer(serializers.ModelSerializer):
     brand_id = serializers.PrimaryKeyRelatedField(source="brand", queryset=Brand.objects.all())
     brand_name = serializers.CharField(source="brand.brand_name", read_only=True)
     entry_count = serializers.IntegerField(source="entries.count", read_only=True)
+    quality_entry_count = serializers.IntegerField(source="quality_entries.count", read_only=True)
     entries = PriceListEntrySerializer(many=True, read_only=True)
     created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = PriceList
-        fields = ("id", "brand_id", "brand_name", "season_label", "valid_from", "valid_to", "status", "entry_count", "entries", "created_at", "updated_at", "created_by", "created_by_name")
+        fields = ("id", "brand_id", "brand_name", "season_label", "valid_from", "valid_to", "status", "entry_count", "quality_entry_count", "entries", "created_at", "updated_at", "created_by", "created_by_name")
         read_only_fields = ("id", "brand_name", "entry_count", "entries", "created_at", "updated_at", "created_by", "created_by_name")
 
     def validate(self, attrs):

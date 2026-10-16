@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
-import { TextInput } from '../../components/common/FormControls';
 import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterStatus';
 import { num } from '../../services/mastersApi';
 import { notifyApiError } from '../../services/notify';
@@ -29,15 +29,14 @@ function stampDate(iso?: string | null): string {
 }
 
 export const PaymentAdjustmentsScreen: React.FC = () => {
-  const { navigateTo } = useErp();
+  const { navigateTo, getPeriod } = useErp();
+  const period = getPeriod();
   const [rows, setRows] = useState<PaymentAdjustmentRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [customerId, setCustomerId] = useState<number | ''>('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,8 +45,8 @@ export const PaymentAdjustmentsScreen: React.FC = () => {
       setRows(await paymentAdjustmentsApi.list({
         search: search || undefined,
         customer_id: customerId || undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
+        date_from: period.from,
+        date_to: period.to,
       }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load payment adjustments.');
@@ -55,7 +54,7 @@ export const PaymentAdjustmentsScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, customerId, dateFrom, dateTo]);
+  }, [search, customerId, period.from, period.to]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -122,8 +121,7 @@ export const PaymentAdjustmentsScreen: React.FC = () => {
               ))}
             </select>
           </label>
-          <TextInput label="From" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-          <TextInput label="To" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          <PeriodScope />
         </div>
       </div>
       {loading ? (

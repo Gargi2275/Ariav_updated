@@ -52,8 +52,8 @@ export const LoginScreen: React.FC = () => {
 
   // Active Pending Request Info for State 2
   const targetReqId = pendingLoginRequest?.id || approvalQueue.find(r => r.status === 'pending')?.id || '';
-  const operatorName = pendingLoginRequest?.operatorName || 'Bhavin V. Joshi';
-  const branchName = pendingLoginRequest?.branch || 'Surat Ring Road Textile Mkt';
+  const operatorName = pendingLoginRequest?.operatorName || '';
+  const branchName = pendingLoginRequest?.branch || '';
   const adminName = pendingLoginRequest?.adminName || 'admin';
 
   // Lockout Protection: 5 failed attempts = 5 minutes lockout
@@ -108,6 +108,16 @@ export const LoginScreen: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  useEffect(() => {
+    if (pendingLoginRequest?.status !== 'approved') return;
+    if (pendingLoginRequest.expiresAt && pendingLoginRequest.expiresAt <= Date.now()) {
+      setPendingLoginRequest(null);
+      showFlash('Your sign-in code timed out. Sign in again to ask for a new one.', 'gold');
+      return;
+    }
+    navigateTo(3);
+  }, [pendingLoginRequest?.status, pendingLoginRequest?.id, pendingLoginRequest?.expiresAt, navigateTo, setPendingLoginRequest, showFlash]);
+
   // State 2 polling: check approval queue status every 4 seconds while pending
   useEffect(() => {
     if (authStatus !== 'pending') return;
@@ -131,11 +141,15 @@ export const LoginScreen: React.FC = () => {
         const res = await authApi.checkRequestStatus(targetReqId);
         if (res.success && res.status) {
           if (res.status === 'approved') {
+            const expiresAt = Date.now() + Math.max(0, res.seconds_remaining ?? 0) * 1000;
+            setPendingLoginRequest(current => current ? { ...current, status: 'approved', expiresAt } : current);
             setAuthStatus('approved');
-            showFlash('Request approved. Please enter the 6-digit verbal OTP from admin.', 'positive');
-            setTimeout(() => {
-              navigateTo(3);
-            }, 1200);
+            const noticeKey = `ariav_otp_notice_${targetReqId}`;
+            if (!sessionStorage.getItem(noticeKey)) {
+              sessionStorage.setItem(noticeKey, '1');
+              showFlash('Request approved. Enter the 6-digit code from your administrator.', 'positive');
+            }
+            navigateTo(3);
           } else if (res.status === 'rejected') {
             setAuthStatus('rejected');
             showFlash('Login request declined by administrator.', 'negative');
@@ -175,6 +189,12 @@ export const LoginScreen: React.FC = () => {
       if (res.success) {
         const userType = res.user_type || (res.role === 'admin' ? 'admin' : 'user');
 
+        if (res.login_bypass && res.token) {
+          setUserRole('staff');
+          navigateTo(6);
+          return;
+        }
+
         if (userType === 'admin') {
           // IF ROLE IS ADMIN:
           // Show the 6-digit PIN verification screen before granting access
@@ -204,8 +224,8 @@ export const LoginScreen: React.FC = () => {
           // Do NOT ask for a PIN at all — staff accounts never have one.
           // Submit a login REQUEST using the /api/login/ endpoint and swap to waiting state IN PLACE
           const opName = res.name || res.username || username.trim();
-          const opCode = res.operator_code || res.operatorCode || 'OP-04';
-          const opBranch = res.branch || 'Surat Ring Road Textile Mkt';
+          const opCode = res.operator_code || res.operatorCode || '';
+          const opBranch = res.branch || '';
 
           const reqRes = await authApi.submitLoginRequest({
             username: res.username || username.trim(),
@@ -327,7 +347,7 @@ export const LoginScreen: React.FC = () => {
 
       if (res.success) {
         const raw = res.user?.role || res.role;
-        const role = raw === 'admin' ? 'admin' : raw === 'operator' ? 'operator' : null;
+        const role = raw === 'admin' ? 'admin' : null;
         if (!role) {
           setPinError('Session role was not returned by the server.');
           return;
@@ -570,8 +590,8 @@ export const LoginScreen: React.FC = () => {
                   {/* Requester Identity Badge - FULL TEXT, NO TRUNCATION */}
                   <div className="w-full py-3 px-4 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-xs font-mono text-[var(--erp-text)] mb-8 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-center rounded-xs">
                     <span className="font-semibold text-[var(--erp-text)] whitespace-normal">{operatorName}</span>
-                    <span className="hidden sm:inline text-[var(--erp-hairline-strong)]">·</span>
-                    <span className="text-[var(--erp-muted)] whitespace-normal">{branchName}</span>
+                    {branchName ? <span className="hidden sm:inline text-[var(--erp-hairline-strong)]">·</span> : null}
+                    {branchName ? <span className="text-[var(--erp-muted)] whitespace-normal">{branchName}</span> : null}
                   </div>
 
                   {/* Simple Cancel Request Action: Returns to State 1 in-place */}

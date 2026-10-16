@@ -33,6 +33,7 @@ class ArvindImportProfileTests(TestCase):
             brand_name="Arvind",
             order_method=Brand.OrderMethod.DIGITAL_PO,
         )
+        self.entity.brands.add(self.brand)
         customer = Customer.objects.create(customer_code="0004054783", customer_name="ND TAILOR")
         CustomerEntity.objects.create(customer=customer, entity=self.entity, primary_entity=True)
         self.client = APIClient()

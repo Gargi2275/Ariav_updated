@@ -75,6 +75,8 @@ export interface EntityRow {
   other_2: string;
   active_children_count: number;
   children_count: number;
+  brand_ids?: number[];
+  brands?: Array<{ id: number; brand_code: string; brand_name: string }>;
 }
 
 export interface EntityTreeNode {
@@ -132,6 +134,7 @@ export const emptyEntity = (): Partial<EntityRow> => ({
   range: '',
   other_1: '',
   other_2: '',
+  brand_ids: [],
 });
 
 function qs(params: Record<string, string | number | undefined | null>): string {

@@ -47,16 +47,29 @@ def write_audit(action, module, details, user="Anonymous", role="", ip="", sever
 
 
 def public_user(user: AuthUser) -> dict:
-    branch_name = user.branch.name if user.branch_id else ""
+    if user.entity_id:
+        branch_name = user.entity.entity_name
+        branch_code = user.entity.short_code
+        branch_id = user.entity_id
+    elif user.branch_id:
+        branch_name = user.branch.name
+        branch_code = user.branch.code
+        branch_id = user.branch_id
+    else:
+        branch_name = ""
+        branch_code = ""
+        branch_id = None
     return {
         "id": str(user.id),
         "name": user.display_name or user.get_full_name() or user.username,
         "email": user.email,
-        "role": user.role,
+        "role": "admin" if user.is_admin_role else "staff",
         "branch": branch_name,
-        "branch_id": user.branch_id,
-        "branch_code": user.branch.code if user.branch_id else "",
+        "branch_id": branch_id,
+        "branch_code": branch_code,
         "operatorCode": user.operator_code,
+        "can_edit": bool(user.is_admin_role or user.can_edit),
+        "can_delete": bool(user.is_admin_role or user.can_delete),
     }
 
 
@@ -138,7 +151,7 @@ def check_credentials(request):
         if alias in ("admin", "paresh.admin", "paresh"):
             user = AuthUser.objects.filter(role=AuthUser.Role.ADMIN).first()
         elif alias in ("operator", "staff", "bhavin", "bhavin.operator", "op-04", "user"):
-            user = AuthUser.objects.filter(role=AuthUser.Role.OPERATOR).first()
+            user = AuthUser.objects.filter(role=AuthUser.Role.STAFF).first()
     if not user or not user.check_password(password) or not user.is_active:
         write_audit(
             "Failed Credentials Attempt",
@@ -186,25 +199,64 @@ def check_credentials(request):
             }
         )
 
+    name = user.display_name or user.username
+    branch_name = ""
+    if user.entity_id:
+        branch_name = user.entity.short_code
+    elif user.branch_id:
+        branch_name = user.branch.name
+    if user.login_bypass:
+        token = issue_token(user)
+        mst, _ = AuthUserMstLogin.objects.get_or_create(user=user)
+        now = timezone.now()
+        mst.last_login_at = now
+        mst.last_login_ip = ip or None
+        mst.first_login = False
+        mst.save()
+        write_audit(
+            "Staff login approval bypassed",
+            "Security Gate",
+            f"Password accepted for {user.username}. Admin approval was not required.",
+            name,
+            "staff",
+            ip,
+            "notice",
+        )
+        return Response(
+            {
+                "success": True,
+                "user_type": "user",
+                "role": "staff",
+                "login_bypass": True,
+                "token": token.token,
+                "expires_at": token.expires_at.timestamp(),
+                "username": user.username,
+                "name": name,
+                "user": public_user(user),
+                "message": "Signed in.",
+            }
+        )
+
     write_audit(
         "Staff Credentials Verified",
         "Security Gate",
         f"Staff credentials verified for {user.username}.",
-        user.display_name or user.username,
-        "operator",
+        name,
+        "staff",
         ip,
     )
     return Response(
         {
             "success": True,
             "user_type": "user",
-            "role": "operator",
+            "role": "staff",
+            "login_bypass": False,
             "message": "Staff credentials verified. Enqueueing login request for admin approval.",
             "username": user.username,
-            "name": user.display_name or user.username,
-            "operator_code": user.operator_code or "OP-04",
-            "operatorCode": user.operator_code or "OP-04",
-            "branch": user.branch.name if user.branch_id else "",
+            "name": name,
+            "operator_code": user.operator_code or "",
+            "operatorCode": user.operator_code or "",
+            "branch": branch_name,
         }
     )
 
@@ -360,7 +412,7 @@ def operator_login_request(request):
         request.data.get("operatorCode")
         or request.data.get("operator_code")
         or request.data.get("operatorId")
-        or "OP-04"
+        or ""
     )
     operator_name = (
         request.data.get("operatorName")
@@ -373,8 +425,10 @@ def operator_login_request(request):
     action_requested = request.data.get("actionRequested") or request.data.get("action_requested") or "Staff Session Login"
     username = request.data.get("username") or operator_name
 
-    operators = AuthUser.objects.filter(role=AuthUser.Role.OPERATOR, is_active=True, is_superuser=False)
-    user = operators.filter(username__iexact=str(username)).first() or operators.filter(operator_code=operator_code).first()
+    operators = AuthUser.objects.filter(role=AuthUser.Role.STAFF, is_active=True, is_superuser=False)
+    user = operators.filter(username__iexact=str(username)).first()
+    if user is None and operator_code:
+        user = operators.filter(operator_code=operator_code).first()
     if user is not None:
         operator_name = user.display_name or user.username
 
@@ -431,7 +485,11 @@ def check_request_status(request):
     req = _get_request_by_code(request_id)
     if req is None:
         return Response({"success": False, "status": "not_found"}, status=404)
-    return Response({"success": True, "status": req.effective_status()})
+    status_name = req.effective_status()
+    payload = {"success": True, "status": status_name}
+    if status_name in (LoginRequest.Status.PENDING, LoginRequest.Status.APPROVED):
+        payload["seconds_remaining"] = req.seconds_remaining()
+    return Response(payload)
 
 
 @api_view(["GET"])
@@ -586,11 +644,14 @@ def verify_otp(request):
         {
             "success": True,
             "token": token.token,
-            "role": "operator",
+            "role": "staff",
             "user": {
                 "operatorCode": req.operator_code,
                 "name": req.operator_name,
                 "branch": req.branch,
+                "role": "staff",
+                "can_edit": bool(user.can_edit),
+                "can_delete": bool(user.can_delete),
             },
             "expires_at": token.expires_at.timestamp(),
             "message": "Verbal OTP validated. Operator session active.",
@@ -604,9 +665,9 @@ def session_me(request):
     user = request.user
     if not isinstance(user, AuthUser):
         return Response({"success": False, "error": "Not authenticated"}, status=401)
-    role = "admin" if user.is_admin_role else "operator"
-    if user.branch_id:
-        user = AuthUser.objects.select_related("branch").get(pk=user.pk)
+    role = "admin" if user.is_admin_role else "staff"
+    if user.branch_id or user.entity_id:
+        user = AuthUser.objects.select_related("branch", "entity").get(pk=user.pk)
     return Response({"success": True, "role": role, "user": public_user(user)})
 
 

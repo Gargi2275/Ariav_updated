@@ -2,123 +2,123 @@
   "commit": {
     "created": [
       {
-        "customer_name": "Fixture Customer 703388",
-        "id": 1649,
-        "invoice_no": "DOM2601161",
+        "customer_name": "Fixture Customer 700701",
+        "id": "<id>",
+        "invoice_no": "DOM2601322",
         "line_count": 1,
-        "lr_number": "500943035992",
-        "po_id": 3276,
-        "po_number": "FIXTURE-INTERNAL-1",
-        "po_status": "Partially Dispatched"
-      },
-      {
-        "customer_name": "Fixture Customer 703388",
-        "id": 1650,
-        "invoice_no": "DOM2601174",
-        "line_count": 1,
-        "lr_number": "500943036010",
-        "po_id": 3276,
-        "po_number": "FIXTURE-INTERNAL-1",
+        "lr_number": "26068200013115",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-5",
         "po_status": "Partially Dispatched"
       },
       {
         "customer_name": "Fixture Customer 700714",
-        "id": 1651,
+        "id": "<id>",
         "invoice_no": "DOM2601213",
         "line_count": 1,
         "lr_number": "500943036005",
-        "po_id": 3277,
+        "po_id": "<id>",
         "po_number": "FIXTURE-INTERNAL-2",
         "po_status": "Partially Dispatched"
       },
       {
         "customer_name": "Fixture Customer 700714",
-        "id": 1652,
+        "id": "<id>",
         "invoice_no": "DOM2601213",
         "line_count": 1,
         "lr_number": "500943036005",
-        "po_id": 3278,
+        "po_id": "<id>",
         "po_number": "FIXTURE-INTERNAL-3",
         "po_status": "Partially Dispatched"
       },
       {
+        "customer_name": "Fixture Customer 700750",
+        "id": "<id>",
+        "invoice_no": "DOM2602381",
+        "line_count": 9,
+        "lr_number": "500943036180",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-10",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 700829",
+        "id": "<id>",
+        "invoice_no": "DOM2601617",
+        "line_count": 1,
+        "lr_number": "30869588",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-7",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 702550",
+        "id": "<id>",
+        "invoice_no": "DOM2601323",
+        "line_count": 1,
+        "lr_number": "26068200013114",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-6",
+        "po_status": "Partially Dispatched"
+      },
+      {
         "customer_name": "Fixture Customer 703388",
-        "id": 1653,
+        "id": "<id>",
+        "invoice_no": "DOM2601161",
+        "line_count": 1,
+        "lr_number": "500943035992",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-1",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 703388",
+        "id": "<id>",
+        "invoice_no": "DOM2601174",
+        "line_count": 1,
+        "lr_number": "500943036010",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-1",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 703388",
+        "id": "<id>",
         "invoice_no": "DOM2601249",
         "line_count": 1,
         "lr_number": "500943036028",
-        "po_id": 3279,
+        "po_id": "<id>",
         "po_number": "FIXTURE-INTERNAL-4",
         "po_status": "Partially Dispatched"
       },
       {
         "customer_name": "Fixture Customer 703388",
-        "id": 1654,
+        "id": "<id>",
         "invoice_no": "DOM2601308",
         "line_count": 1,
         "lr_number": "51952917623",
-        "po_id": 3276,
+        "po_id": "<id>",
         "po_number": "FIXTURE-INTERNAL-1",
         "po_status": "Partially Dispatched"
       },
       {
-        "customer_name": "Fixture Customer 700701",
-        "id": 1655,
-        "invoice_no": "DOM2601322",
-        "line_count": 1,
-        "lr_number": "26068200013115",
-        "po_id": 3280,
-        "po_number": "FIXTURE-INTERNAL-5",
-        "po_status": "Partially Dispatched"
-      },
-      {
-        "customer_name": "Fixture Customer 702550",
-        "id": 1656,
-        "invoice_no": "DOM2601323",
-        "line_count": 1,
-        "lr_number": "26068200013114",
-        "po_id": 3281,
-        "po_number": "FIXTURE-INTERNAL-6",
-        "po_status": "Partially Dispatched"
-      },
-      {
-        "customer_name": "Fixture Customer 700829",
-        "id": 1657,
-        "invoice_no": "DOM2601617",
-        "line_count": 1,
-        "lr_number": "30869588",
-        "po_id": 3282,
-        "po_number": "FIXTURE-INTERNAL-7",
-        "po_status": "Partially Dispatched"
-      },
-      {
         "customer_name": "Fixture Customer 703388",
-        "id": 1658,
+        "id": "<id>",
         "invoice_no": "DOM2601858",
         "line_count": 1,
         "lr_number": "500943036105",
-        "po_id": 3283,
+        "po_id": "<id>",
         "po_number": "FIXTURE-INTERNAL-8",
         "po_status": "Partially Dispatched"
       },
       {
         "customer_name": "Fixture Customer 703984",
-        "id": 1659,
+        "id": "<id>",
         "invoice_no": "DOM2602378",
         "line_count": 3,
         "lr_number": "51952914311",
-        "po_id": 3284,
+        "po_id": "<id>",
         "po_number": "FIXTURE-INTERNAL-9",
-        "po_status": "Partially Dispatched"
-      },
-      {
-        "customer_name": "Fixture Customer 700750",
-        "id": 1660,
-        "invoice_no": "DOM2602381",
-        "line_count": 9,
-        "lr_number": "500943036180",
-        "po_id": 3285,
-        "po_number": "FIXTURE-INTERNAL-10",
         "po_status": "Partially Dispatched"
       }
     ],
@@ -128,7 +128,15 @@
     "skipped_excluded_group_keys": []
   },
   "preview": {
+    "counts": {
+      "excluded": 0,
+      "importable": 38,
+      "rows": 38,
+      "sample": 0
+    },
     "excluded": [],
+    "format_id": "ocm_dispatch",
+    "format_name": "OCM Dispatch",
     "importable": [
       {
         "challan_reference": "DOM2601161",
@@ -145,7 +153,7 @@
             "description": "TV-0292200-163-P01-FS",
             "po_line_description": "TV-0292200-163-P01-FS",
             "product_code": "",
-            "purchase_order_line_id": 6781,
+            "purchase_order_line_id": 135,
             "quantity": "6.00",
             "shade": "163"
           }
@@ -157,7 +165,7 @@
         "order_code": "ATS26RG0093",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3276,
+        "po_id": 90,
         "po_number": "FIXTURE-INTERNAL-1",
         "transporter": "SAFEXPRESS PRIVATE LIMITED"
       },
@@ -176,7 +184,7 @@
             "description": "TV-0292200-163-P01-FS",
             "po_line_description": "TV-0292200-163-P01-FS",
             "product_code": "",
-            "purchase_order_line_id": 6781,
+            "purchase_order_line_id": 135,
             "quantity": "5.00",
             "shade": "163"
           }
@@ -188,7 +196,7 @@
         "order_code": "ATS26RG0093",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3276,
+        "po_id": 90,
         "po_number": "FIXTURE-INTERNAL-1",
         "transporter": "SAFEXPRESS PRIVATE LIMITED"
       },
@@ -207,7 +215,7 @@
             "description": "DC-0334053-0A1-P01-FS",
             "po_line_description": "DC-0334053-0A1-P01-FS",
             "product_code": "",
-            "purchase_order_line_id": 6782,
+            "purchase_order_line_id": 136,
             "quantity": "1.00",
             "shade": "0A1"
           }
@@ -219,7 +227,7 @@
         "order_code": "ATS26RG0017",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3277,
+        "po_id": 91,
         "po_number": "FIXTURE-INTERNAL-2",
         "transporter": "SAFEXPRESS PRIVATE LIMITED"
       },
@@ -238,7 +246,7 @@
             "description": "CC-0391356-002-P01-FS",
             "po_line_description": "CC-0391356-002-P01-FS",
             "product_code": "",
-            "purchase_order_line_id": 6783,
+            "purchase_order_line_id": 137,
             "quantity": "1.00",
             "shade": "002"
           }
@@ -250,7 +258,7 @@
         "order_code": "ATS26RG0018",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3278,
+        "po_id": 92,
         "po_number": "FIXTURE-INTERNAL-3",
         "transporter": "SAFEXPRESS PRIVATE LIMITED"
       },
@@ -269,7 +277,7 @@
             "description": "TV-0292200-163-P01-FS",
             "po_line_description": "TV-0292200-163-P01-FS",
             "product_code": "",
-            "purchase_order_line_id": 6784,
+            "purchase_order_line_id": 138,
             "quantity": "5.00",
             "shade": "163"
           }
@@ -281,7 +289,7 @@
         "order_code": "ATS26RG0092",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3279,
+        "po_id": 93,
         "po_number": "FIXTURE-INTERNAL-4",
         "transporter": "SAFEXPRESS PRIVATE LIMITED"
       },
@@ -300,7 +308,7 @@
             "description": "TV-0292200-163-P01-FS",
             "po_line_description": "TV-0292200-163-P01-FS",
             "product_code": "",
-            "purchase_order_line_id": 6781,
+            "purchase_order_line_id": 135,
             "quantity": "2.00",
             "shade": "163"
           }
@@ -312,7 +320,7 @@
         "order_code": "ATS26RG0093",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3276,
+        "po_id": 90,
         "po_number": "FIXTURE-INTERNAL-1",
         "transporter": "BLUE DART EXPRESS LTD AMRITSAR"
       },
@@ -331,7 +339,7 @@
             "description": "CN-0042220-002-P01-FS",
             "po_line_description": "CN-0042220-002-P01-FS",
             "product_code": "",
-            "purchase_order_line_id": 6785,
+            "purchase_order_line_id": 139,
             "quantity": "1.00",
             "shade": "002"
           }
@@ -343,7 +351,7 @@
         "order_code": "ATS26RG0011",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3280,
+        "po_id": 94,
         "po_number": "FIXTURE-INTERNAL-5",
         "transporter": "SHREE MARUTI COURIER SERVICES P.LTD."
       },
@@ -362,7 +370,7 @@
             "description": "CT-0382536-002-P01-FS",
             "po_line_description": "CT-0382536-002-P01-FS",
             "product_code": "",
-            "purchase_order_line_id": 6786,
+            "purchase_order_line_id": 140,
             "quantity": "1.00",
             "shade": "002"
           }
@@ -374,7 +382,7 @@
         "order_code": "ATS26RG0006",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3281,
+        "po_id": 95,
         "po_number": "FIXTURE-INTERNAL-6",
         "transporter": "SHREE MARUTI COURIER SERVICES P.LTD."
       },
@@ -393,7 +401,7 @@
             "description": "ECB-0105631-007-P08-FS",
             "po_line_description": "ECB-0105631-007-P08-FS",
             "product_code": "",
-            "purchase_order_line_id": 6787,
+            "purchase_order_line_id": 141,
             "quantity": "1.00",
             "shade": "007"
           }
@@ -405,7 +413,7 @@
         "order_code": "ATS26RG4933",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3282,
+        "po_id": 96,
         "po_number": "FIXTURE-INTERNAL-7",
         "transporter": "SKYKING SERVICE"
       },
@@ -424,7 +432,7 @@
             "description": "TV-0292200-159-P01-FS",
             "po_line_description": "TV-0292200-159-P01-FS",
             "product_code": "",
-            "purchase_order_line_id": 6788,
+            "purchase_order_line_id": 142,
             "quantity": "3.00",
             "shade": "159"
           }
@@ -436,7 +444,7 @@
         "order_code": "ATS26RG0038",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3283,
+        "po_id": 97,
         "po_number": "FIXTURE-INTERNAL-8",
         "transporter": "SAFEXPRESS PRIVATE LIMITED"
       },
@@ -455,7 +463,7 @@
             "description": "VPR-0221017-017-P02-FS",
             "po_line_description": "VPR-0221017-017-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6791,
+            "purchase_order_line_id": 145,
             "quantity": "1.00",
             "shade": "017"
           },
@@ -465,7 +473,7 @@
             "description": "VPR-0221017-021-P02-FS",
             "po_line_description": "VPR-0221017-021-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6789,
+            "purchase_order_line_id": 144,
             "quantity": "1.00",
             "shade": "021"
           },
@@ -475,7 +483,7 @@
             "description": "VPR-0221017-023-P02-FS",
             "po_line_description": "VPR-0221017-023-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6790,
+            "purchase_order_line_id": 143,
             "quantity": "1.00",
             "shade": "023"
           }
@@ -487,7 +495,7 @@
         "order_code": "ATS26RN0006",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3284,
+        "po_id": 98,
         "po_number": "FIXTURE-INTERNAL-9",
         "transporter": "BLUE DART EXPRESS LTD AMRITSAR"
       },
@@ -506,7 +514,7 @@
             "description": "VPR-0221017-017-P02-FS",
             "po_line_description": "VPR-0221017-017-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6798,
+            "purchase_order_line_id": 152,
             "quantity": "1.00",
             "shade": "017"
           },
@@ -516,7 +524,7 @@
             "description": "VPR-0221017-021-P02-FS",
             "po_line_description": "VPR-0221017-021-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6792,
+            "purchase_order_line_id": 150,
             "quantity": "1.00",
             "shade": "021"
           },
@@ -526,7 +534,7 @@
             "description": "VPR-0221017-022-P02-FS",
             "po_line_description": "VPR-0221017-022-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6800,
+            "purchase_order_line_id": 146,
             "quantity": "1.00",
             "shade": "022"
           },
@@ -536,7 +544,7 @@
             "description": "VPR-0221017-023-P02-FS",
             "po_line_description": "VPR-0221017-023-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6793,
+            "purchase_order_line_id": 149,
             "quantity": "1.00",
             "shade": "023"
           },
@@ -546,7 +554,7 @@
             "description": "VPR-0221017-030-P02-FS",
             "po_line_description": "VPR-0221017-030-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6797,
+            "purchase_order_line_id": 151,
             "quantity": "1.00",
             "shade": "030"
           },
@@ -556,7 +564,7 @@
             "description": "VPR-0221017-038-P02-FS",
             "po_line_description": "VPR-0221017-038-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6796,
+            "purchase_order_line_id": 153,
             "quantity": "1.00",
             "shade": "038"
           },
@@ -566,7 +574,7 @@
             "description": "VPR-0221017-039-P02-FS",
             "po_line_description": "VPR-0221017-039-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6795,
+            "purchase_order_line_id": 154,
             "quantity": "1.00",
             "shade": "039"
           },
@@ -576,7 +584,7 @@
             "description": "VPR-0221017-040-P02-FS",
             "po_line_description": "VPR-0221017-040-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6799,
+            "purchase_order_line_id": 148,
             "quantity": "1.00",
             "shade": "040"
           },
@@ -586,7 +594,7 @@
             "description": "VPR-0221017-041-P02-FS",
             "po_line_description": "VPR-0221017-041-P02-FS",
             "product_code": "",
-            "purchase_order_line_id": 6794,
+            "purchase_order_line_id": 147,
             "quantity": "1.00",
             "shade": "041"
           }
@@ -598,7 +606,7 @@
         "order_code": "ATS26RN0018",
         "po_entity_code": "ADT",
         "po_entity_name": "Aditi",
-        "po_id": 3285,
+        "po_id": 99,
         "po_number": "FIXTURE-INTERNAL-10",
         "transporter": "SAFEXPRESS PRIVATE LIMITED"
       }
