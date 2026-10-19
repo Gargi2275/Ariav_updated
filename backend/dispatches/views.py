@@ -6,6 +6,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from accounts.access import scope_to_visible_customers
+from config.dates import parse_query_dates
 
 from .import_service import (
     build_preview,
@@ -38,14 +39,16 @@ class DispatchViewSet(viewsets.ModelViewSet):
         qs = scope_to_visible_customers(super().get_queryset(), self.request.user, "purchase_order__customer_id")
         po_id = self.request.query_params.get("purchase_order_id")
         customer_id = self.request.query_params.get("customer_id")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
+        entity_id = self.request.query_params.get("entity_id")
+        date_from, date_to = parse_query_dates(self.request.query_params)
         transporter = self.request.query_params.get("transporter")
         q = self.request.query_params.get("search")
         if po_id:
             qs = qs.filter(purchase_order_id=po_id)
         if customer_id:
             qs = qs.filter(purchase_order__customer_id=customer_id)
+        if entity_id:
+            qs = qs.filter(purchase_order__entity_id=entity_id)
         if date_from:
             qs = qs.filter(dispatch_date__gte=date_from)
         if date_to:
@@ -68,14 +71,20 @@ class DispatchViewSet(viewsets.ModelViewSet):
         sync_purchase_order_dispatch_status(po, user=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=False, methods=["get"], url_path="reconciliation")
+    def reconciliation(self, request):
+        from .reconciliation import build_reconciliation
+
+        return Response(build_reconciliation(user=request.user, params=request.query_params))
+
     @action(detail=False, methods=["post"], url_path="import/preview")
     def import_preview(self, request):
         upload = request.FILES.get("file") or request.data.get("file")
         if not upload:
             return Response({"file": "A source file is required."}, status=status.HTTP_400_BAD_REQUEST)
         name = (getattr(upload, "name", "") or "").lower()
-        if not name.endswith((".xlsx", ".xlsm")):
-            return Response({"file": "Upload an Excel file (.xlsx)."}, status=status.HTTP_400_BAD_REQUEST)
+        if not name.endswith((".xlsx", ".xlsm", ".xls", ".txt")):
+            return Response({"file": "Upload an Excel or delimited text file (.xlsx, .xls, .txt)."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             preview = build_preview(upload.read(), user=request.user)
         except ValidationError as exc:

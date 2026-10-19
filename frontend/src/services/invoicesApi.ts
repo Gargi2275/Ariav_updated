@@ -261,7 +261,9 @@ export const invoicesApi = {
     customer_id?: number;
     purchase_order_id?: number;
     search?: string;
-  } = {}) => request<InvoiceRow[]>(`/api/invoices/${qs(params)}`),
+    date_from?: string;
+    date_to?: string;
+  } = {}, options: RequestInit = {}) => request<InvoiceRow[]>(`/api/invoices/${qs(params)}`, options),
   retrieve: (id: number) => request<InvoiceRow>(`/api/invoices/${id}/`),
   trace: (id: number) => request<InvoiceTrace>(`/api/invoices/${id}/trace/`),
   create: (body: unknown) =>

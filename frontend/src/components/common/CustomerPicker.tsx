@@ -57,7 +57,7 @@ export const CustomerPicker: React.FC<CustomerPickerProps> = ({
   }, [customers, query]);
 
   const triggerClass = compact
-    ? 'px-2 py-1 text-xs font-mono min-w-[220px] max-w-[280px] bg-[var(--erp-surface-2)]'
+    ? 'box-border h-9 w-full min-w-0 px-2 text-xs font-mono bg-[var(--erp-surface-2)]'
     : 'px-3 py-2 text-sm bg-[var(--erp-surface)]';
 
   const label = selected
@@ -67,7 +67,7 @@ export const CustomerPicker: React.FC<CustomerPickerProps> = ({
       : placeholder;
 
   return (
-    <div ref={rootRef} className={`relative ${className}`}>
+    <div ref={rootRef} className={`relative min-w-0 ${className}`}>
       <button
         type="button"
         disabled={disabled}

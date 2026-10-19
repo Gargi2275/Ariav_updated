@@ -23,7 +23,6 @@ interface SalesRegisterEntry {
 
 export const SalesRegisterScreen: React.FC = () => {
   const { financialYear, showFlash } = useErp();
-  const [selectedMonth, setSelectedMonth] = useState('All');
   const [filterGstType, setFilterGstType] = useState<'all' | 'intra' | 'inter'>('all');
 
   const [invoices] = useState<SalesRegisterEntry[]>([

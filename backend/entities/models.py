@@ -69,9 +69,28 @@ class Entity(models.Model):
         db_table = "entities_entity"
         ordering = ["short_code"]
 
+    brands = models.ManyToManyField(
+        "brands.Brand",
+        through="EntityBrand",
+        related_name="entities",
+        blank=True,
+    )
+
     def __str__(self):
         return f"{self.short_code} {self.entity_name}"
 
     @property
     def is_active(self) -> bool:
         return self.status == self.Status.ACTIVE
+
+
+class EntityBrand(models.Model):
+    entity = models.ForeignKey(Entity, on_delete=models.CASCADE, related_name="brand_links")
+    brand = models.ForeignKey("brands.Brand", on_delete=models.PROTECT, related_name="entity_links")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["entity", "brand"], name="entity_brand_unique"),
+        ]
+        ordering = ["entity_id", "brand_id"]

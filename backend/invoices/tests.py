@@ -1,4 +1,5 @@
 from datetime import timedelta
+from datetime import date
 from decimal import Decimal
 
 from rest_framework.test import APIClient
@@ -26,7 +27,7 @@ class InvoiceApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="inv-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
@@ -143,6 +144,47 @@ class InvoiceApiTests(TestCase):
 
     def _post_invoice(self, payload):
         return self.client.post("/api/invoices/", payload, format="json", HTTP_HOST="localhost")
+
+    def _direct_invoice(self, po, number, invoice_date, status=Invoice.Status.DRAFT, entity=None):
+        po_instance = PurchaseOrder.objects.get(pk=po["id"])
+        return Invoice.objects.create(
+            invoice_number=number,
+            invoice_date=date.fromisoformat(invoice_date),
+            due_date=date.fromisoformat(invoice_date),
+            entity=entity or self.entity,
+            customer=self.customer,
+            customer_code=self.customer.customer_code,
+            purchase_order=po_instance,
+            brand=self.brand,
+            status=status,
+        )
+
+    def test_list_date_filters_validate_and_combine_with_existing_filters(self):
+        po = self._create_po()
+        self._direct_invoice(po, "INV-DATE-APR", "2025-04-01")
+        self._direct_invoice(po, "INV-DATE-MAR", "2026-03-31", status=Invoice.Status.ISSUED)
+        self._direct_invoice(po, "INV-DATE-APR26", "2026-04-01")
+
+        first = self.client.get("/api/invoices/?date_from=2025-04-01", HTTP_HOST="localhost")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(len(first.json()), 3)
+        last = self.client.get("/api/invoices/?date_to=2026-03-31", HTTP_HOST="localhost")
+        self.assertEqual(last.status_code, 200)
+        self.assertEqual({row["invoice_number"] for row in last.json()}, {"INV-DATE-APR", "INV-DATE-MAR"})
+        both = self.client.get(
+            "/api/invoices/?date_from=2025-04-01&date_to=2026-03-31&status=Issued"
+            f"&entity_id={self.entity.id}",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(both.status_code, 200)
+        self.assertEqual([row["invoice_number"] for row in both.json()], ["INV-DATE-MAR"])
+        invalid = self.client.get("/api/invoices/?date_from=2026-99-01", HTTP_HOST="localhost")
+        self.assertEqual(invalid.status_code, 400)
+        reversed_range = self.client.get(
+            "/api/invoices/?date_from=2026-04-02&date_to=2026-04-01",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(reversed_range.status_code, 400)
 
     def test_invoice_without_dispatch_blocked(self):
         po = self._create_po()

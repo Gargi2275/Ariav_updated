@@ -22,3 +22,7 @@ coverage/
 *.mo
 staticfiles/
 media/
+private_price_lists/
+
+Ariav_ERP_Module_Status_Report.xlsx
+Ariav_ERP_Project_Delivery_Tracker_*.xlsx

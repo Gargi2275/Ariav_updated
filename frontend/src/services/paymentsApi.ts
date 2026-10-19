@@ -96,6 +96,14 @@ export interface PaymentRow {
   payment_mode: PaymentMode | string;
   bank_cash_account: string;
   transaction_reference: string;
+  invoice_reference: string | null;
+  deposit_account_id: number | null;
+  deposit_account_name: string;
+  deposit_account_masked: string;
+  payer_bank_name: string;
+  payer_bank_branch: string;
+  instrument_number: string;
+  instrument_date: string | null;
   remarks: string;
   unallocated_amount: string | number;
   allocations: PaymentAllocationRow[];
@@ -103,6 +111,40 @@ export interface PaymentRow {
   created_at?: string;
   updated_at?: string;
   created_by_name?: string;
+  duplicate_warning?: string;
+}
+
+export interface BankAccountRow {
+  id: number;
+  entity_id: number;
+  entity_name: string;
+  bank_name: string;
+  bank_branch_name: string;
+  account_number_masked: string;
+  ifsc: string;
+  active: boolean;
+}
+
+export function paymentInvoiceSummary(payment: Pick<PaymentRow, 'allocations'>): string {
+  const numbers = payment.allocations.map(row => row.invoice_number).filter(Boolean) as string[];
+  if (!numbers.length) return 'Unallocated';
+  return numbers.length > 1 ? `${numbers[0]} +${numbers.length - 1} more` : numbers[0];
+}
+
+export function paymentModeFields(mode: string): {
+  showInstrument: boolean;
+  showPayerBank: boolean;
+  showDepositAccount: boolean;
+} {
+  return {
+    showInstrument: mode === 'Cheque',
+    showPayerBank: mode !== 'Cash',
+    showDepositAccount: mode !== 'Cash',
+  };
+}
+
+export function paymentDuplicateWarningText(warning?: string): string {
+  return warning?.trim() || '';
 }
 
 export interface InvoicePaymentAllocationRow {
@@ -134,10 +176,12 @@ export const paymentsApi = {
     payment_mode?: string;
     date_from?: string;
     date_to?: string;
+    allocation_status?: 'allocated' | 'unallocated';
     invoice_id?: number;
     search?: string;
   } = {}) => request<PaymentRow[]>(`/api/payments/${qs(params)}`),
   retrieve: (id: number) => request<PaymentRow>(`/api/payments/${id}/`),
+  bankAccounts: (entity_id: number) => request<BankAccountRow[]>(`/api/payments/bank-accounts/${qs({ entity_id })}`),
   create: (body: unknown) =>
     request<PaymentRow>('/api/payments/', { method: 'POST', body: JSON.stringify(body) }),
   allocate: (id: number, body: {

@@ -4,6 +4,7 @@ from django.test import TestCase
 
 from accounts.models import AuthUser
 from brands.models import Brand
+from entities.models import Entity
 
 
 class BrandMasterApiTests(TestCase):
@@ -16,7 +17,7 @@ class BrandMasterApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="brand-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client = APIClient()
 
@@ -163,3 +164,54 @@ class BrandMasterApiTests(TestCase):
         self.assertEqual(hard.status_code, 409, hard.content)
         self.assertIn("product", hard.json()["detail"].lower())
         self.assertTrue(Brand.objects.filter(pk=brand_id).exists())
+
+    def test_branch_brand_mapping_is_bidirectional(self):
+        self._auth(self.admin)
+        branch_a = Entity.objects.create(
+            short_code="BR-A",
+            entity_name="Branch A",
+            entity_type=Entity.EntityType.BRANCH,
+        )
+        branch_b = Entity.objects.create(
+            short_code="BR-B",
+            entity_name="Branch B",
+            entity_type=Entity.EntityType.BRANCH,
+        )
+        created = self._create(
+            branch_ids=[branch_a.id, branch_b.id],
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+        brand_id = created.json()["id"]
+        self.assertEqual(
+            set(Brand.objects.get(pk=brand_id).entities.values_list("id", flat=True)),
+            {branch_a.id, branch_b.id},
+        )
+
+        branch = self.client.get(f"/api/entities/{branch_a.id}/", HTTP_HOST="localhost")
+        self.assertEqual(branch.status_code, 200, branch.content)
+        self.assertEqual(branch.json()["brand_ids"], [brand_id])
+
+        updated = self.client.put(
+            f"/api/brands/{brand_id}/",
+            {
+                **created.json(),
+                "branch_ids": [branch_b.id],
+            },
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(updated.status_code, 200, updated.content)
+        self.assertFalse(Entity.objects.get(pk=branch_a.id).brands.filter(pk=brand_id).exists())
+        self.assertTrue(Entity.objects.get(pk=branch_b.id).brands.filter(pk=brand_id).exists())
+
+    def test_inactive_branch_cannot_be_added_to_brand_mapping(self):
+        self._auth(self.admin)
+        branch = Entity.objects.create(
+            short_code="INACT",
+            entity_name="Inactive Branch",
+            entity_type=Entity.EntityType.BRANCH,
+            status=Entity.Status.INACTIVE,
+        )
+        response = self._create(branch_ids=[branch.id])
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("branch_ids", response.json())

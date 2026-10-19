@@ -212,6 +212,7 @@ export interface PoImportExcluded {
 
 export interface PoImportPreview {
   preview_token: string;
+  preview_id: string;
   entity_id: number;
   brand_id: number;
   importable: PoImportable[];
@@ -221,6 +222,31 @@ export interface PoImportPreview {
   format_id: string;
   format_name: string;
   allowed_formats: { id: string; name: string }[];
+  unmatched_parties: PoImportUnmatchedParty[];
+}
+
+export interface PoImportSuggestedParty {
+  id: number;
+  code: string;
+  name: string;
+  city: string;
+  why: string;
+}
+
+export interface PoImportUnmatchedParty {
+  code: string;
+  name: string;
+  city: string;
+  state: string;
+  address: string;
+  gst: string;
+  po_count: number;
+  line_count: number;
+  order_nos: string[];
+  suggested_matches: PoImportSuggestedParty[];
+  exists_in_branches: { code: string; name: string }[];
+  existing_party_id: number | null;
+  existing_party_name: string;
 }
 
 export interface PoImportCommitResult {
@@ -229,6 +255,10 @@ export interface PoImportCommitResult {
   excluded: PoImportExcluded[];
   excluded_count: number;
   skipped_excluded_order_nos: string[];
+  parties_created: { id: number; code: string; name: string; branches: { code: string; name: string }[] }[];
+  parties_mapped: { source_code: string; id: number; code: string; name: string }[];
+  parties_linked: { source_code: string; id: number; code: string; name: string; branch: { code: string; name: string } }[];
+  parties_linked_count: number;
 }
 
 export const purchaseOrdersApi = {
@@ -242,6 +272,8 @@ export const purchaseOrdersApi = {
     limit?: number;
     offset?: number;
     has_unpriced?: boolean;
+    date_from?: string;
+    date_to?: string;
   } = {}) => request<PurchaseOrderRow[]>(`/api/purchase-orders/${qs(params)}`),
   retrieve: (id: number) => request<PurchaseOrderRow>(`/api/purchase-orders/${id}/`),
   create: (body: Record<string, unknown>, file?: File | null) =>
@@ -303,6 +335,7 @@ export const purchaseOrdersApi = {
     entityId: number;
     brandId: number;
     orderNos: string[];
+    decisions: Record<string, Record<string, unknown>>;
   }) =>
     request<PoImportCommitResult>('/api/purchase-orders/import/commit/', {
       method: 'POST',
@@ -311,6 +344,7 @@ export const purchaseOrdersApi = {
         entity_id: args.entityId,
         brand_id: args.brandId,
         order_nos: args.orderNos,
+        decisions: args.decisions,
       }),
     }),
   pdf: async (id: number): Promise<Blob> => {

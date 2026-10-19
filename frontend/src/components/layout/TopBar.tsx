@@ -16,6 +16,14 @@ import {
   ChevronDown,
   X
 } from 'lucide-react';
+import { FINANCIAL_MONTHS, financialYearOptions } from '../../utils/dateFilters';
+
+function monthLabel(fy: string, month: number): string {
+  const startYear = Number(fy.slice(0, 4));
+  const calendarYear = month <= 3 ? startYear + 1 : startYear;
+  const item = FINANCIAL_MONTHS.find(entry => entry.value === month);
+  return `${item?.label.slice(0, 3)} ${calendarYear}`;
+}
 
 export const TopBar: React.FC = () => {
   const { 
@@ -24,6 +32,8 @@ export const TopBar: React.FC = () => {
     setSelectedEntityId, 
     financialYear, 
     setFinancialYear,
+    periodMonth,
+    setPeriodMonth,
     userRole,
     sessionUserName,
     approvalQueue,
@@ -31,6 +41,7 @@ export const TopBar: React.FC = () => {
     setQuickJumpOpen,
     navigateTo
   } = useErp();
+  const fyOptions = financialYearOptions(new Date(), financialYear);
 
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
   const contextRef = useRef<HTMLDivElement>(null);
@@ -52,7 +63,7 @@ export const TopBar: React.FC = () => {
 
   return (
     <header
-      className="sticky top-0 z-30 h-13 min-h-[52px] border-b flex items-center justify-between px-3 sm:px-4 lg:px-5 bg-[var(--erp-surface)]/90 backdrop-blur-md border-[var(--erp-hairline-strong)] text-[var(--erp-text)] w-full overflow-visible select-none"
+      className="dashboard-topbar sticky top-0 z-30 h-13 min-h-[52px] border-b flex items-center justify-between px-3 sm:px-4 lg:px-5 bg-[var(--erp-surface)]/90 backdrop-blur-md border-[var(--erp-hairline-strong)] text-[var(--erp-text)] w-full overflow-visible select-none"
       style={{
         borderColor: 'var(--erp-hairline-strong)',
         boxShadow: '0 1px 0 var(--erp-hairline)'
@@ -137,11 +148,22 @@ export const TopBar: React.FC = () => {
                     }}
                     className="w-full pl-9 pr-7 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none"
                   >
-                    <option value="2025-26" className="bg-[var(--erp-surface)] text-[var(--erp-text)]">FY 2025-26 (Current)</option>
-                    <option value="2024-25" className="bg-[var(--erp-surface)] text-[var(--erp-text)]">FY 2024-25</option>
-                    <option value="2023-24" className="bg-[var(--erp-surface)] text-[var(--erp-text)]">FY 2023-24</option>
+                    {fyOptions.map(fy => <option key={fy} value={fy} className="bg-[var(--erp-surface)] text-[var(--erp-text)]">FY {fy}</option>)}
                   </select>
                 </div>
+              </div>
+
+              {/* Live Clock Info */}
+              <div className="mb-3">
+                <label className="block font-mono text-[10px] text-[var(--erp-muted)] mb-1">MONTH</label>
+                <select
+                  value={periodMonth}
+                  onChange={e => setPeriodMonth(e.target.value ? Number(e.target.value) : '')}
+                  className="w-full px-3 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none"
+                >
+                  <option value="">All months</option>
+                  {FINANCIAL_MONTHS.map(month => <option key={month.value} value={month.value}>{monthLabel(financialYear, month.value)}</option>)}
+                </select>
               </div>
 
               {/* Live Clock Info */}
@@ -195,9 +217,19 @@ export const TopBar: React.FC = () => {
             onChange={e => setFinancialYear(e.target.value)}
             className="pl-9 pr-7 py-1 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] rounded-none cursor-pointer min-w-[152px]"
           >
-            <option value="2025-26" className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">FY 2025-26</option>
-            <option value="2024-25" className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">FY 2024-25</option>
-            <option value="2023-24" className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">FY 2023-24</option>
+            {fyOptions.map(fy => <option key={fy} value={fy} className="bg-[var(--erp-surface)] text-[var(--erp-text)] font-mono">FY {fy}</option>)}
+          </select>
+        </div>
+        <div className="relative hidden xl:flex items-center">
+          <Calendar className="w-3.5 h-3.5 stroke-[1.75] text-[var(--erp-gold)] absolute left-2.5 pointer-events-none" />
+          <select
+            value={periodMonth}
+            onChange={e => setPeriodMonth(e.target.value ? Number(e.target.value) : '')}
+            title="Month"
+            className="pl-9 pr-7 py-1 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] rounded-none cursor-pointer min-w-[132px]"
+          >
+            <option value="">All months</option>
+            {FINANCIAL_MONTHS.map(month => <option key={month.value} value={month.value}>{monthLabel(financialYear, month.value)}</option>)}
           </select>
         </div>
 
@@ -212,23 +244,24 @@ export const TopBar: React.FC = () => {
         {/* Notifications — in-app reminders (unread badge) */}
         <NotificationBell />
 
-        {/* Pending operator login approvals (Live Approval Queue) */}
+        {userRole === 'admin' && (
         <button
           type="button"
           onClick={() => navigateTo(5)}
           title={`Pending approvals (${pendingApprovalsCount})`}
-          aria-label={`Pending operator login approvals, ${pendingApprovalsCount} waiting`}
-          className="relative h-8 w-8 inline-flex items-center justify-center bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-negative)] transition-colors cursor-pointer"
+          aria-label={`Pending staff login approvals, ${pendingApprovalsCount} waiting`}
+          className="dashboard-toolbar-control relative h-8 w-8 inline-flex items-center justify-center bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-negative)] transition-colors cursor-pointer"
         >
           <ClipboardCheck className="w-3.5 h-3.5 stroke-[1.75] text-[var(--erp-negative)] shrink-0" />
           <IconCountBadge count={pendingApprovalsCount} tone="rose" />
         </button>
+        )}
 
         {/* Quick Screen Switcher (Cmd+K) */}
         <button
           type="button"
           onClick={() => setQuickJumpOpen(true)}
-          className="h-8 w-8 inline-flex items-center justify-center bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-gold)] transition-colors text-[var(--erp-muted)] hover:text-[var(--erp-text)] cursor-pointer"
+          className="dashboard-toolbar-control h-8 w-8 inline-flex items-center justify-center bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] hover:border-[var(--erp-gold)] transition-colors text-[var(--erp-muted)] hover:text-[var(--erp-text)] cursor-pointer"
           title="Modules (⌘K)"
           aria-label="Open modules (Command K)"
         >
@@ -238,15 +271,15 @@ export const TopBar: React.FC = () => {
         {/* Session role badge — read-only; role comes from /api/auth/me/ */}
         <div
           className="flex items-center gap-2 pl-1.5 sm:pl-2 border-l border-[var(--erp-hairline)] select-none shrink-0"
-          title={userRole === 'admin' ? 'Admin session' : 'Operator session'}
-          aria-label={userRole === 'admin' ? 'Admin' : 'Operator'}
+          title={userRole === 'admin' ? 'Admin session' : 'Staff session'}
+          aria-label={userRole === 'admin' ? 'Admin' : 'Staff'}
         >
           <div className="w-7 h-7 rounded-none bg-[var(--erp-gold)]/20 border border-[var(--erp-gold)] flex items-center justify-center font-mono text-xs font-semibold text-[var(--erp-gold)] shrink-0">
-            {userRole === 'admin' ? 'AD' : 'OP'}
+            {userRole === 'admin' ? 'AD' : 'ST'}
           </div>
           <div className="hidden lg:flex flex-col text-left whitespace-nowrap">
             <span className="text-xs font-medium text-[var(--erp-text)] leading-tight">
-              {sessionUserName || (userRole === 'admin' ? 'Admin' : 'Operator')}
+              {sessionUserName || (userRole === 'admin' ? 'Admin' : 'Staff')}
             </span>
             <span className="text-[10px] font-mono text-[var(--erp-muted)] leading-tight flex items-center gap-1">
               {userRole === 'admin' ? (
@@ -255,7 +288,7 @@ export const TopBar: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <UserCheck className="w-3 h-3 text-[var(--erp-gold)]" /> Operator
+                  <UserCheck className="w-3 h-3 text-[var(--erp-gold)]" /> Staff
                 </>
               )}
             </span>

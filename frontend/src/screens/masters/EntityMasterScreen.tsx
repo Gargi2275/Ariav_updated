@@ -16,6 +16,8 @@ import {
   emptyEntity,
   entitiesApi,
 } from '../../services/entitiesApi';
+import { RecordPrintShare } from '../../components/common/RecordPrintShare';
+import { BrandRow, brandsApi } from '../../services/brandsApi';
 
 type FlatNode = EntityTreeNode & { depth: number };
 
@@ -78,6 +80,9 @@ export const EntityMasterScreen: React.FC = () => {
   const [deleteBlockDetail, setDeleteBlockDetail] = useState<string | null>(null);
   const [pendingDeactivate, setPendingDeactivate] = useState<Partial<EntityRow> | null>(null);
   const [detail, setDetail] = useState<import('../../services/entitiesApi').EntityDetail | null>(null);
+  const [brands, setBrands] = useState<BrandRow[]>([]);
+  const [brandSearch, setBrandSearch] = useState('');
+  const [brandsLoading, setBrandsLoading] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
   const savingLock = useRef(false);
 
@@ -95,6 +100,14 @@ export const EntityMasterScreen: React.FC = () => {
   }, [statusFilter]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    setBrandsLoading(true);
+    brandsApi.list({ status: 'Active' })
+      .then(setBrands)
+      .catch(e => notifyApiError(e, 'Could not load active brands.'))
+      .finally(() => setBrandsLoading(false));
+  }, []);
 
   const flat = useMemo(() => flatten(tree), [tree]);
 
@@ -136,6 +149,7 @@ export const EntityMasterScreen: React.FC = () => {
     setForm({ ...emptyEntity(), parent_entity_id: parentId });
     setFieldErrors([]);
     setFieldMessages({});
+    setBrandSearch('');
     setModalOpen(true);
   };
 
@@ -145,6 +159,7 @@ export const EntityMasterScreen: React.FC = () => {
       setForm(detail);
       setFieldErrors([]);
       setFieldMessages({});
+      setBrandSearch('');
       setModalOpen(true);
     } catch (e) {
       notifyApiError(e, 'Could not load branch.');
@@ -192,6 +207,7 @@ export const EntityMasterScreen: React.FC = () => {
       short_code: form.short_code,
       entity_name: form.entity_name,
     });
+    if (!form.brand_ids?.length) messages.brand_ids = 'Select at least one active brand.';
     if (Object.keys(messages).length) {
       setFieldMessages(messages);
       setFieldErrors(Object.keys(messages));
@@ -383,6 +399,52 @@ export const EntityMasterScreen: React.FC = () => {
             </section>
 
             <section>
+              <h4 className={sectionTitle}>Allowed brands</h4>
+              <div className={`border ${fieldMessages.brand_ids ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'} bg-[var(--erp-surface)]`}>
+                <div className="p-2 border-b border-[var(--erp-hairline)]">
+                  <input
+                    value={brandSearch}
+                    onChange={e => setBrandSearch(e.target.value)}
+                    placeholder="Search active brands…"
+                    className="w-full bg-transparent px-2 py-1.5 text-sm text-[var(--erp-text)] outline-none"
+                  />
+                </div>
+                {brandsLoading ? (
+                  <div className="p-3 text-xs text-[var(--erp-muted)]">Loading active brands…</div>
+                ) : brands.length === 0 ? (
+                  <div className="p-3 text-xs text-[var(--erp-muted)]">No active brands are available.</div>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
+                    {brands
+                      .filter(brand => `${brand.brand_code} ${brand.brand_name}`.toLowerCase().includes(brandSearch.toLowerCase().trim()))
+                      .map(brand => {
+                        const checked = (form.brand_ids || []).includes(brand.id);
+                        return (
+                          <label key={brand.id} className="flex items-center gap-2 px-2 py-1.5 text-sm text-[var(--erp-text)] hover:bg-[var(--erp-surface-2)] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setForm({
+                                ...form,
+                                brand_ids: checked
+                                  ? (form.brand_ids || []).filter(id => id !== brand.id)
+                                  : [...(form.brand_ids || []), brand.id],
+                              })}
+                              className="accent-[var(--erp-gold)]"
+                            />
+                            <span>{brand.brand_code} · {brand.brand_name}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+              <p className={`mt-2 text-[11px] ${fieldMessages.brand_ids ? 'text-[var(--erp-negative)]' : 'text-[var(--erp-muted)]'}`}>
+                {fieldMessages.brand_ids || 'Select every brand this branch is allowed to use.'}
+              </p>
+            </section>
+
+            <section>
               <h4 className={sectionTitle}>Address</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <TextInput label="Address line 1" value={form.address_line_1 || ''} onChange={e => setForm({ ...form, address_line_1: e.target.value })} />
@@ -448,12 +510,38 @@ export const EntityMasterScreen: React.FC = () => {
                 <h3 className="font-display text-lg font-bold text-[var(--erp-text)]">{detail.entity_name}</h3>
                 <p className="font-mono text-xs text-[var(--erp-muted)]">{detail.short_code} · {detail.entity_type} · {detail.status}</p>
               </div>
-              <button type="button" aria-label="Close branch details" onClick={() => setDetail(null)}><X className="w-4 h-4" /></button>
+              <div className="flex items-center gap-3">
+                <RecordPrintShare
+                  title="Branch Details"
+                  recordName={detail.entity_name}
+                  fields={[
+                    { label: 'Branch Code', value: detail.short_code },
+                    { label: 'Branch Name', value: detail.entity_name },
+                    { label: 'Type', value: detail.entity_type },
+                    { label: 'Parent Branch', value: detail.parent ? `${detail.parent.short_code} · ${detail.parent.entity_name}` : undefined },
+                    { label: 'Status', value: detail.status },
+                    { label: 'Cash Code', value: detail.cash_code },
+                    { label: 'Invoice Series', value: detail.invoice_series },
+                    { label: 'Contact Person', value: detail.contact_person },
+                    { label: 'Phone', value: detail.phone },
+                    { label: 'Mobile', value: detail.mobile },
+                    { label: 'Email', value: detail.email },
+                    { label: 'Website', value: detail.website },
+                    { label: 'Address', value: [detail.address_line_1, detail.street, detail.area, detail.city, detail.district, detail.state, detail.pin_code].filter(Boolean).join(', ') },
+                    { label: 'GST No.', value: detail.gst_no },
+                    { label: 'PAN No.', value: detail.pan_no },
+                    { label: 'CST TIN', value: detail.cst_tin },
+                    { label: 'Licence No.', value: detail.licence_no },
+                  ]}
+                />
+                <button type="button" aria-label="Close branch details" onClick={() => setDetail(null)}><X className="w-4 h-4" /></button>
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-xs">
               <DetailField label="Parent branch" value={detail.parent ? `${detail.parent.short_code} · ${detail.parent.entity_name}` : 'None'} />
               <DetailField label="Cash code" value={detail.cash_code} />
               <DetailField label="Invoice series" value={detail.invoice_series} />
+              <DetailField label="Allowed brands" value={(detail.brands || []).map(brand => `${brand.brand_code} · ${brand.brand_name}`).join(', ') || 'None'} />
               <DetailField label="Contact person" value={detail.contact_person} />
               <DetailField label="Phone / Mobile" value={[detail.phone, detail.mobile].filter(Boolean).join(' / ')} />
               <DetailField label="Email" value={detail.email} />

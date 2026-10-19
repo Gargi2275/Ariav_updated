@@ -4,6 +4,7 @@ import { ERP_SCREENS } from '../../types/erp';
 import { 
   Home,
   ShoppingBag,
+  Truck,
   Receipt,
   Layers,
   Scale,
@@ -25,7 +26,7 @@ interface NavGroup {
 }
 
 export const IconRail: React.FC = () => {
-  const { currentScreenId, navigateTo, logout } = useErp();
+  const { currentScreenId, navigateTo, logout, userRole } = useErp();
   const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
   const [flyoutPlacement, setFlyoutPlacement] = useState<'top' | 'bottom'>('top');
   const [maxFlyoutHeight, setMaxFlyoutHeight] = useState<number>(380);
@@ -50,12 +51,20 @@ export const IconRail: React.FC = () => {
       primaryScreenId: 6
     },
     {
-      id: 'orders',
+      id: 'purchase-orders',
       label: 'PO',
-      title: 'Purchase Orders & Dispatch',
+      title: 'Purchase Orders',
       icon: <ShoppingBag className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: [40, 41],
+      screenIds: [40],
       primaryScreenId: 40
+    },
+    {
+      id: 'dispatches',
+      label: 'Dispatch',
+      title: 'Dispatches',
+      icon: <Truck className="w-5 h-5 stroke-[1.75]" />,
+      screenIds: [41],
+      primaryScreenId: 41
     },
     {
       id: 'sales-invoice',
@@ -102,7 +111,7 @@ export const IconRail: React.FC = () => {
       label: 'Admin',
       title: 'Governance & Year-End',
       icon: <SlidersHorizontal className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: [5, 7, 9, 10],
+      screenIds: userRole === 'admin' ? [5, 7, 9, 10] : [],
       primaryScreenId: 5
     }
   ];
@@ -151,7 +160,7 @@ export const IconRail: React.FC = () => {
           onClick={() => {
             if (!isActive) navigateTo(group.primaryScreenId);
           }}
-          className={`w-14 h-12 flex flex-col items-center justify-center gap-0.5 transition-all rounded-none relative cursor-pointer ${
+          className={`dashboard-nav-item w-14 h-12 flex flex-col items-center justify-center gap-0.5 transition-all rounded-md relative cursor-pointer ${
             isActive
               ? 'text-[var(--erp-gold)] bg-[var(--erp-surface-2)] border-l-2 border-[var(--erp-gold)]'
               : 'text-[var(--erp-muted)] hover:text-[var(--erp-text)] hover:bg-[var(--erp-surface-2)]/60'
@@ -159,7 +168,7 @@ export const IconRail: React.FC = () => {
           title={group.title}
         >
           {group.icon}
-          <span className="text-[10px] font-body font-medium tracking-tight">
+          <span className="text-[11px] font-body font-medium tracking-tight">
             {group.label}
           </span>
 
@@ -180,11 +189,11 @@ export const IconRail: React.FC = () => {
               borderColor: 'var(--erp-hairline-strong)'
             }}
           >
-            <div className="px-2.5 py-1.5 border-b border-[var(--erp-hairline)] flex items-center justify-between">
-              <span className="font-display text-xs font-semibold text-[var(--erp-text)]">
+            <div className="px-2.5 py-2 border-b border-[var(--erp-hairline)] flex items-center justify-between">
+              <span className="font-display text-sm font-semibold text-[var(--erp-text)]">
                 {group.title}
               </span>
-              <span className="font-mono text-[10px] text-[var(--erp-gold)] bg-[var(--erp-surface)] px-1.5 py-0.5 border border-[var(--erp-hairline)]">
+              <span className="font-mono text-xs text-[var(--erp-gold)] bg-[var(--erp-surface)] px-1.5 py-0.5 border border-[var(--erp-hairline)]">
                 {group.screenIds.length} {group.screenIds.length === 1 ? 'Screen' : 'Screens'}
               </span>
             </div>
@@ -204,7 +213,7 @@ export const IconRail: React.FC = () => {
                       navigateTo(screen.id);
                       setHoveredGroupId(null);
                     }}
-                    className={`px-2.5 py-2 cursor-pointer transition-colors flex items-center justify-between ${
+                    className={`dashboard-nav-flyout-item px-2.5 py-2 cursor-pointer transition-colors flex items-center justify-between ${
                       isCurrent
                         ? 'bg-[var(--erp-surface)] border-l-2 border-[var(--erp-gold)] text-[var(--erp-gold)]'
                         : 'hover:bg-[var(--erp-surface)]/80 text-[var(--erp-text)]'
@@ -258,7 +267,7 @@ export const IconRail: React.FC = () => {
 
       {/* Main Operational Nav Categories: 1. Dashboard through 8. Admin */}
       <nav className="flex flex-col items-center gap-1 w-full my-auto">
-        {operationalGroups.map(renderNavButton)}
+        {operationalGroups.filter(group => group.screenIds.length > 0).map(renderNavButton)}
       </nav>
 
       {/* Bottom Section: Separator + 9. Security & Audit + Search Tool */}
@@ -267,14 +276,17 @@ export const IconRail: React.FC = () => {
         <div className="w-10 h-[1px] bg-[var(--erp-hairline-strong)] my-0.5" />
 
         {/* 9. Security & Audit (Oversight item fixed at the bottom) */}
-        {renderNavButton(securityGroup)}
+        {renderNavButton({
+          ...securityGroup,
+          screenIds: userRole === 'admin' ? securityGroup.screenIds : securityGroup.screenIds.filter(id => id !== 4 && id !== 8),
+        })}
 
         <div className="w-8 h-[1px] bg-[var(--erp-hairline)] my-0.5" />
 
         {/* Bottom Tool: Logout / Terminal Lock */}
         <button
           onClick={logout}
-          className="w-12 h-10 flex flex-col items-center justify-center border border-[var(--erp-hairline)] hover:border-[var(--erp-negative)] hover:bg-[var(--erp-negative)]/10 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] transition-colors cursor-pointer group"
+          className="dashboard-toolbar-control w-12 h-10 flex flex-col items-center justify-center border border-[var(--erp-hairline)] hover:border-[var(--erp-negative)] hover:bg-[var(--erp-negative)]/10 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] transition-colors cursor-pointer group"
           title="Log Out & Lock Terminal"
           aria-label="Log Out & Lock Terminal"
         >

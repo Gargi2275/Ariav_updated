@@ -1,5 +1,7 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
+from accounts.access import can_delete_records, can_edit_records
+
 
 class DispatchPermission(BasePermission):
     """Authenticated staff may read and create/edit/delete dispatches.
@@ -26,6 +28,10 @@ class DispatchPermission(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         action = getattr(view, "action", None)
+        if action in {"update", "partial_update"}:
+            return can_edit_records(user)
+        if action == "destroy":
+            return can_delete_records(user)
         if action in self.STAFF_ACTIONS:
             return True
         return bool(getattr(user, "is_admin_role", False))

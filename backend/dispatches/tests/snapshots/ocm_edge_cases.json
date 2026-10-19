@@ -1,0 +1,147 @@
+{
+  "already_imported": {
+    "counts": {
+      "excluded": 1,
+      "importable": 0,
+      "rows": 1,
+      "sample": 0
+    },
+    "excluded": [
+      {
+        "customer_code": "DSP-C1",
+        "customer_name": "Dispatch Trading",
+        "group_key": "ALREADY-IMPORTED||INV-ALREADY",
+        "invoice_no": "INV-ALREADY",
+        "line_count": 1,
+        "order_code": "ALREADY-IMPORTED",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": "<id>",
+        "po_number": "ALREADY-IMPORTED",
+        "reason": "Dispatch for ALREADY-IMPORTED and invoice INV-ALREADY is already imported",
+        "source_rows": [
+          2
+        ]
+      }
+    ],
+    "format_id": "<id>",
+    "format_name": "OCM Dispatch",
+    "importable": [],
+    "preview_token": "<preview-token>",
+    "skipped": [],
+    "warnings": []
+  },
+  "customer_item_fallback": {
+    "counts": {
+      "excluded": 1,
+      "importable": 0,
+      "rows": 1,
+      "sample": 0
+    },
+    "excluded": [
+      {
+        "customer_code": "DSP-C1",
+        "customer_name": "Dispatch Trading",
+        "group_key": "MISSING-FALLBACK||INV-FALLBACK",
+        "invoice_no": "INV-FALLBACK",
+        "line_count": 1,
+        "order_code": "MISSING-FALLBACK",
+        "reason": "No customer + item PO match for Order Code MISSING-FALLBACK; customer in master: yes; POs for this customer: 0; customer PO statuses: none; item keys missing from customer's open POs: A-B-C-T-S",
+        "source_rows": [
+          2
+        ]
+      }
+    ],
+    "format_id": "<id>",
+    "format_name": "OCM Dispatch",
+    "importable": [],
+    "preview_token": "<preview-token>",
+    "skipped": [],
+    "warnings": []
+  },
+  "missing_required_column": {
+    "body": {
+      "file": "Missing required column(s): Invoice No.."
+    },
+    "status_code": 400
+  },
+  "out_of_scope": {
+    "counts": {
+      "excluded": 0,
+      "importable": 1,
+      "rows": 1,
+      "sample": 0
+    },
+    "excluded": [],
+    "format_id": "<id>",
+    "format_name": "OCM Dispatch",
+    "importable": [
+      {
+        "challan_reference": "INV-SCOPE",
+        "closing_pending_quantity": "6.00",
+        "customer_code": "DSP-C1",
+        "customer_name": "Dispatch Trading",
+        "group_key": "OUT-OF-SCOPE||INV-SCOPE",
+        "invoice_no": "INV-SCOPE",
+        "line_count": 1,
+        "lines": [
+          {
+            "client_item_key": "A-B-C-T-S",
+            "code1": "A",
+            "description": "A-B-C-T-S",
+            "po_line_description": "A-B-C-T-S",
+            "product_code": "",
+            "purchase_order_line_id": "<id>",
+            "quantity": "4.00",
+            "shade": "C"
+          }
+        ],
+        "lr_date": "2026-09-17",
+        "lr_number": "LR-1",
+        "match_message": "",
+        "opening_pending_quantity": "10.00",
+        "order_code": "OUT-OF-SCOPE",
+        "po_entity_code": "OTH",
+        "po_entity_name": "Other",
+        "po_id": "<id>",
+        "po_number": "OUT-OF-SCOPE",
+        "transporter": "VRL Logistics"
+      }
+    ],
+    "preview_token": "<preview-token>",
+    "skipped": [],
+    "warnings": []
+  },
+  "wrong_customer": {
+    "counts": {
+      "excluded": 1,
+      "importable": 0,
+      "rows": 1,
+      "sample": 0
+    },
+    "excluded": [
+      {
+        "customer_code": "DSP-C2",
+        "customer_name": "Dispatch Trading",
+        "group_key": "WRONG-CUSTOMER-PO||INV-WRONG",
+        "invoice_no": "INV-WRONG",
+        "line_count": 1,
+        "order_code": "WRONG-CUSTOMER-PO",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": "<id>",
+        "po_number": "WRONG-CUSTOMER-PO",
+        "reason": "Customer mismatch: file CustomerCd 'DSP-C2' does not match PO customer code 'DSP-C1' for WRONG-CUSTOMER-PO.",
+        "source_rows": [
+          2
+        ]
+      }
+    ],
+    "format_id": "<id>",
+    "format_name": "OCM Dispatch",
+    "importable": [],
+    "preview_token": "<preview-token>",
+    "skipped": [],
+    "warnings": []
+  }
+}

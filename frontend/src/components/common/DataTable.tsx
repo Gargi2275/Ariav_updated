@@ -83,7 +83,7 @@ export function DataTable<T>({
                     onClick={() => handleSort(col)}
                     data-sortable={col.sortable ? "true" : "false"}
                     style={{ width: col.width }}
-                    className={`${density === 'compact' ? 'px-2 py-1.5' : 'px-3.5 py-2.5'} font-mono text-[11px] font-semibold tracking-wider uppercase border-r border-[var(--erp-hairline)] last:border-r-0 whitespace-nowrap transition-colors ${
+                    className={`${density === 'compact' ? 'px-3 py-2' : 'px-3.5 py-2.5'} font-mono text-xs font-semibold tracking-wider uppercase border-r border-[var(--erp-hairline)] last:border-r-0 whitespace-nowrap transition-colors ${
                       isSorted
                         ? 'text-[var(--erp-gold)] bg-[var(--erp-surface)] font-bold'
                         : 'text-[var(--erp-muted)] hover:text-[var(--erp-text)]'
@@ -141,7 +141,7 @@ export function DataTable<T>({
                     return (
                       <td
                         key={cIdx}
-                        className={`${density === 'compact' ? 'px-2 py-1' : 'px-3.5 py-2'} text-xs border-r border-[var(--erp-hairline)] last:border-r-0 whitespace-nowrap text-[var(--erp-text)] ${
+                        className={`${density === 'compact' ? 'px-3 py-2' : 'px-3.5 py-2'} text-[13px] border-r border-[var(--erp-hairline)] last:border-r-0 whitespace-nowrap text-[var(--erp-text)] ${
                           col.mono ? 'font-mono' : 'font-body'
                         } ${
                           col.align === 'right'
@@ -160,7 +160,7 @@ export function DataTable<T>({
             })
           ) : (
               <tr>
-                <td colSpan={columns.length} className="py-12 text-center text-xs font-body text-[var(--erp-muted)]">
+                <td colSpan={columns.length} className="py-8 text-center text-[13px] font-body text-[var(--erp-muted)]">
                   <div className="flex flex-col items-center justify-center gap-2 font-body">
                     <p className="font-mono">{emptyMessage}</p>
                     {emptyActionText && onEmptyAction && (

@@ -17,7 +17,7 @@ class CustomerMasterApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="cust-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.guj = Entity.objects.create(
             short_code="GUJ",
@@ -124,12 +124,33 @@ class CustomerMasterApiTests(TestCase):
         )
         self.assertEqual(len(by_secondary.json()), 1)
 
+        scoped_search = self.client.get(
+            "/api/customers/",
+            {"entity_id": self.adt.id, "search": "sample"},
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(len(scoped_search.json()), 1)
+
+        primary_search = self.client.get(
+            "/api/customers/",
+            {"entity_id": self.guj.id, "search": "sample"},
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(len(primary_search.json()), 1)
+
         by_unrelated = self.client.get(
             "/api/customers/",
             {"entity_id": self.srv.id},
             HTTP_HOST="localhost",
         )
         self.assertEqual(by_unrelated.json(), [])
+
+        unrelated_search = self.client.get(
+            "/api/customers/",
+            {"entity_id": self.srv.id, "search": "sample"},
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(unrelated_search.json(), [])
 
         retrieve = self.client.get(f"/api/customers/{customer_id}/", HTTP_HOST="localhost")
         self.assertEqual(retrieve.status_code, 200)

@@ -5,7 +5,7 @@ class OrderForm(models.Model):
     order_no = models.CharField(max_length=30, unique=True)
     order_date = models.DateField()
     delivery_date = models.DateField(null=True, blank=True)
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="orders")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="orders")
     branch = models.ForeignKey("masters.MasterBranch", null=True, blank=True, on_delete=models.SET_NULL)
     item = models.ForeignKey("masters.ItemMaster", null=True, blank=True, on_delete=models.SET_NULL)
     meters = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -22,7 +22,7 @@ class OrderForm(models.Model):
 class SalesInvoice(models.Model):
     invoice_no = models.CharField(max_length=30, unique=True)
     invoice_date = models.DateField()
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="sales_invoices")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="sales_invoices")
     branch = models.ForeignKey("masters.MasterBranch", null=True, blank=True, on_delete=models.SET_NULL)
     item = models.ForeignKey("masters.ItemMaster", null=True, blank=True, on_delete=models.SET_NULL)
     meters = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -40,7 +40,7 @@ class SalesInvoice(models.Model):
 class BankReceivedVoucher(models.Model):
     voucher_no = models.CharField(max_length=30, unique=True)
     voucher_date = models.DateField()
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="bank_receipts")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="bank_receipts")
     bank_account = models.ForeignKey(
         "masters.AccountMaster", on_delete=models.PROTECT, related_name="bank_receipts_as_bank"
     )
@@ -57,7 +57,7 @@ class BankReceivedVoucher(models.Model):
 class CashReceivedVoucher(models.Model):
     voucher_no = models.CharField(max_length=30, unique=True)
     voucher_date = models.DateField()
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="cash_receipts")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="cash_receipts")
     amount = models.DecimalField(max_digits=14, decimal_places=2)
     narration = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, default="posted")
@@ -69,7 +69,7 @@ class CashReceivedVoucher(models.Model):
 class BankPayment(models.Model):
     voucher_no = models.CharField(max_length=30, unique=True)
     voucher_date = models.DateField()
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="bank_payments")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="bank_payments")
     bank_account = models.ForeignKey(
         "masters.AccountMaster", on_delete=models.PROTECT, related_name="bank_payments_as_bank"
     )
@@ -85,7 +85,7 @@ class BankPayment(models.Model):
 class CashPayment(models.Model):
     voucher_no = models.CharField(max_length=30, unique=True)
     voucher_date = models.DateField()
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="cash_payments")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="cash_payments")
     amount = models.DecimalField(max_digits=14, decimal_places=2)
     narration = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, default="posted")
@@ -118,7 +118,7 @@ class JournalLine(models.Model):
 class CreditNote(models.Model):
     note_no = models.CharField(max_length=30, unique=True)
     note_date = models.DateField()
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="credit_notes")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="credit_notes")
     original_invoice_no = models.CharField(max_length=30, blank=True)
     taxable_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     gst_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -133,7 +133,7 @@ class CreditNote(models.Model):
 class DebitNote(models.Model):
     note_no = models.CharField(max_length=30, unique=True)
     note_date = models.DateField()
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="debit_notes")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="debit_notes")
     original_bill_no = models.CharField(max_length=30, blank=True)
     taxable_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     gst_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -148,7 +148,7 @@ class DebitNote(models.Model):
 class MaterialReturned(models.Model):
     return_no = models.CharField(max_length=30, unique=True)
     return_date = models.DateField()
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="material_returns")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="material_returns")
     item = models.ForeignKey("masters.ItemMaster", null=True, blank=True, on_delete=models.SET_NULL)
     meters = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -163,7 +163,7 @@ class MaterialReturned(models.Model):
 class PaymentAdjustment(models.Model):
     adjustment_no = models.CharField(max_length=30, unique=True)
     adjustment_date = models.DateField()
-    customer = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="adjustments")
+    party = models.ForeignKey("masters.AccountMaster", on_delete=models.PROTECT, related_name="adjustments")
     amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     narration = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, default="posted")

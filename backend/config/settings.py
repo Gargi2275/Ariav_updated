@@ -113,6 +113,8 @@ USE_TZ = True
 STATIC_URL = "static/"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+# Original price-list PDFs. Not under MEDIA_ROOT, so the public media route cannot serve them.
+PRICE_LIST_PRIVATE_ROOT = Path(os.environ.get("PRICE_LIST_PRIVATE_ROOT", BASE_DIR / "private_price_lists"))
 
 CORS_ALLOWED_ORIGINS = [
     origin.strip()

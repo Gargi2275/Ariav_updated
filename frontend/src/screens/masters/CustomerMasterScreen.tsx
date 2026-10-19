@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, Edit2, MoreVertical, Plus, RotateCcw, ScanSearch, Search, Star, Trash2, Users, X } from 'lucide-react';
+import { BookOpen, Edit2, Eye, MoreVertical, Plus, RotateCcw, ScanSearch, Search, Star, Trash2, Users, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable, Column } from '../../components/common/DataTable';
@@ -14,14 +14,15 @@ import { acquireSaveLock, releaseSaveLock } from '../../services/saveLock';
 import { clearFieldMessage, collectRequired } from '../../services/requiredFields';
 import { EntityRow, entitiesApi } from '../../services/entitiesApi';
 import {
-  PARTY_360_KEY,
-  PARTY_LEDGER_KEY,
-  PARTY_TYPES,
-  PartyEntityLink,
+  CUSTOMER_360_KEY,
+  CUSTOMER_LEDGER_KEY,
+  CUSTOMER_TYPES,
+  CustomerEntityLink,
   CustomerRow,
   customersApi,
-  emptyParty,
+  emptyCustomer,
 } from '../../services/customersApi';
+import { RecordPrintShare } from '../../components/common/RecordPrintShare';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
 const selectClass = 'px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]';
@@ -37,10 +38,10 @@ function dateOrNull(value: string | null | undefined): string | null {
   return v || null;
 }
 
-function toggleEntity(links: PartyEntityLink[], entity: EntityRow, checked: boolean): PartyEntityLink[] {
+function toggleEntity(links: CustomerEntityLink[], entity: EntityRow, checked: boolean): CustomerEntityLink[] {
   if (checked) {
     if (links.some(l => l.entity_id === entity.id)) return links;
-    const next: PartyEntityLink = {
+    const next: CustomerEntityLink = {
       entity_id: entity.id,
       short_code: entity.short_code,
       entity_name: entity.entity_name,
@@ -55,19 +56,23 @@ function toggleEntity(links: PartyEntityLink[], entity: EntityRow, checked: bool
   return remaining;
 }
 
-function markPrimary(links: PartyEntityLink[], entityId: number): PartyEntityLink[] {
+function markPrimary(links: CustomerEntityLink[], entityId: number): CustomerEntityLink[] {
   return links.map(l => ({ ...l, primary_entity: l.entity_id === entityId }));
 }
 
-function entitiesGroupError(links: PartyEntityLink[]): string | undefined {
+function entitiesGroupError(links: CustomerEntityLink[]): string | undefined {
   if (!links.length) return 'Select at least one branch and mark exactly one as primary.';
   const primaries = links.filter(l => l.primary_entity).length;
   if (primaries !== 1) return 'Mark exactly one branch as primary.';
   return undefined;
 }
 
-export const PartyMasterScreen: React.FC = () => {
-  const { userRole, navigateTo, selectedEntityId } = useErp();
+export function shouldApplyCustomerListResponse(requestId: number, currentRequestId: number): boolean {
+  return requestId === currentRequestId;
+}
+
+export const CustomerMasterScreen: React.FC = () => {
+  const { userRole, navigateTo, selectedBranch, selectedEntityId, entityReady } = useErp();
   const canWrite = userRole === 'admin';
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [entityOptions, setEntityOptions] = useState<EntityRow[]>([]);
@@ -76,7 +81,7 @@ export const PartyMasterScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState<Partial<CustomerRow>>(emptyParty());
+  const [form, setForm] = useState<Partial<CustomerRow>>(emptyCustomer());
   const [fieldErrors, setFieldErrors] = useState<string[]>([]);
   const [fieldMessages, setFieldMessages] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -85,32 +90,53 @@ export const PartyMasterScreen: React.FC = () => {
   const [pendingHardDelete, setPendingHardDelete] = useState<CustomerRow | null>(null);
   const [hardDeleteBlockDetail, setHardDeleteBlockDetail] = useState<string | null>(null);
   const [kebab, setKebab] = useState<{ row: CustomerRow; top: number; left: number } | null>(null);
+  const [detail, setDetail] = useState<CustomerRow | null>(null);
   const [advanceBalance, setAdvanceBalance] = useState<string | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
   const savingLock = useRef(false);
+  const listRequest = useRef<{ id: number; controller: AbortController } | null>(null);
 
   const load = useCallback(async () => {
+    if (!entityReady) return;
+    const requestId = (listRequest.current?.id || 0) + 1;
+    listRequest.current?.controller.abort();
+    const controller = new AbortController();
+    listRequest.current = { id: requestId, controller };
     setLoading(true);
     setError('');
+    setRows([]);
     try {
       const [customers, ents] = await Promise.all([
         customersApi.list({
           status: statusFilter === 'All' ? undefined : statusFilter,
           entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
-        }),
+        }, { signal: controller.signal }),
         entitiesApi.list(),
       ]);
+      if (!shouldApplyCustomerListResponse(requestId, listRequest.current?.id || 0)) return;
       setRows(customers);
       setEntityOptions(ents);
     } catch (e) {
+      if (!shouldApplyCustomerListResponse(requestId, listRequest.current?.id || 0) || controller.signal.aborted) return;
       const parsed = notifyApiError(e, 'Could not load parties.');
       setError(parsed.message);
     } finally {
-      setLoading(false);
+      if (shouldApplyCustomerListResponse(requestId, listRequest.current?.id || 0)) {
+        setLoading(false);
+      }
     }
-  }, [statusFilter, selectedEntityId]);
+  }, [statusFilter, selectedEntityId, entityReady]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => () => {
+    listRequest.current?.controller.abort();
+  }, []);
+
+  useEffect(() => {
+    setSearch('');
+    setKebab(null);
+  }, [selectedEntityId]);
 
   useEffect(() => {
     if (!kebab) return;
@@ -148,7 +174,7 @@ export const PartyMasterScreen: React.FC = () => {
   });
 
   const openCreate = () => {
-    setForm(emptyParty());
+    setForm(emptyCustomer());
     setFieldErrors([]);
     setFieldMessages({});
     setModalOpen(true);
@@ -224,6 +250,22 @@ export const PartyMasterScreen: React.FC = () => {
         ? <span className="font-mono text-xs">{r.primary_entity_code} · {r.primary_entity_name}</span>
         : <span className="text-[var(--erp-muted)]">—</span>,
     },
+    {
+      header: 'Branches',
+      width: '210px',
+      render: r => r.entities.length
+        ? (
+          <div className="flex flex-col gap-0.5">
+            {r.entities.map(link => (
+              <span key={link.entity_id} className="font-mono text-xs">
+                {link.short_code || '—'} · {link.entity_name || 'Unnamed branch'}
+                {link.primary_entity ? ' (Primary)' : ''}
+              </span>
+            ))}
+          </div>
+        )
+        : <span className="text-[var(--erp-muted)]">—</span>,
+    },
     { header: 'Type', accessorKey: 'customer_type', width: '120px' },
     { header: 'City', accessorKey: 'city', width: '120px', render: r => r.city || '—' },
     {
@@ -239,12 +281,21 @@ export const PartyMasterScreen: React.FC = () => {
       width: '120px',
       render: r => (
         <div className="flex justify-end gap-1">
+        <button
+          type="button"
+          aria-label={`View ${r.customer_name} details`}
+          title="View details"
+          className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer"
+          onClick={() => setDetail(r)}
+        >
+          <Eye className="w-3.5 h-3.5" />
+        </button>
           <button
             type="button"
             className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer"
             title="View 360°"
             onClick={() => {
-              sessionStorage.setItem(PARTY_360_KEY, String(r.id));
+              sessionStorage.setItem(CUSTOMER_360_KEY, String(r.id));
               navigateTo(48);
             }}
           >
@@ -255,7 +306,7 @@ export const PartyMasterScreen: React.FC = () => {
             className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer"
             title="View Ledger"
             onClick={() => {
-              sessionStorage.setItem(PARTY_LEDGER_KEY, String(r.id));
+              sessionStorage.setItem(CUSTOMER_LEDGER_KEY, String(r.id));
               navigateTo(44);
             }}
           >
@@ -316,7 +367,7 @@ export const PartyMasterScreen: React.FC = () => {
         moduleNumber="23"
         section="Masters"
         title="Party Master"
-        subtitle="Trading customers keyed by unique party code, linked to one or more branches"
+        subtitle={`${rows.length} ${rows.length === 1 ? 'party' : 'parties'} · ${selectedBranch.name}`}
         actions={
           canWrite ? (
             <button type="button" onClick={openCreate} className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
@@ -340,19 +391,25 @@ export const PartyMasterScreen: React.FC = () => {
       {loading ? (
         <MasterLoading label="Loading customers…" />
       ) : (
-        <DataTable
-          columns={columns}
-          data={filtered}
-          keyExtractor={r => r.id}
-          {...emptyTableProps(
-            rows.length,
-            filtered.length,
-            statusFilter !== 'All' || selectedEntityId !== 'all' ? 'No customers match this filter.' : 'No parties configured yet.',
-            'No customers match this filter.',
-            canWrite ? 'Add first party' : '',
-            canWrite ? openCreate : () => undefined,
-          )}
-        />
+        <React.Fragment key={`${selectedEntityId}-${statusFilter}`}>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            keyExtractor={r => r.id}
+            {...emptyTableProps(
+              rows.length,
+              filtered.length,
+              rows.length === 0 && selectedEntityId !== 'all'
+                ? `No parties linked to ${selectedBranch.code} · ${selectedBranch.name}`
+                : statusFilter !== 'All'
+                  ? 'No customers match this filter.'
+                  : 'No parties configured yet.',
+              'No customers match this filter.',
+              canWrite ? 'Add first party' : '',
+              canWrite ? openCreate : () => undefined,
+            )}
+          />
+        </React.Fragment>
       )}
 
       {kebab && createPortal(
@@ -397,6 +454,71 @@ export const PartyMasterScreen: React.FC = () => {
         document.body,
       )}
 
+      {detail && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-5">
+            <div className="flex items-start justify-between border-b border-[var(--erp-hairline)] pb-3">
+              <div>
+                <h3 className="font-display text-lg font-bold text-[var(--erp-text)]">{detail.customer_name}</h3>
+                <p className="font-mono text-xs text-[var(--erp-muted)]">{detail.customer_code} · {detail.customer_type} · {detail.status}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <RecordPrintShare
+                  title="Party Details"
+                  recordName={detail.customer_name}
+                  fields={[
+                    { label: 'Party Code', value: detail.customer_code },
+                    { label: 'Party Name', value: detail.customer_name },
+                    { label: 'Party Type', value: detail.customer_type },
+                    { label: 'Status', value: detail.status },
+                    { label: 'Primary Branch', value: detail.primary_entity_name ? `${detail.primary_entity_code} · ${detail.primary_entity_name}` : undefined },
+                    { label: 'Linked Branches', value: detail.entities.map(link => `${link.short_code || ''} · ${link.entity_name || ''}${link.primary_entity ? ' (Primary)' : ''}`).join(', ') },
+                    { label: 'Contact Person', value: detail.contact_person },
+                    { label: 'Phone', value: detail.phone },
+                    { label: 'Mobile', value: detail.mobile },
+                    { label: 'Email', value: detail.email },
+                    { label: 'Website', value: detail.website },
+                    { label: 'Billing Address', value: [detail.address_line_1, detail.address_line_2, detail.address_line_3, detail.address_line_4, detail.area, detail.city, detail.district, detail.state, detail.pincode, detail.country].filter(Boolean).join(', ') },
+                    { label: 'GSTIN', value: detail.gst_no },
+                    { label: 'PAN', value: detail.pan_no },
+                    { label: 'Opening Balance', value: detail.opening_balance },
+                  ]}
+                  shareFields={[
+                    { label: 'Party Name', value: detail.customer_name },
+                    { label: 'Party Code', value: detail.customer_code },
+                    { label: 'Mobile', value: detail.mobile },
+                    { label: 'Email', value: detail.email },
+                    { label: 'GSTIN', value: detail.gst_no },
+                    { label: 'Address', value: [detail.address_line_1, detail.address_line_2, detail.address_line_3, detail.address_line_4, detail.area, detail.city, detail.district, detail.state, detail.pincode, detail.country].filter(Boolean).join(', ') },
+                  ]}
+                />
+                <button type="button" aria-label="Close party details" onClick={() => setDetail(null)}><X className="w-4 h-4" /></button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-xs">
+              {[
+                ['Party Type', detail.customer_type],
+                ['Status', detail.status],
+                ['Primary Branch', detail.primary_entity_name ? `${detail.primary_entity_code} · ${detail.primary_entity_name}` : ''],
+                ['Contact Person', detail.contact_person],
+                ['Phone / Mobile', [detail.phone, detail.mobile].filter(Boolean).join(' / ')],
+                ['Email', detail.email],
+                ['Website', detail.website],
+                ['Address', [detail.address_line_1, detail.address_line_2, detail.address_line_3, detail.address_line_4, detail.area, detail.city, detail.district, detail.state, detail.pincode, detail.country].filter(Boolean).join(', ')],
+                ['GSTIN', detail.gst_no],
+                ['PAN', detail.pan_no],
+                ['Opening Balance', detail.opening_balance],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">{label}</div>
+                  <div className="mt-1 min-h-5 text-[var(--erp-text)]">{value || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {modalOpen && canWrite && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <form noValidate onSubmit={save} className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-6">
@@ -437,7 +559,7 @@ export const PartyMasterScreen: React.FC = () => {
                 />
                 <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Type
                   <select value={form.customer_type || 'Company'} onChange={e => setField({ customer_type: e.target.value })} className={selectClass}>
-                    {PARTY_TYPES.map(t => <option key={t}>{t}</option>)}
+                    {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Status

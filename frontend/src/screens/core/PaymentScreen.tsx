@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Eye, Plus, Search, Trash2, Wallet, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip } from '../../components/common/StatusChip';
 import { FormField, RequiredLegend, TextInput } from '../../components/common/FormControls';
@@ -21,6 +22,10 @@ import {
   PaymentAdjustmentRow,
   PaymentAllocationRow,
   PaymentRow,
+  BankAccountRow,
+  paymentInvoiceSummary,
+  paymentModeFields,
+  paymentDuplicateWarningText,
   paymentTodayIso,
   paymentsApi,
 } from '../../services/paymentsApi';
@@ -43,8 +48,8 @@ function stampDate(iso?: string | null): string {
 }
 
 export const PaymentScreen: React.FC = () => {
-  const { userRole, selectedEntityId } = useErp();
-  const canWrite = userRole === 'admin' || userRole === 'operator';
+  const { userRole, selectedEntityId, entityReady, getPeriod } = useErp();
+  const canWrite = userRole === 'admin' || userRole === 'staff';
   const canDelete = userRole === 'admin';
 
   const [rows, setRows] = useState<PaymentRow[]>([]);
@@ -53,6 +58,8 @@ export const PaymentScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [modeFilter, setModeFilter] = useState('');
   const [listPartyFilter, setListPartyFilter] = useState<number | ''>(() => readCustomerListFilter());
+  const period = getPeriod();
+  const [allocationFilter, setAllocationFilter] = useState('');
   const [mode, setMode] = useState<'list' | 'form' | 'detail'>('list');
   const [detail, setDetail] = useState<PaymentRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PaymentRow | null>(null);
@@ -60,6 +67,8 @@ export const PaymentScreen: React.FC = () => {
 
   const [entities, setEntities] = useState<EntityRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [listCustomers, setListCustomers] = useState<CustomerRow[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccountRow[]>([]);
   const [outstanding, setOutstanding] = useState<InvoiceRow[]>([]);
   const [advanceBalance, setAdvanceBalance] = useState(0);
 
@@ -71,10 +80,17 @@ export const PaymentScreen: React.FC = () => {
   const [paymentMode, setPaymentMode] = useState('NEFT');
   const [bankCashAccount, setBankCashAccount] = useState('');
   const [transactionReference, setTransactionReference] = useState('');
+  const [invoiceReference, setInvoiceReference] = useState('');
+  const [depositAccountId, setDepositAccountId] = useState<number | ''>('');
+  const [payerBankName, setPayerBankName] = useState('');
+  const [payerBankBranch, setPayerBankBranch] = useState('');
+  const [instrumentNumber, setInstrumentNumber] = useState('');
+  const [instrumentDate, setInstrumentDate] = useState('');
   const [remarks, setRemarks] = useState('');
   const [allocAmounts, setAllocAmounts] = useState<Record<number, string>>({});
   const [fieldMessages, setFieldMessages] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [saveWarning, setSaveWarning] = useState('');
   const savingLock = useRef(false);
   const numberRef = useRef<HTMLInputElement>(null);
 
@@ -85,8 +101,10 @@ export const PaymentScreen: React.FC = () => {
   const [allocReference, setAllocReference] = useState('');
   const [allocMessages, setAllocMessages] = useState<Record<string, string>>({});
   const [allocInvoices, setAllocInvoices] = useState<InvoiceRow[]>([]);
+  const modeFields = paymentModeFields(paymentMode);
 
   const load = useCallback(async () => {
+    if (!entityReady) return;
     setLoading(true);
     setError('');
     try {
@@ -95,6 +113,9 @@ export const PaymentScreen: React.FC = () => {
         payment_mode: modeFilter || undefined,
         customer_id: listPartyFilter || undefined,
         entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
+        date_from: period.from,
+        date_to: period.to,
+        allocation_status: allocationFilter ? allocationFilter as 'allocated' | 'unallocated' : undefined,
       }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load payments.');
@@ -102,7 +123,7 @@ export const PaymentScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, modeFilter, listPartyFilter, selectedEntityId]);
+  }, [search, modeFilter, listPartyFilter, period.from, period.to, allocationFilter, selectedEntityId, entityReady]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -111,11 +132,35 @@ export const PaymentScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!entityReady) return;
+    void customersApi.list({
+      status: 'Active',
+      entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
+    }).then(setListCustomers).catch(notifyApiError);
+  }, [selectedEntityId, entityReady]);
+
+  const clearListFilters = () => {
+    setSearch('');
+    setModeFilter('');
+    setListPartyFilter('');
+    setAllocationFilter('');
+  };
+
+  useEffect(() => {
     if (!entityId) {
       setCustomers([]);
       return;
     }
     void customersApi.list({ status: 'Active', entity_id: entityId }).then(setCustomers).catch(notifyApiError);
+  }, [entityId]);
+
+  useEffect(() => {
+    if (!entityId) {
+      setBankAccounts([]);
+      setDepositAccountId('');
+      return;
+    }
+    void paymentsApi.bankAccounts(Number(entityId)).then(setBankAccounts).catch(notifyApiError);
   }, [entityId]);
 
   const loadPartyContext = useCallback(async (id: number) => {
@@ -148,6 +193,7 @@ export const PaymentScreen: React.FC = () => {
       allocated,
       unallocated: paymentAmount - allocated,
     };
+
   }, [amount, outstanding, allocAmounts]);
 
   const resetForm = () => {
@@ -159,16 +205,33 @@ export const PaymentScreen: React.FC = () => {
     setPaymentMode('NEFT');
     setBankCashAccount('');
     setTransactionReference('');
+    setInvoiceReference('');
+    setDepositAccountId('');
+    setPayerBankName('');
+    setPayerBankBranch('');
+    setInstrumentNumber('');
+    setInstrumentDate('');
     setRemarks('');
     setAllocAmounts({});
     setOutstanding([]);
     setAdvanceBalance(0);
     setFieldMessages({});
+    setSaveWarning('');
   };
 
   const openCreate = () => {
     resetForm();
     setMode('form');
+  };
+
+  const selectDepositAccount = (value: string) => {
+    const id = value ? Number(value) : '';
+    setDepositAccountId(id);
+    const account = bankAccounts.find(row => row.id === id);
+    if (account) {
+      setBankCashAccount(`${account.bank_name} ${account.account_number_masked}`);
+      setFieldMessages(prev => clearFieldMessage(prev, 'bank_cash_account'));
+    }
   };
 
   const openDetail = useCallback(async (id: number) => {
@@ -212,9 +275,11 @@ export const PaymentScreen: React.FC = () => {
       customer_id: customerId,
       amount,
       payment_mode: paymentMode,
-      bank_cash_account: bankCashAccount,
+      bank_cash_account: depositAccountId ? 'selected deposit account' : bankCashAccount,
     });
     if (num(amount) <= 0) messages.amount = 'Amount must be greater than 0.';
+    if (paymentMode === 'Cheque' && !instrumentNumber.trim()) messages.instrument_number = 'Instrument number is required for cheque payments.';
+    if (paymentMode === 'Cheque' && !instrumentDate) messages.instrument_date = 'Instrument date is required for cheque payments.';
     if (totals.unallocated < -0.001) messages.allocations = 'Allocated total cannot exceed the payment amount.';
     outstanding.forEach(inv => {
       const entered = num(allocAmounts[inv.id]);
@@ -245,12 +310,20 @@ export const PaymentScreen: React.FC = () => {
         payment_mode: paymentMode,
         bank_cash_account: bankCashAccount.trim(),
         transaction_reference: transactionReference.trim(),
+        invoice_reference: invoiceReference.trim() || null,
+        deposit_account_id: depositAccountId || null,
+        payer_bank_name: payerBankName.trim(),
+        payer_bank_branch: payerBankBranch.trim(),
+        instrument_number: instrumentNumber.trim().toUpperCase(),
+        instrument_date: instrumentDate || null,
         remarks,
         allocations,
       });
       notifySuccess(`Payment '${saved.payment_number}' recorded.`);
-      setMode('list');
-      await load();
+      const warning = paymentDuplicateWarningText(saved.duplicate_warning);
+      setSaveWarning(warning);
+      setMode(warning ? 'form' : 'list');
+      if (!warning) await load();
     } catch (err) {
       notifyApiError(err);
     } finally {
@@ -312,6 +385,11 @@ export const PaymentScreen: React.FC = () => {
     { header: 'Payment No', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.payment_number}</span> },
     { header: 'Party', render: r => <span>{r.customer_name}</span> },
     { header: 'Code', accessorKey: 'customer_code', mono: true, width: '110px' },
+    {
+      header: 'Invoice No',
+      width: '150px',
+      render: r => <span className="font-mono text-xs text-[var(--erp-gold)]" title={r.allocations.length ? r.allocations.map(a => `${a.invoice_number}: ${money(a.allocated_amount)}`).join('\n') : 'Unallocated'}>{paymentInvoiceSummary(r)}</span>,
+    },
     { header: 'Date', accessorKey: 'payment_date', mono: true, width: '110px' },
     { header: 'Amount', align: 'right', mono: true, width: '110px', render: r => money(r.amount) },
     {
@@ -323,6 +401,11 @@ export const PaymentScreen: React.FC = () => {
         : <span className="font-mono text-xs text-[var(--erp-muted)]">{money(0)}</span>,
     },
     { header: 'Mode', accessorKey: 'payment_mode', width: '120px' },
+    {
+      header: 'Bank / Ref',
+      width: '160px',
+      render: r => <div className="text-xs"><div>{r.deposit_account_name || r.bank_cash_account || '—'}</div><div className="font-mono text-[var(--erp-muted)]">{r.transaction_reference || r.instrument_number || '—'}</div></div>,
+    },
     {
       header: '',
       align: 'right',
@@ -354,18 +437,28 @@ export const PaymentScreen: React.FC = () => {
         }
       />
       {error && <MasterError message={error} onRetry={() => void load()} />}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-3">
-        <div className="relative w-full lg:w-80">
+      <div className="grid grid-cols-1 gap-2.5 rounded-md border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-2.5 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-[minmax(240px,1.8fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(140px,1fr)_minmax(145px,1fr)_minmax(145px,1fr)_auto]">
+        <div className="relative min-w-0 sm:col-span-2 lg:col-span-2 2xl:col-span-1">
           <Search className="w-4 h-4 text-[var(--erp-muted)] absolute left-3 top-2.5" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search payment no, UTR, party…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search payment, invoice, UTR, bank…" className="h-9 w-full pl-9 pr-3 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
         </div>
-        <select value={modeFilter} onChange={e => setModeFilter(e.target.value)} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs">
+        <select value={listPartyFilter} onChange={e => setListPartyFilter(e.target.value ? Number(e.target.value) : '')} className="h-9 min-w-0 px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs">
+          <option value="">All parties</option>
+          {listCustomers.map(customer => <option key={customer.id} value={customer.id}>{customer.customer_code} · {customer.customer_name}</option>)}
+        </select>
+        <select value={modeFilter} onChange={e => setModeFilter(e.target.value)} className="h-9 min-w-0 px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs">
           <option value="">All modes</option>
           {PAYMENT_MODES.map(s => <option key={s}>{s}</option>)}
         </select>
-        {listPartyFilter ? (
-          <button type="button" onClick={() => setListPartyFilter('')} className="text-[11px] font-mono text-[var(--erp-gold)] hover:underline cursor-pointer">
-            Clear customer filter
+        <select value={allocationFilter} onChange={e => setAllocationFilter(e.target.value)} className="h-9 min-w-0 px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono text-xs">
+          <option value="">All allocation status</option>
+          <option value="allocated">Allocated</option>
+          <option value="unallocated">Unallocated</option>
+        </select>
+        <div className="flex h-9 items-center"><PeriodScope /></div>
+        {(search || modeFilter || listPartyFilter || allocationFilter) ? (
+          <button type="button" onClick={clearListFilters} className="h-9 whitespace-nowrap px-2 text-[11px] font-mono text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer">
+            Clear filters
           </button>
         ) : null}
       </div>
@@ -448,9 +541,29 @@ export const PaymentScreen: React.FC = () => {
                     {PAYMENT_MODES.map(s => <option key={s}>{s}</option>)}
                   </select>
                 </FormField>
-                <TextInput label="Bank / cash account" required error={fieldMessages.bank_cash_account} value={bankCashAccount} onChange={e => { setBankCashAccount(e.target.value); setFieldMessages(prev => clearFieldMessage(prev, 'bank_cash_account')); }} />
+                <TextInput label="Bank / cash account" required={!depositAccountId} error={fieldMessages.bank_cash_account} value={bankCashAccount} onChange={e => { setBankCashAccount(e.target.value); setFieldMessages(prev => clearFieldMessage(prev, 'bank_cash_account')); }} />
                 <TextInput label="Transaction reference" helper="Cheque number, UTR, transaction ID" value={transactionReference} onChange={e => setTransactionReference(e.target.value)} />
+                <TextInput label="Invoice reference" helper="Party-provided invoice number (optional)" value={invoiceReference} onChange={e => setInvoiceReference(e.target.value)} />
+                {modeFields.showInstrument ? (
+                  <>
+                    <TextInput label="Instrument number" required error={fieldMessages.instrument_number} value={instrumentNumber} onChange={e => setInstrumentNumber(e.target.value)} />
+                    <TextInput label="Instrument date" type="date" required error={fieldMessages.instrument_date} value={instrumentDate} onChange={e => setInstrumentDate(e.target.value)} />
+                    <TextInput label="Payer bank" value={payerBankName} onChange={e => setPayerBankName(e.target.value)} />
+                    <TextInput label="Payer bank branch" value={payerBankBranch} onChange={e => setPayerBankBranch(e.target.value)} />
+                  </>
+                ) : modeFields.showPayerBank ? (
+                  <TextInput label="Payer bank" value={payerBankName} onChange={e => setPayerBankName(e.target.value)} />
+                ) : null}
+                {modeFields.showDepositAccount ? (
+                  <FormField label="Deposit account" error={fieldMessages.deposit_account_id}>
+                    <select value={depositAccountId} onChange={e => selectDepositAccount(e.target.value)} className={selectClass}>
+                      <option value="">Select deposit account…</option>
+                      {bankAccounts.map(account => <option key={account.id} value={account.id}>{account.bank_name} {account.account_number_masked}{account.ifsc ? ` · ${account.ifsc}` : ''}</option>)}
+                    </select>
+                  </FormField>
+                ) : null}
               </div>
+              {saveWarning ? <p className="mt-3 border border-[var(--erp-gold)]/40 bg-[var(--erp-gold)]/10 px-3 py-2 text-xs text-[var(--erp-gold)]">{saveWarning}</p> : null}
             </section>
             <section>
               <h4 className={sectionTitle}>Allocate to invoices</h4>
@@ -526,6 +639,10 @@ export const PaymentScreen: React.FC = () => {
               <div>Amount {money(detail.amount)}</div>
               <div className={num(detail.unallocated_amount) > 0 ? 'text-[var(--erp-gold)]' : ''}>Unallocated {money(detail.unallocated_amount)}</div>
               {detail.transaction_reference ? <div>Ref {detail.transaction_reference}</div> : null}
+              {detail.invoice_reference ? <div>Invoice ref {detail.invoice_reference}</div> : null}
+              {detail.deposit_account_name ? <div>Deposit bank {detail.deposit_account_name} {detail.deposit_account_masked}</div> : null}
+              {detail.payer_bank_name ? <div>Payer bank {detail.payer_bank_name}{detail.payer_bank_branch ? ` · ${detail.payer_bank_branch}` : ''}</div> : null}
+              {detail.instrument_number ? <div>Instrument {detail.instrument_number}{detail.instrument_date ? ` · ${detail.instrument_date}` : ''}</div> : null}
             </div>
             <section>
               <h4 className={sectionTitle}>Allocations</h4>

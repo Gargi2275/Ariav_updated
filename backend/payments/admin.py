@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Payment, PaymentAllocation, PaymentAdjustment
+from .models import BankAccount, Payment, PaymentAllocation, PaymentAdjustment
+
+
+@admin.register(BankAccount)
+class BankAccountAdmin(admin.ModelAdmin):
+    list_display = ("bank_name", "bank_branch_name", "account_number", "ifsc", "entity", "active")
+    list_filter = ("entity", "active")
+    search_fields = ("bank_name", "bank_branch_name", "account_number", "ifsc")
 
 
 class PaymentAllocationInline(admin.TabularInline):

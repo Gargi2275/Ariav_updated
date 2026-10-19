@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from rest_framework.test import APIClient
@@ -9,7 +10,7 @@ from brands.models import Brand
 from categories.models import Category
 from customers.models import Customer, CustomerEntity
 from entities.models import Entity
-from payments.models import Payment
+from payments.models import BankAccount, Payment
 from products.models import Product
 
 
@@ -23,7 +24,7 @@ class PaymentApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="pay-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
@@ -154,6 +155,71 @@ class PaymentApiTests(TestCase):
         }
         payload.update(kwargs)
         return payload
+
+    def test_payment_details_and_invoice_search(self):
+        account = BankAccount.objects.create(
+            entity=self.entity,
+            bank_name="HDFC Bank",
+            bank_branch_name="Ring Road",
+            account_number="123456789012",
+            ifsc="hdfc0123456",
+        )
+        po = self._accept_and_dispatch()
+        invoice = self._issue_invoice(po, "INV-SEARCH-001", "4.00")
+        res = self._post_payment(self._payment_payload(
+            invoice_reference="Party INV 99",
+            deposit_account_id=account.id,
+            payer_bank_name="Axis Bank",
+            payer_bank_branch="Ashram Road",
+            instrument_number="chq-44",
+            instrument_date=date.today().isoformat(),
+            allocations=[{"invoice_id": invoice["id"], "allocated_amount": "40.00"}],
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        body = res.json()
+        self.assertEqual(body["invoice_reference"], "Party INV 99")
+        self.assertEqual(body["transaction_reference"], "UTR123")
+        self.assertEqual(body["instrument_number"], "CHQ-44")
+        self.assertEqual(body["deposit_account_name"], "HDFC Bank")
+        self.assertEqual(body["deposit_account_masked"], "XXXXXXXX9012")
+        self.assertEqual(body["bank_cash_account"], "HDFC-001")
+        self.assertEqual(self.client.get("/api/payments/?search=INV-SEARCH-001", HTTP_HOST="localhost").json()[0]["id"], body["id"])
+        self.assertEqual(self.client.get("/api/payments/?search=HDFC", HTTP_HOST="localhost").json()[0]["id"], body["id"])
+
+    def test_cheque_requires_instrument_number_and_warns_on_duplicate_utr(self):
+        missing = self._post_payment(self._payment_payload(payment_mode="Cheque"))
+        self.assertEqual(missing.status_code, 400)
+        self.assertIn("instrument_number", missing.json())
+        first = self._post_payment(self._payment_payload(payment_number="PAY-DUP-1"))
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self._post_payment(self._payment_payload(payment_number="PAY-DUP-2"))
+        self.assertEqual(second.status_code, 201, second.content)
+        self.assertIn("PAY-DUP-1", second.json()["duplicate_warning"])
+
+    def test_bank_accounts_are_limited_to_selected_branch(self):
+        other_entity = Entity.objects.create(
+            short_code="OTH",
+            entity_name="Other Payments",
+            entity_type=Entity.EntityType.BRANCH,
+        )
+        own = BankAccount.objects.create(entity=self.entity, bank_name="Own Bank", account_number="1111")
+        BankAccount.objects.create(entity=other_entity, bank_name="Other Bank", account_number="2222")
+        rows = self.client.get(f"/api/payments/bank-accounts/?entity_id={self.entity.id}", HTTP_HOST="localhost")
+        self.assertEqual(rows.status_code, 200)
+        self.assertEqual([row["id"] for row in rows.json()], [own.id])
+        self.assertEqual(rows.json()[0]["account_number_masked"], "1111")
+
+    def test_instrument_date_outside_window_warns_but_does_not_block(self):
+        old_date = (date.today().replace(year=date.today().year - 1)).isoformat()
+        res = self._post_payment(self._payment_payload(
+            payment_number="PAY-OLD-CHQ",
+            payment_mode="Cheque",
+            instrument_number="CHQ-OLD",
+            instrument_date=old_date,
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertIn("outside the usual window", res.json()["instrument_date_warning"])
+
 
     def test_full_allocation_marks_invoice_paid(self):
         po = self._accept_and_dispatch()

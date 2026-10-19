@@ -13,6 +13,7 @@ import { notifyApiError, notifySuccess } from '../../services/notify';
 import { clearFieldMessage, collectRequired } from '../../services/requiredFields';
 import { BrandRow, brandsApi } from '../../services/brandsApi';
 import { CategoryRow, categoriesApi } from '../../services/categoriesApi';
+import { EntityRow, entitiesApi } from '../../services/entitiesApi';
 import {
   PRODUCT_AVAILABILITY,
   PRODUCT_UNITS,
@@ -38,10 +39,12 @@ function availabilityChip(value: string) {
 }
 
 export const ProductCatalogueScreen: React.FC = () => {
-  const { userRole } = useErp();
+  const { userRole, selectedEntityId } = useErp();
   const canWrite = userRole === 'admin';
   const [rows, setRows] = useState<ProductRow[]>([]);
   const [brands, setBrands] = useState<BrandRow[]>([]);
+  const [entities, setEntities] = useState<EntityRow[]>([]);
+  const [lookupsReady, setLookupsReady] = useState(false);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -65,14 +68,18 @@ export const ProductCatalogueScreen: React.FC = () => {
 
   const loadLookups = useCallback(async () => {
     try {
-      const [brandRows, catRows] = await Promise.all([
+      const [brandRows, catRows, entityRows] = await Promise.all([
         brandsApi.list(),
         categoriesApi.list(),
+        entitiesApi.list({ status: 'Active' }),
       ]);
       setBrands(brandRows);
       setCategories(catRows);
+      setEntities(entityRows);
     } catch (e) {
       notifyApiError(e, 'Could not load brands and categories.');
+    } finally {
+      setLookupsReady(true);
     }
   }, []);
 
@@ -97,7 +104,27 @@ export const ProductCatalogueScreen: React.FC = () => {
   useEffect(() => { void loadLookups(); }, [loadLookups]);
   useEffect(() => { void load(); }, [load]);
 
+  const selectedEntity = useMemo(
+    () => (selectedEntityId === 'all' ? undefined : entities.find(row => row.id === selectedEntityId)),
+    [entities, selectedEntityId],
+  );
+  const branchBrands = useMemo(() => {
+    if (!selectedEntity) return brands;
+    const allowed = new Set((selectedEntity.brand_ids || []).map(id => Number(id)));
+    return brands.filter(brand => allowed.has(Number(brand.id)));
+  }, [brands, selectedEntity]);
+
+  useEffect(() => {
+    if (!lookupsReady) return;
+    if (brandFilter !== '' && !branchBrands.some(brand => brand.id === brandFilter)) {
+      setBrandFilter('');
+    }
+  }, [brandFilter, branchBrands, lookupsReady]);
+
   const filtered = rows.filter(r => {
+    if (selectedEntity && !branchBrands.some(brand => brand.id === r.brand_id)) {
+      return false;
+    }
     const q = search.toLowerCase().trim();
     return !q
       || r.product_code.toLowerCase().includes(q)
@@ -115,9 +142,24 @@ export const ProductCatalogueScreen: React.FC = () => {
     () => categories.filter(c => formParentId && c.parent_category_id === formParentId),
     [categories, formParentId],
   );
+  const formBrandOptions = useMemo(
+    () => (selectedEntity ? branchBrands : brands).filter(brand => brand.status === 'Active' || brand.id === form.brand_id),
+    [selectedEntity, branchBrands, brands, form.brand_id],
+  );
+  const soleBrand = formBrandOptions.length === 1 ? formBrandOptions[0] : null;
+
+  useEffect(() => {
+    if (!modalOpen || !soleBrand || form.brand_id === soleBrand.id) return;
+    setForm(current => ({ ...current, brand_id: soleBrand.id }));
+  }, [modalOpen, soleBrand, form.brand_id]);
 
   const openCreate = () => {
-    setForm(emptyProduct());
+    const initial = emptyProduct();
+    const activeBranchBrands = branchBrands.filter(brand => brand.status === 'Active');
+    if (selectedEntity && activeBranchBrands.length === 1) {
+      initial.brand_id = activeBranchBrands[0].id;
+    }
+    setForm(initial);
     setFormParentId('');
     setImageFile(null);
     setImagePreview('');
@@ -226,7 +268,9 @@ export const ProductCatalogueScreen: React.FC = () => {
         </span>
       ),
     },
-    { header: 'Rate', accessorKey: 'rate', align: 'right', mono: true, width: '90px', render: r => <span>₹{num(r.rate).toFixed(2)}</span> },
+    { header: 'Ex-Mill', accessorKey: 'rate', align: 'right', mono: true, width: '90px', render: r => <span>₹{num(r.rate).toFixed(2)}</span> },
+    { header: 'W/S', align: 'right', mono: true, width: '90px', render: r => <span>{r.frate == null || r.frate === '' ? '—' : `₹${num(r.frate).toFixed(2)}`}</span> },
+    { header: 'Retail', align: 'right', mono: true, width: '90px', render: r => <span>{r.trate == null || r.trate === '' ? '—' : `₹${num(r.trate).toFixed(2)}`}</span> },
     { header: 'Availability', width: '130px', render: r => availabilityChip(r.availability) },
     {
       header: 'Status',
@@ -278,10 +322,27 @@ export const ProductCatalogueScreen: React.FC = () => {
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-          <select value={brandFilter} onChange={e => setBrandFilter(e.target.value ? Number(e.target.value) : '')} className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
-            <option value="">All brands</option>
-            {brands.map(b => <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name}</option>)}
-          </select>
+          {selectedEntityId !== 'all' && !lookupsReady ? (
+            <div className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-muted)]">
+              Loading brands…
+            </div>
+          ) : selectedEntity && branchBrands.length === 0 ? (
+            <div className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-muted)]">
+              No brands mapped to this branch
+            </div>
+          ) : selectedEntity && branchBrands.length === 1 ? (
+            <div
+              className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]"
+              aria-label={`Brand filter: ${branchBrands[0].brand_code} · ${branchBrands[0].brand_name}`}
+            >
+              {branchBrands[0].brand_code} · {branchBrands[0].brand_name}
+            </div>
+          ) : (
+            <select value={brandFilter} onChange={e => setBrandFilter(e.target.value ? Number(e.target.value) : '')} className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
+              <option value="">All brands</option>
+              {branchBrands.map(b => <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name}</option>)}
+            </select>
+          )}
           <select value={parentFilter} onChange={e => { setParentFilter(e.target.value ? Number(e.target.value) : ''); setSubFilter(''); }} className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
             <option value="">All categories</option>
             {topLevel.map(c => <option key={c.id} value={c.id}>{c.category_code} · {c.category_name}</option>)}
@@ -297,7 +358,7 @@ export const ProductCatalogueScreen: React.FC = () => {
         </div>
       </div>
 
-      {loading ? (
+      {loading || (selectedEntityId !== 'all' && !lookupsReady) ? (
         <MasterLoading label="Loading products…" />
       ) : (
         <DataTable
@@ -305,11 +366,15 @@ export const ProductCatalogueScreen: React.FC = () => {
           data={filtered}
           keyExtractor={r => r.id}
           {...emptyTableProps(
-            rows.length,
+            selectedEntity
+              ? rows.filter(row => branchBrands.some(brand => brand.id === row.brand_id)).length
+              : rows.length,
             filtered.length,
             statusFilter !== 'All' || brandFilter || subFilter || availabilityFilter
               ? 'No products match this filter.'
-              : 'No products in the catalogue yet.',
+              : selectedEntity && branchBrands.length === 0
+                ? 'No brands are mapped to this branch.'
+                : 'No products in the catalogue yet.',
             'No products match this filter.',
             canWrite ? 'Add first product' : '',
             canWrite ? openCreate : () => undefined,
@@ -375,21 +440,30 @@ export const ProductCatalogueScreen: React.FC = () => {
                   />
                 </div>
                 <FormField label="Brand" required error={fieldMessages.brand_id}>
-                  <select
-                    value={form.brand_id || ''}
-                    onChange={e => {
-                      setForm({ ...form, brand_id: e.target.value ? Number(e.target.value) : undefined });
-                      setFieldErrors(prev => prev.filter(f => f !== 'brand_id'));
-                      setFieldMessages(prev => clearFieldMessage(prev, 'brand_id'));
-                    }}
-                    aria-invalid={!!fieldMessages.brand_id || fieldErrors.includes('brand_id') || undefined}
-                    className={`px-3 py-2 text-sm bg-[var(--erp-surface)] border text-[var(--erp-text)] ${fieldMessages.brand_id || fieldErrors.includes('brand_id') ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                  >
-                    <option value="">Select brand…</option>
-                    {brands.filter(b => b.status === 'Active' || b.id === form.brand_id).map(b => (
-                      <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name}</option>
-                    ))}
-                  </select>
+                  {soleBrand ? (
+                    <div
+                      className="px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]"
+                      aria-label={`Brand ${soleBrand.brand_code} · ${soleBrand.brand_name}`}
+                    >
+                      {soleBrand.brand_code} · {soleBrand.brand_name}
+                    </div>
+                  ) : (
+                    <select
+                      value={form.brand_id || ''}
+                      onChange={e => {
+                        setForm({ ...form, brand_id: e.target.value ? Number(e.target.value) : undefined });
+                        setFieldErrors(prev => prev.filter(f => f !== 'brand_id'));
+                        setFieldMessages(prev => clearFieldMessage(prev, 'brand_id'));
+                      }}
+                      aria-invalid={!!fieldMessages.brand_id || fieldErrors.includes('brand_id') || undefined}
+                      className={`px-3 py-2 text-sm bg-[var(--erp-surface)] border text-[var(--erp-text)] ${fieldMessages.brand_id || fieldErrors.includes('brand_id') ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
+                    >
+                      <option value="">Select brand…</option>
+                      {formBrandOptions.map(b => (
+                        <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name}</option>
+                      ))}
+                    </select>
+                  )}
                 </FormField>
                 <FormField label="Category">
                   <select value={formParentId} onChange={e => { const v = e.target.value ? Number(e.target.value) : ''; setFormParentId(v); setForm({ ...form, category_id: undefined }); setFieldMessages(prev => clearFieldMessage(prev, 'category_id')); }} className="px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]">
@@ -450,9 +524,9 @@ export const ProductCatalogueScreen: React.FC = () => {
             <section>
               <h4 className={sectionTitle}>Commercial</h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <TextInput label="Rate (₹)" mono value={String(form.rate ?? 0)} onChange={e => setForm({ ...form, rate: e.target.value })} />
-                <TextInput label="FRate (₹)" mono value={form.frate == null ? '' : String(form.frate)} onChange={e => setForm({ ...form, frate: e.target.value })} />
-                <TextInput label="TRate (₹)" mono value={form.trate == null ? '' : String(form.trate)} onChange={e => setForm({ ...form, trate: e.target.value })} />
+                <TextInput label="Ex-Mill (₹)" mono value={String(form.rate ?? 0)} onChange={e => setForm({ ...form, rate: e.target.value })} />
+                <TextInput label="W/S (₹)" mono value={form.frate == null ? '' : String(form.frate)} onChange={e => setForm({ ...form, frate: e.target.value })} />
+                <TextInput label="Retail (₹)" mono value={form.trate == null ? '' : String(form.trate)} onChange={e => setForm({ ...form, trate: e.target.value })} />
               </div>
             </section>
 

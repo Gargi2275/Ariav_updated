@@ -14,11 +14,11 @@ import { acquireSaveLock, releaseSaveLock } from '../../services/saveLock';
 import { clearFieldMessage, collectRequired } from '../../services/requiredFields';
 import {
   BrandRow,
-  COMMISSION_BASES,
   ORDER_METHODS,
   brandsApi,
   emptyBrand,
 } from '../../services/brandsApi';
+import { EntityRow, entitiesApi } from '../../services/entitiesApi';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
 
@@ -40,6 +40,9 @@ export const BrandMasterScreen: React.FC = () => {
   const [pendingHardDelete, setPendingHardDelete] = useState<BrandRow | null>(null);
   const [hardDeleteBlockDetail, setHardDeleteBlockDetail] = useState<string | null>(null);
   const [kebab, setKebab] = useState<{ row: BrandRow; top: number; left: number } | null>(null);
+  const [branches, setBranches] = useState<EntityRow[]>([]);
+  const [branchSearch, setBranchSearch] = useState('');
+  const [branchesLoading, setBranchesLoading] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
   const savingLock = useRef(false);
 
@@ -59,6 +62,13 @@ export const BrandMasterScreen: React.FC = () => {
   }, [statusFilter]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    setBranchesLoading(true);
+    entitiesApi.list({ status: 'Active' })
+      .then(setBranches)
+      .catch(e => notifyApiError(e, 'Could not load active branches.'))
+      .finally(() => setBranchesLoading(false));
+  }, []);
   useOutsideKebabClose(!!kebab, () => setKebab(null));
 
   const filtered = rows.filter(r => {
@@ -72,6 +82,7 @@ export const BrandMasterScreen: React.FC = () => {
     setForm(emptyBrand());
     setFieldErrors([]);
     setFieldMessages({});
+    setBranchSearch('');
     setModalOpen(true);
   };
 
@@ -139,7 +150,7 @@ export const BrandMasterScreen: React.FC = () => {
       width: '72px',
       render: r => canWrite ? (
         <div className="flex justify-end gap-1">
-          <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" onClick={() => { setForm(r); setFieldErrors([]); setFieldMessages({}); setModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /></button>
+          <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" onClick={() => { setForm(r); setFieldErrors([]); setFieldMessages({}); setBranchSearch(''); setModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /></button>
           {r.status === 'Active' && (
             <button
               type="button"
@@ -170,7 +181,7 @@ export const BrandMasterScreen: React.FC = () => {
         moduleNumber="37"
         section="Masters"
         title="Brand Master"
-        subtitle="Mill labels, commission terms, and Digital PO vs Manual/POR routing"
+        subtitle="Mill labels and Digital PO vs Manual/POR routing"
         actions={
           canWrite ? (
             <button type="button" onClick={openCreate} className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
@@ -277,22 +288,6 @@ export const BrandMasterScreen: React.FC = () => {
             </section>
 
             <section>
-              <h4 className={sectionTitle}>Commercial Terms</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <TextInput label="Commission rate %" mono value={String(form.commission_rate ?? 0)} onChange={e => setForm({ ...form, commission_rate: e.target.value })} />
-                <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Commission basis
-                  <select value={form.commission_basis || '% of invoice value'} onChange={e => setForm({ ...form, commission_basis: e.target.value })} className="px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]">
-                    {COMMISSION_BASES.map(b => <option key={b}>{b}</option>)}
-                  </select>
-                </label>
-                <TextInput label="Credit days" mono value={String(form.credit_days ?? 0)} onChange={e => setForm({ ...form, credit_days: parseInt(e.target.value, 10) || 0 })} />
-                <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)] sm:col-span-2">Payment terms
-                  <textarea value={form.payment_terms || ''} onChange={e => setForm({ ...form, payment_terms: e.target.value })} rows={2} className="px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] rounded-none" />
-                </label>
-              </div>
-            </section>
-
-            <section>
               <h4 className={sectionTitle}>Order Processing</h4>
               <FormLabel required>Order method</FormLabel>
               <p className="text-[11px] font-mono text-[var(--erp-muted)] mb-3 mt-1">Drives whether later purchase orders go out as Digital PO or Manual/POR.</p>
@@ -316,6 +311,54 @@ export const BrandMasterScreen: React.FC = () => {
                 })}
               </div>
               <FieldError message={fieldMessages.order_method} />
+            </section>
+
+            <section>
+              <h4 className={sectionTitle}>Allowed branches</h4>
+              <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)]">
+                <div className="p-2 border-b border-[var(--erp-hairline)]">
+                  <input
+                    value={branchSearch}
+                    onChange={e => setBranchSearch(e.target.value)}
+                    placeholder="Search active branches…"
+                    className="w-full bg-transparent px-2 py-1.5 text-sm text-[var(--erp-text)] outline-none"
+                  />
+                </div>
+                {branchesLoading ? (
+                  <div className="p-3 text-xs text-[var(--erp-muted)]">Loading active branches…</div>
+                ) : branches.length === 0 ? (
+                  <div className="p-3 text-xs text-[var(--erp-muted)]">No active branches are available.</div>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
+                    {branches
+                      .filter(branch => `${branch.short_code} ${branch.entity_name}`.toLowerCase().includes(branchSearch.toLowerCase().trim()))
+                      .map(branch => {
+                        const checked = (form.branch_ids || []).includes(branch.id);
+                        return (
+                          <label key={branch.id} className="flex items-center gap-2 px-2 py-1.5 text-sm text-[var(--erp-text)] hover:bg-[var(--erp-surface-2)] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setForm({
+                                ...form,
+                                branch_ids: checked
+                                  ? (form.branch_ids || []).filter(id => id !== branch.id)
+                                  : [...(form.branch_ids || []), branch.id],
+                              })}
+                              className="accent-[var(--erp-gold)]"
+                            />
+                            <span>{branch.short_code} · {branch.entity_name}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+              <p className="mt-2 text-[11px] text-[var(--erp-muted)]">
+                {(form.branch_ids || []).length
+                  ? `${form.branch_ids?.length} active branch${form.branch_ids?.length === 1 ? '' : 'es'} selected.`
+                  : 'No branches selected. This brand will not be available for purchase orders until it is mapped.'}
+              </p>
             </section>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-[var(--erp-hairline)]">

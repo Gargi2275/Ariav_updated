@@ -49,13 +49,13 @@ class CustomerScopeTests(TestCase):
             username="scope-admin", password="pass12345", role=AuthUser.Role.ADMIN, display_name="Scope Admin"
         )
         self.op_a = AuthUser.objects.create_user(
-            username="scope-op-a", password="pass12345", role=AuthUser.Role.OPERATOR, display_name="Operator A"
+            username="scope-op-a", password="pass12345", role=AuthUser.Role.STAFF, display_name="Operator A"
         )
         self.op_b = AuthUser.objects.create_user(
-            username="scope-op-b", password="pass12345", role=AuthUser.Role.OPERATOR, display_name="Operator B"
+            username="scope-op-b", password="pass12345", role=AuthUser.Role.STAFF, display_name="Operator B"
         )
         self.op_new = AuthUser.objects.create_user(
-            username="scope-op-new", password="pass12345", role=AuthUser.Role.OPERATOR, display_name="Operator New"
+            username="scope-op-new", password="pass12345", role=AuthUser.Role.STAFF, display_name="Operator New"
         )
         self.entity = Entity.objects.create(
             short_code="SCP",
@@ -550,8 +550,8 @@ class CustomerScopeTests(TestCase):
         self.assertIn("PAY-SC-Y", {r["payment_number"] for r in admin_body["payments"]["allocations"]})
 
         results = dict(run_checks())
-        self.assertIn(x_inv, results["Invoices: Customer differs from the PO's Customer"])
-        self.assertTrue(results["Payment allocations: payment Customer differs from invoice Customer"])
+        self.assertIn(x_inv, results["Invoices: Party differs from the PO's Party"])
+        self.assertTrue(results["Payment allocations: payment Party differs from invoice Party"])
 
     def test_deactivated_revoked_and_expired_sessions_are_refused(self):
         paths = [

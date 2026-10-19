@@ -1,6 +1,6 @@
 export type ThemeMode = 'dark' | 'light';
 
-export type UserRole = 'admin' | 'operator';
+export type UserRole = 'admin' | 'staff';
 
 export type ScreenCategory = 'Auth' | 'Admin' | 'Core Operations' | 'Masters' | 'Reports';
 
@@ -24,7 +24,7 @@ export const ERP_SCREENS: ScreenDefinition[] = [
   // Admin
   { id: 5, slug: 'approval-queue', title: 'Live Approval Queue', category: 'Admin', subtitle: 'Operator Requests & Verbal OTP Reveal', iconName: 'Radio', shortcut: '5' },
   { id: 6, slug: 'analytics', title: 'Business Analytics & Position', category: 'Admin', subtitle: 'Sales, Collections, Branch Split & Brokers', iconName: 'TrendingUp', shortcut: '6' },
-  { id: 7, slug: 'menu-rights', title: 'Menu Rights / Role Permissions', category: 'Admin', subtitle: 'Granular Read/Write/Post Matrix', iconName: 'SlidersHorizontal', shortcut: '7' },
+  { id: 7, slug: 'staff', title: 'Staff', category: 'Admin', subtitle: 'Staff accounts, edit and delete rights, login approval', iconName: 'Users', shortcut: '7' },
   { id: 8, slug: 'audit-log', title: 'Forensic Audit Log', category: 'Admin', subtitle: 'User Actions, IP Address & Chronological Trail', iconName: 'FileText', shortcut: '8' },
   { id: 9, slug: 'backup', title: 'Backup Trigger & History', category: 'Admin', subtitle: 'Manual Snapshots & Point-in-Time Restore', iconName: 'HardDrive', shortcut: '9' },
   { id: 10, slug: 'year-end-closing', title: 'Year-End Closing Flow', category: 'Admin', subtitle: 'Checklist, Rollover Preview & Archive Lock', iconName: 'CalendarCheck', shortcut: '10' },

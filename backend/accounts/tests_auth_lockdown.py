@@ -44,7 +44,7 @@ class AuthTestBase(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="lock-operator",
             password=OPERATOR_PASSWORD,
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
             display_name="Lock Operator",
             operator_code="OP-LK",
         )
@@ -264,11 +264,13 @@ class EndToEndFlowTests(AuthTestBase):
     def test_operator_flow_request_approve_otp_session(self):
         res = self.check_credentials(self.operator.username, OPERATOR_PASSWORD, ip="10.0.1.1")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["role"], "operator")
+        self.assertEqual(res.json()["role"], "staff")
         request_id = self.operator_request(username=res.json()["username"])
 
         status = self.client_from("10.0.1.1").get(f"/api/check-request-status/?request_id={request_id}", **H)
-        self.assertEqual(status.json(), {"success": True, "status": "pending"})
+        self.assertEqual(status.json()["status"], "pending")
+        self.assertGreater(status.json()["seconds_remaining"], 0)
+        self.assertNotIn("verbal_otp", status.json())
 
         admin_client = self.client_from(token=self.admin_token())
         queue = admin_client.get("/api/auth/admin/queue", **H)
@@ -288,9 +290,9 @@ class EndToEndFlowTests(AuthTestBase):
 
         res = self.verify_otp({"request_id": request_id, "otpCode": otp})
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["role"], "operator")
+        self.assertEqual(res.json()["role"], "staff")
         me = self.client_from(token=res.json()["token"]).get("/api/auth/me/", **H)
-        self.assertEqual(me.json()["role"], "operator")
+        self.assertEqual(me.json()["role"], "staff")
         self.assertEqual(me.json()["user"]["id"], str(self.operator.id))
 
         req.refresh_from_db()

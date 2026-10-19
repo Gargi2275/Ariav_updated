@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, Plus, Search, Trash2, Truck, Upload, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterStatus';
@@ -16,14 +17,14 @@ import { openTraceTarget } from '../../services/traceLinks';
 import { readCustomerListFilter } from '../../services/customersApi';
 
 export const DispatchScreen: React.FC = () => {
-  const { userRole, navigateTo } = useErp();
-  const canWrite = userRole === 'admin' || userRole === 'operator';
+  const { userRole, navigateTo, selectedEntityId, entityReady, canDeleteRecords, getPeriod } = useErp();
+  const canWrite = userRole === 'admin' || userRole === 'staff';
+  const canDelete = userRole === 'admin' || (userRole === 'staff' && canDeleteRecords);
   const [rows, setRows] = useState<DispatchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const period = getPeriod();
   const [customerFilter, setCustomerFilter] = useState<number | ''>(() => readCustomerListFilter());
   const [detail, setDetail] = useState<DispatchRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DispatchRow | null>(null);
@@ -32,14 +33,16 @@ export const DispatchScreen: React.FC = () => {
   const searchTimer = useRef<number | null>(null);
 
   const load = useCallback(async (term = search) => {
+    if (!entityReady) return;
     setLoading(true);
     setError('');
     try {
       setRows(await dispatchesApi.list({
         search: term || undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
+        date_from: period.from,
+        date_to: period.to,
         customer_id: customerFilter || undefined,
+        entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
       }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load dispatches.');
@@ -47,9 +50,9 @@ export const DispatchScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo, search, customerFilter]);
+  }, [period.from, period.to, search, customerFilter, selectedEntityId, entityReady]);
 
-  useEffect(() => { void load(); }, [dateFrom, dateTo, customerFilter]);
+  useEffect(() => { void load(); }, [period.from, period.to, customerFilter, selectedEntityId, entityReady]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(OPEN_DISPATCH_KEY);
@@ -64,7 +67,7 @@ export const DispatchScreen: React.FC = () => {
     if (searchTimer.current) window.clearTimeout(searchTimer.current);
     searchTimer.current = window.setTimeout(() => { void load(search); }, 250);
     return () => { if (searchTimer.current) window.clearTimeout(searchTimer.current); };
-  }, [search]);
+  }, [search, entityReady]);
 
   const columns: Column<DispatchRow>[] = [
     { header: 'Date', accessorKey: 'dispatch_date', mono: true, width: '110px' },
@@ -80,7 +83,7 @@ export const DispatchScreen: React.FC = () => {
       render: r => (
         <div className="flex justify-end gap-1">
           <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" title="View" onClick={() => setDetail(r)}><Eye className="w-3.5 h-3.5" /></button>
-          {canWrite && (
+          {canDelete && (
             <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] cursor-pointer" title="Delete dispatch" onClick={() => setPendingDelete(r)}><Trash2 className="w-3.5 h-3.5" /></button>
           )}
         </div>
@@ -129,9 +132,7 @@ export const DispatchScreen: React.FC = () => {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search LR, challan, PO…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
         </div>
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]" />
-          <span className="text-[var(--erp-muted)]">to</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-2 py-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]" />
+          <PeriodScope />
           {customerFilter ? (
             <button type="button" onClick={() => setCustomerFilter('')} className="text-[11px] font-mono text-[var(--erp-gold)] hover:underline cursor-pointer">
               Clear customer filter

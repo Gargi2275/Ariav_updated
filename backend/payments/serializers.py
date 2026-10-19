@@ -1,5 +1,7 @@
 from collections import defaultdict
+from datetime import date, timedelta
 from decimal import Decimal
+import re
 
 from django.db import transaction
 from rest_framework import serializers
@@ -9,7 +11,7 @@ from entities.models import Entity
 from invoices.models import Invoice
 from invoices.services import money
 
-from .models import Payment, PaymentAllocation, PaymentAdjustment
+from .models import BankAccount, Payment, PaymentAllocation, PaymentAdjustment
 from .services import (
     ALLOCATABLE_STATUSES,
     invoice_remaining_balance,
@@ -27,6 +29,36 @@ def _user_display_name(user):
     if user is None:
         return ""
     return user.display_name or user.username
+
+
+def _mask_account_text(value):
+    match = re.search(r"(\d{4,})$", value or "")
+    if not match:
+        return value or ""
+    digits = match.group(1)
+    return f"{value[:match.start()]}{'X' * (len(digits) - 4)}{digits[-4:]}"
+
+
+class BankAccountSerializer(serializers.ModelSerializer):
+    entity_id = serializers.IntegerField(source="entity.id", read_only=True)
+    entity_name = serializers.CharField(source="entity.entity_name", read_only=True)
+    account_number_masked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BankAccount
+        fields = (
+            "id",
+            "entity_id",
+            "entity_name",
+            "bank_name",
+            "bank_branch_name",
+            "account_number_masked",
+            "ifsc",
+            "active",
+        )
+
+    def get_account_number_masked(self, obj):
+        return f"{'X' * max(len(obj.account_number) - 4, 0)}{obj.account_number[-4:]}"
 
 
 class PaymentAllocationSerializer(serializers.ModelSerializer):
@@ -119,6 +151,16 @@ class PaymentSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     allocations = PaymentAllocationSerializer(many=True, required=False)
     adjustments = PaymentAdjustmentSerializer(many=True, read_only=True)
+    deposit_account_id = serializers.PrimaryKeyRelatedField(
+        source="deposit_account",
+        queryset=BankAccount.objects.filter(active=True),
+        required=False,
+        allow_null=True,
+    )
+    deposit_account_name = serializers.CharField(source="deposit_account.bank_name", read_only=True)
+    deposit_account_masked = serializers.SerializerMethodField()
+    duplicate_warning = serializers.SerializerMethodField()
+    instrument_date_warning = serializers.SerializerMethodField()
 
     class Meta:
         model = Payment
@@ -136,10 +178,20 @@ class PaymentSerializer(serializers.ModelSerializer):
             "payment_mode",
             "bank_cash_account",
             "transaction_reference",
+            "invoice_reference",
+            "deposit_account_id",
+            "deposit_account_name",
+            "deposit_account_masked",
+            "payer_bank_name",
+            "payer_bank_branch",
+            "instrument_number",
+            "instrument_date",
             "remarks",
             "unallocated_amount",
             "allocations",
             "adjustments",
+            "duplicate_warning",
+            "instrument_date_warning",
             "created_at",
             "updated_at",
             "created_by",
@@ -162,10 +214,27 @@ class PaymentSerializer(serializers.ModelSerializer):
             "payment_number": {"validators": []},
             "transaction_reference": {"required": False},
             "remarks": {"required": False},
+            "invoice_reference": {"required": False, "allow_null": True},
+            "payer_bank_name": {"required": False},
+            "payer_bank_branch": {"required": False},
+            "instrument_number": {"required": False},
+            "instrument_date": {"required": False, "allow_null": True},
         }
 
     def get_created_by_name(self, obj):
         return _user_display_name(obj.created_by)
+
+    def get_deposit_account_masked(self, obj):
+        account = obj.deposit_account
+        return f"{'X' * max(len(account.account_number) - 4, 0)}{account.account_number[-4:]}" if account else ""
+
+    def get_instrument_date_warning(self, obj):
+        if not obj.instrument_date:
+            return ""
+        today = date.today()
+        if obj.instrument_date < today - timedelta(days=183) or obj.instrument_date > today + timedelta(days=31):
+            return "Instrument date is outside the usual window (past 6 months or next 1 month)."
+        return ""
 
     def validate_payment_number(self, value):
         value = (value or "").strip()
@@ -186,10 +255,33 @@ class PaymentSerializer(serializers.ModelSerializer):
     def validate_bank_cash_account(self, value):
         value = (value or "").strip()
         if not value:
+            if self.initial_data.get("deposit_account_id"):
+                return ""
             raise serializers.ValidationError("Bank/cash account is required.")
         return value
 
+    def validate_transaction_reference(self, value):
+        return (value or "").strip().upper()
+
+    def validate_invoice_reference(self, value):
+        return (value or "").strip() or None
+
+    def validate_instrument_number(self, value):
+        return (value or "").strip().upper()
+
     def validate(self, attrs):
+        mode = attrs.get("payment_mode", getattr(self.instance, "payment_mode", None))
+        instrument_number = attrs.get("instrument_number", getattr(self.instance, "instrument_number", ""))
+        instrument_date = attrs.get("instrument_date", getattr(self.instance, "instrument_date", None))
+        if mode in (Payment.PaymentMode.CHEQUE, "DD"):
+            if not instrument_number:
+                raise serializers.ValidationError({"instrument_number": "Instrument number is required for cheque or DD payments."})
+        if mode == Payment.PaymentMode.CHEQUE and not instrument_date:
+            raise serializers.ValidationError({"instrument_date": "Instrument date is required for cheque payments."})
+        deposit = attrs.get("deposit_account")
+        entity = attrs.get("entity", getattr(self.instance, "entity", None))
+        if deposit and entity and deposit.entity_id != entity.id:
+            raise serializers.ValidationError({"deposit_account_id": "Deposit account must belong to the selected branch."})
         customer = attrs.get("customer", getattr(self.instance, "customer", None))
         if customer is not None:
             attrs["customer_code"] = customer.customer_code
@@ -199,6 +291,32 @@ class PaymentSerializer(serializers.ModelSerializer):
             amount = attrs.get("amount", getattr(self.instance, "amount", None))
             _validate_allocation_batch(customer, amount, allocations)
         return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["bank_cash_account"] = _mask_account_text(data.get("bank_cash_account", ""))
+        return data
+
+    def get_duplicate_warning(self, obj):
+        if not self.context.get("include_duplicate_warning"):
+            return ""
+        matches = []
+        if obj.transaction_reference:
+            matches.extend(
+                Payment.objects.filter(
+                    customer_id=obj.customer_id,
+                    transaction_reference__iexact=obj.transaction_reference,
+                ).exclude(pk=obj.pk).values_list("payment_number", flat=True)[:1]
+            )
+        if not matches and obj.instrument_number and obj.payer_bank_name:
+            matches.extend(
+                Payment.objects.filter(
+                    customer_id=obj.customer_id,
+                    instrument_number__iexact=obj.instrument_number,
+                    payer_bank_name__iexact=obj.payer_bank_name,
+                ).exclude(pk=obj.pk).values_list("payment_number", flat=True)[:1]
+            )
+        return f"Similar payment already exists: {matches[0]}." if matches else ""
 
     def _hide_out_of_scope_invoices(self, customer, allocations):
         """Invoices of this payment's customer are allowed (a first payment starts the

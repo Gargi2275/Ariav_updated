@@ -16,7 +16,7 @@ import { VerbalOtpScreen } from './screens/auth/VerbalOtpScreen';
 // Admin Screens (5 - 10)
 import { ApprovalQueueScreen } from './screens/admin/ApprovalQueueScreen';
 import { AnalyticsDashboardScreen } from './screens/admin/AnalyticsDashboardScreen';
-import { MenuRightsScreen } from './screens/admin/MenuRightsScreen';
+import { StaffManagementScreen } from './screens/admin/StaffManagementScreen';
 import { AuditLogScreen } from './screens/admin/AuditLogScreen';
 import { BackupScreen } from './screens/admin/BackupScreen';
 import { YearEndClosingScreen } from './screens/admin/YearEndClosingScreen';
@@ -35,8 +35,8 @@ import { InvoiceScreen } from './screens/core/InvoiceScreen';
 import { PaymentScreen } from './screens/core/PaymentScreen';
 import { PaymentAdjustmentsScreen } from './screens/core/PaymentAdjustmentsScreen';
 import { NotificationsScreen } from './screens/core/NotificationsScreen';
-import { PartyLedgerScreen } from './screens/core/CustomerLedgerScreen';
-import { Party360Screen } from './screens/core/Customer360Screen';
+import { CustomerLedgerScreen } from './screens/core/CustomerLedgerScreen';
+import { Customer360Screen } from './screens/core/Customer360Screen';
 
 // Masters Screens (21 - 28)
 import { EntityMasterScreen } from './screens/masters/EntityMasterScreen';
@@ -44,7 +44,7 @@ import { BrandMasterScreen } from './screens/masters/BrandMasterScreen';
 import { CategoryMasterScreen } from './screens/masters/CategoryMasterScreen';
 import { ProductCatalogueScreen } from './screens/masters/ProductCatalogueScreen';
 import { PriceListScreen } from './screens/masters/PriceListScreen';
-import { PartyMasterScreen } from './screens/masters/PartyMasterScreen';
+import { CustomerMasterScreen } from './screens/masters/CustomerMasterScreen';
 import { ItemMasterScreen } from './screens/masters/ItemMasterScreen';
 import { GroupProductScreen } from './screens/masters/GroupProductScreen';
 import { ParametersScreen } from './screens/masters/ParametersScreen';
@@ -81,7 +81,7 @@ const ScreenDispatcher: React.FC = () => {
     case 6:
       return <AnalyticsDashboardScreen />;
     case 7:
-      return <MenuRightsScreen />;
+      return <StaffManagementScreen />;
     case 8:
       return <AuditLogScreen />;
     case 9:
@@ -109,9 +109,9 @@ const ScreenDispatcher: React.FC = () => {
     case 15:
       return <PaymentVoucherScreen />;
     case 44:
-      return <PartyLedgerScreen />;
+      return <CustomerLedgerScreen />;
     case 48:
-      return <Party360Screen />;
+      return <Customer360Screen />;
     case 17:
       return <CreditDebitNoteScreen />;
     case 18:
@@ -137,7 +137,7 @@ const ScreenDispatcher: React.FC = () => {
     case 22:
       return <GroupProductScreen />;
     case 23:
-      return <PartyMasterScreen />;
+      return <CustomerMasterScreen />;
     case 25:
       return <ParametersScreen />;
     case 26:

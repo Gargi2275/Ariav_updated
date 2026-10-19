@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 export interface ConfirmDialogProps {
@@ -13,7 +13,8 @@ export interface ConfirmDialogProps {
   /** Overrides the default "Delete {entityType}?" heading. */
   title?: string;
   /** Overrides the default hard-delete body copy. */
-  message?: string;
+  message?: React.ReactNode;
+  details?: React.ReactNode;
   busyLabel?: string;
   /** gold = soft deactivate; danger = default delete; critical = permanent delete */
   confirmTone?: 'gold' | 'danger' | 'critical';
@@ -28,16 +29,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   confirmLabel = 'Delete',
   title,
   message,
+  details,
   busyLabel = 'Deleting…',
   confirmTone = 'danger',
 }) => {
   const [busy, setBusy] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) {
       setBusy(false);
       return;
     }
+    cancelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !busy) {
         e.preventDefault();
@@ -71,7 +75,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       }}
     >
       <div
-        className="w-full max-w-md bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] shadow-2xl p-6 text-left"
+        className="w-full max-w-lg rounded-xl bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] shadow-2xl p-6 text-left"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start gap-3 pb-3 mb-4 border-b border-[var(--erp-hairline)]">
@@ -101,9 +105,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             </p>
           </div>
         </div>
+        {details && <div className="mb-5 max-h-56 overflow-y-auto rounded-lg border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] p-3">{details}</div>}
         <div className="flex items-center justify-end gap-3">
           <button
             type="button"
+            ref={cancelRef}
             disabled={busy}
             onClick={onCancel}
             className="px-4 py-1.5 border border-[var(--erp-hairline-strong)] text-xs font-body text-[var(--erp-muted)] hover:text-[var(--erp-text)] hover:border-[var(--erp-text)]/40 cursor-pointer disabled:opacity-50"

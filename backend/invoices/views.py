@@ -1,8 +1,10 @@
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
+from datetime import date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from accounts.access import scope_to_visible_customers
@@ -42,6 +44,25 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         customer_id = self.request.query_params.get("customer_id")
         purchase_order_id = self.request.query_params.get("purchase_order_id")
         q = self.request.query_params.get("search")
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        parsed_from = parsed_to = None
+        if date_from:
+            try:
+                parsed_from = date.fromisoformat(date_from)
+            except ValueError:
+                raise ValidationError({"date_from": "Invalid date_from. Use YYYY-MM-DD."})
+        if date_to:
+            try:
+                parsed_to = date.fromisoformat(date_to)
+            except ValueError:
+                raise ValidationError({"date_to": "Invalid date_to. Use YYYY-MM-DD."})
+        if parsed_from and parsed_to and parsed_from > parsed_to:
+            raise ValidationError({"date_from": "date_from cannot be after date_to."})
+        if parsed_from:
+            qs = qs.filter(invoice_date__gte=parsed_from)
+        if parsed_to:
+            qs = qs.filter(invoice_date__lte=parsed_to)
         if status_filter:
             statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
             if len(statuses) == 1 and statuses[0].lower() == "overdue":

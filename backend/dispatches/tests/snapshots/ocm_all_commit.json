@@ -1,0 +1,864 @@
+{
+  "commit": {
+    "created": [
+      {
+        "customer_name": "Fixture Customer 700701",
+        "id": "<id>",
+        "invoice_no": "DOM2601322",
+        "line_count": 1,
+        "lr_number": "26068200013115",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-5",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 700714",
+        "id": "<id>",
+        "invoice_no": "DOM2601213",
+        "line_count": 1,
+        "lr_number": "500943036005",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-2",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 700714",
+        "id": "<id>",
+        "invoice_no": "DOM2601213",
+        "line_count": 1,
+        "lr_number": "500943036005",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-3",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 700750",
+        "id": "<id>",
+        "invoice_no": "DOM2602381",
+        "line_count": 9,
+        "lr_number": "500943036180",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-10",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 700829",
+        "id": "<id>",
+        "invoice_no": "DOM2601617",
+        "line_count": 1,
+        "lr_number": "30869588",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-7",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 702550",
+        "id": "<id>",
+        "invoice_no": "DOM2601323",
+        "line_count": 1,
+        "lr_number": "26068200013114",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-6",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 703388",
+        "id": "<id>",
+        "invoice_no": "DOM2601161",
+        "line_count": 1,
+        "lr_number": "500943035992",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-1",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 703388",
+        "id": "<id>",
+        "invoice_no": "DOM2601174",
+        "line_count": 1,
+        "lr_number": "500943036010",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-1",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 703388",
+        "id": "<id>",
+        "invoice_no": "DOM2601249",
+        "line_count": 1,
+        "lr_number": "500943036028",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-4",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 703388",
+        "id": "<id>",
+        "invoice_no": "DOM2601308",
+        "line_count": 1,
+        "lr_number": "51952917623",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-1",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 703388",
+        "id": "<id>",
+        "invoice_no": "DOM2601858",
+        "line_count": 1,
+        "lr_number": "500943036105",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-8",
+        "po_status": "Partially Dispatched"
+      },
+      {
+        "customer_name": "Fixture Customer 703984",
+        "id": "<id>",
+        "invoice_no": "DOM2602378",
+        "line_count": 3,
+        "lr_number": "51952914311",
+        "po_id": "<id>",
+        "po_number": "FIXTURE-INTERNAL-9",
+        "po_status": "Partially Dispatched"
+      }
+    ],
+    "created_count": 12,
+    "excluded": [],
+    "excluded_count": 0,
+    "skipped_excluded_group_keys": []
+  },
+  "preview": {
+    "counts": {
+      "excluded": 0,
+      "importable": 38,
+      "rows": 38,
+      "sample": 0
+    },
+    "excluded": [],
+    "format_id": "ocm_dispatch",
+    "format_name": "OCM Dispatch",
+    "importable": [
+      {
+        "challan_reference": "DOM2601161",
+        "closing_pending_quantity": "107.00",
+        "customer_code": "703388",
+        "customer_name": "Fixture Customer 703388",
+        "group_key": "ATS26RG0093||DOM2601161",
+        "invoice_no": "DOM2601161",
+        "line_count": 6,
+        "lines": [
+          {
+            "client_item_key": "TV-0292200-163-P01-FS",
+            "code1": "TV",
+            "description": "TV-0292200-163-P01-FS",
+            "po_line_description": "TV-0292200-163-P01-FS",
+            "product_code": "",
+            "purchase_order_line_id": 135,
+            "quantity": "6.00",
+            "shade": "163"
+          }
+        ],
+        "lr_date": "2026-05-04",
+        "lr_number": "500943035992",
+        "match_message": "",
+        "opening_pending_quantity": "113.00",
+        "order_code": "ATS26RG0093",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 90,
+        "po_number": "FIXTURE-INTERNAL-1",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601174",
+        "closing_pending_quantity": "108.00",
+        "customer_code": "703388",
+        "customer_name": "Fixture Customer 703388",
+        "group_key": "ATS26RG0093||DOM2601174",
+        "invoice_no": "DOM2601174",
+        "line_count": 5,
+        "lines": [
+          {
+            "client_item_key": "TV-0292200-163-P01-FS",
+            "code1": "TV",
+            "description": "TV-0292200-163-P01-FS",
+            "po_line_description": "TV-0292200-163-P01-FS",
+            "product_code": "",
+            "purchase_order_line_id": 135,
+            "quantity": "5.00",
+            "shade": "163"
+          }
+        ],
+        "lr_date": "2026-05-05",
+        "lr_number": "500943036010",
+        "match_message": "",
+        "opening_pending_quantity": "113.00",
+        "order_code": "ATS26RG0093",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 90,
+        "po_number": "FIXTURE-INTERNAL-1",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601213",
+        "closing_pending_quantity": "100.00",
+        "customer_code": "700714",
+        "customer_name": "Fixture Customer 700714",
+        "group_key": "ATS26RG0017||DOM2601213",
+        "invoice_no": "DOM2601213",
+        "line_count": 1,
+        "lines": [
+          {
+            "client_item_key": "DC-0334053-0A1-P01-FS",
+            "code1": "DC",
+            "description": "DC-0334053-0A1-P01-FS",
+            "po_line_description": "DC-0334053-0A1-P01-FS",
+            "product_code": "",
+            "purchase_order_line_id": 136,
+            "quantity": "1.00",
+            "shade": "0A1"
+          }
+        ],
+        "lr_date": "2026-05-05",
+        "lr_number": "500943036005",
+        "match_message": "",
+        "opening_pending_quantity": "101.00",
+        "order_code": "ATS26RG0017",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 91,
+        "po_number": "FIXTURE-INTERNAL-2",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601213",
+        "closing_pending_quantity": "100.00",
+        "customer_code": "700714",
+        "customer_name": "Fixture Customer 700714",
+        "group_key": "ATS26RG0018||DOM2601213",
+        "invoice_no": "DOM2601213",
+        "line_count": 1,
+        "lines": [
+          {
+            "client_item_key": "CC-0391356-002-P01-FS",
+            "code1": "CC",
+            "description": "CC-0391356-002-P01-FS",
+            "po_line_description": "CC-0391356-002-P01-FS",
+            "product_code": "",
+            "purchase_order_line_id": 137,
+            "quantity": "1.00",
+            "shade": "002"
+          }
+        ],
+        "lr_date": "2026-05-05",
+        "lr_number": "500943036005",
+        "match_message": "",
+        "opening_pending_quantity": "101.00",
+        "order_code": "ATS26RG0018",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 92,
+        "po_number": "FIXTURE-INTERNAL-3",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601249",
+        "closing_pending_quantity": "100.00",
+        "customer_code": "703388",
+        "customer_name": "Fixture Customer 703388",
+        "group_key": "ATS26RG0092||DOM2601249",
+        "invoice_no": "DOM2601249",
+        "line_count": 5,
+        "lines": [
+          {
+            "client_item_key": "TV-0292200-163-P01-FS",
+            "code1": "TV",
+            "description": "TV-0292200-163-P01-FS",
+            "po_line_description": "TV-0292200-163-P01-FS",
+            "product_code": "",
+            "purchase_order_line_id": 138,
+            "quantity": "5.00",
+            "shade": "163"
+          }
+        ],
+        "lr_date": "2026-05-06",
+        "lr_number": "500943036028",
+        "match_message": "",
+        "opening_pending_quantity": "105.00",
+        "order_code": "ATS26RG0092",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 93,
+        "po_number": "FIXTURE-INTERNAL-4",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601308",
+        "closing_pending_quantity": "111.00",
+        "customer_code": "703388",
+        "customer_name": "Fixture Customer 703388",
+        "group_key": "ATS26RG0093||DOM2601308",
+        "invoice_no": "DOM2601308",
+        "line_count": 2,
+        "lines": [
+          {
+            "client_item_key": "TV-0292200-163-P01-FS",
+            "code1": "TV",
+            "description": "TV-0292200-163-P01-FS",
+            "po_line_description": "TV-0292200-163-P01-FS",
+            "product_code": "",
+            "purchase_order_line_id": 135,
+            "quantity": "2.00",
+            "shade": "163"
+          }
+        ],
+        "lr_date": "2026-05-07",
+        "lr_number": "51952917623",
+        "match_message": "",
+        "opening_pending_quantity": "113.00",
+        "order_code": "ATS26RG0093",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 90,
+        "po_number": "FIXTURE-INTERNAL-1",
+        "transporter": "BLUE DART EXPRESS LTD AMRITSAR"
+      },
+      {
+        "challan_reference": "DOM2601322",
+        "closing_pending_quantity": "100.00",
+        "customer_code": "700701",
+        "customer_name": "Fixture Customer 700701",
+        "group_key": "ATS26RG0011||DOM2601322",
+        "invoice_no": "DOM2601322",
+        "line_count": 1,
+        "lines": [
+          {
+            "client_item_key": "CN-0042220-002-P01-FS",
+            "code1": "CN",
+            "description": "CN-0042220-002-P01-FS",
+            "po_line_description": "CN-0042220-002-P01-FS",
+            "product_code": "",
+            "purchase_order_line_id": 139,
+            "quantity": "1.00",
+            "shade": "002"
+          }
+        ],
+        "lr_date": "2026-05-08",
+        "lr_number": "26068200013115",
+        "match_message": "",
+        "opening_pending_quantity": "101.00",
+        "order_code": "ATS26RG0011",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 94,
+        "po_number": "FIXTURE-INTERNAL-5",
+        "transporter": "SHREE MARUTI COURIER SERVICES P.LTD."
+      },
+      {
+        "challan_reference": "DOM2601323",
+        "closing_pending_quantity": "100.00",
+        "customer_code": "702550",
+        "customer_name": "Fixture Customer 702550",
+        "group_key": "ATS26RG0006||DOM2601323",
+        "invoice_no": "DOM2601323",
+        "line_count": 1,
+        "lines": [
+          {
+            "client_item_key": "CT-0382536-002-P01-FS",
+            "code1": "CT",
+            "description": "CT-0382536-002-P01-FS",
+            "po_line_description": "CT-0382536-002-P01-FS",
+            "product_code": "",
+            "purchase_order_line_id": 140,
+            "quantity": "1.00",
+            "shade": "002"
+          }
+        ],
+        "lr_date": "2026-05-08",
+        "lr_number": "26068200013114",
+        "match_message": "",
+        "opening_pending_quantity": "101.00",
+        "order_code": "ATS26RG0006",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 95,
+        "po_number": "FIXTURE-INTERNAL-6",
+        "transporter": "SHREE MARUTI COURIER SERVICES P.LTD."
+      },
+      {
+        "challan_reference": "DOM2601617",
+        "closing_pending_quantity": "100.00",
+        "customer_code": "700829",
+        "customer_name": "Fixture Customer 700829",
+        "group_key": "ATS26RG4933||DOM2601617",
+        "invoice_no": "DOM2601617",
+        "line_count": 1,
+        "lines": [
+          {
+            "client_item_key": "ECB-0105631-007-P08-FS",
+            "code1": "ECB",
+            "description": "ECB-0105631-007-P08-FS",
+            "po_line_description": "ECB-0105631-007-P08-FS",
+            "product_code": "",
+            "purchase_order_line_id": 141,
+            "quantity": "1.00",
+            "shade": "007"
+          }
+        ],
+        "lr_date": "2026-05-14",
+        "lr_number": "30869588",
+        "match_message": "",
+        "opening_pending_quantity": "101.00",
+        "order_code": "ATS26RG4933",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 96,
+        "po_number": "FIXTURE-INTERNAL-7",
+        "transporter": "SKYKING SERVICE"
+      },
+      {
+        "challan_reference": "DOM2601858",
+        "closing_pending_quantity": "100.00",
+        "customer_code": "703388",
+        "customer_name": "Fixture Customer 703388",
+        "group_key": "ATS26RG0038||DOM2601858",
+        "invoice_no": "DOM2601858",
+        "line_count": 3,
+        "lines": [
+          {
+            "client_item_key": "TV-0292200-159-P01-FS",
+            "code1": "TV",
+            "description": "TV-0292200-159-P01-FS",
+            "po_line_description": "TV-0292200-159-P01-FS",
+            "product_code": "",
+            "purchase_order_line_id": 142,
+            "quantity": "3.00",
+            "shade": "159"
+          }
+        ],
+        "lr_date": "2026-05-18",
+        "lr_number": "500943036105",
+        "match_message": "",
+        "opening_pending_quantity": "103.00",
+        "order_code": "ATS26RG0038",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 97,
+        "po_number": "FIXTURE-INTERNAL-8",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2602378",
+        "closing_pending_quantity": "300.00",
+        "customer_code": "703984",
+        "customer_name": "Fixture Customer 703984",
+        "group_key": "ATS26RN0006||DOM2602378",
+        "invoice_no": "DOM2602378",
+        "line_count": 3,
+        "lines": [
+          {
+            "client_item_key": "VPR-0221017-017-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-017-P02-FS",
+            "po_line_description": "VPR-0221017-017-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 145,
+            "quantity": "1.00",
+            "shade": "017"
+          },
+          {
+            "client_item_key": "VPR-0221017-021-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-021-P02-FS",
+            "po_line_description": "VPR-0221017-021-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 144,
+            "quantity": "1.00",
+            "shade": "021"
+          },
+          {
+            "client_item_key": "VPR-0221017-023-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-023-P02-FS",
+            "po_line_description": "VPR-0221017-023-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 143,
+            "quantity": "1.00",
+            "shade": "023"
+          }
+        ],
+        "lr_date": "2026-05-30",
+        "lr_number": "51952914311",
+        "match_message": "",
+        "opening_pending_quantity": "303.00",
+        "order_code": "ATS26RN0006",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 98,
+        "po_number": "FIXTURE-INTERNAL-9",
+        "transporter": "BLUE DART EXPRESS LTD AMRITSAR"
+      },
+      {
+        "challan_reference": "DOM2602381",
+        "closing_pending_quantity": "900.00",
+        "customer_code": "700750",
+        "customer_name": "Fixture Customer 700750",
+        "group_key": "ATS26RN0018||DOM2602381",
+        "invoice_no": "DOM2602381",
+        "line_count": 9,
+        "lines": [
+          {
+            "client_item_key": "VPR-0221017-017-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-017-P02-FS",
+            "po_line_description": "VPR-0221017-017-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 152,
+            "quantity": "1.00",
+            "shade": "017"
+          },
+          {
+            "client_item_key": "VPR-0221017-021-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-021-P02-FS",
+            "po_line_description": "VPR-0221017-021-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 150,
+            "quantity": "1.00",
+            "shade": "021"
+          },
+          {
+            "client_item_key": "VPR-0221017-022-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-022-P02-FS",
+            "po_line_description": "VPR-0221017-022-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 146,
+            "quantity": "1.00",
+            "shade": "022"
+          },
+          {
+            "client_item_key": "VPR-0221017-023-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-023-P02-FS",
+            "po_line_description": "VPR-0221017-023-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 149,
+            "quantity": "1.00",
+            "shade": "023"
+          },
+          {
+            "client_item_key": "VPR-0221017-030-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-030-P02-FS",
+            "po_line_description": "VPR-0221017-030-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 151,
+            "quantity": "1.00",
+            "shade": "030"
+          },
+          {
+            "client_item_key": "VPR-0221017-038-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-038-P02-FS",
+            "po_line_description": "VPR-0221017-038-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 153,
+            "quantity": "1.00",
+            "shade": "038"
+          },
+          {
+            "client_item_key": "VPR-0221017-039-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-039-P02-FS",
+            "po_line_description": "VPR-0221017-039-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 154,
+            "quantity": "1.00",
+            "shade": "039"
+          },
+          {
+            "client_item_key": "VPR-0221017-040-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-040-P02-FS",
+            "po_line_description": "VPR-0221017-040-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 148,
+            "quantity": "1.00",
+            "shade": "040"
+          },
+          {
+            "client_item_key": "VPR-0221017-041-P02-FS",
+            "code1": "VPR",
+            "description": "VPR-0221017-041-P02-FS",
+            "po_line_description": "VPR-0221017-041-P02-FS",
+            "product_code": "",
+            "purchase_order_line_id": 147,
+            "quantity": "1.00",
+            "shade": "041"
+          }
+        ],
+        "lr_date": "2026-05-31",
+        "lr_number": "500943036180",
+        "match_message": "",
+        "opening_pending_quantity": "909.00",
+        "order_code": "ATS26RN0018",
+        "po_entity_code": "ADT",
+        "po_entity_name": "Aditi",
+        "po_id": 99,
+        "po_number": "FIXTURE-INTERNAL-10",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      }
+    ],
+    "preview_token": "<preview-token>",
+    "skipped": [],
+    "warnings": []
+  },
+  "rows": {
+    "dispatches": [
+      {
+        "challan_reference": "DOM2601161",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-04",
+        "id": "<id>",
+        "lr_number": "500943035992",
+        "purchase_order_id": "<id>",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601174",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-05",
+        "id": "<id>",
+        "lr_number": "500943036010",
+        "purchase_order_id": "<id>",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601213",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-05",
+        "id": "<id>",
+        "lr_number": "500943036005",
+        "purchase_order_id": "<id>",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601213",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-05",
+        "id": "<id>",
+        "lr_number": "500943036005",
+        "purchase_order_id": "<id>",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601249",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-06",
+        "id": "<id>",
+        "lr_number": "500943036028",
+        "purchase_order_id": "<id>",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2601308",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-07",
+        "id": "<id>",
+        "lr_number": "51952917623",
+        "purchase_order_id": "<id>",
+        "transporter": "BLUE DART EXPRESS LTD AMRITSAR"
+      },
+      {
+        "challan_reference": "DOM2601322",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-08",
+        "id": "<id>",
+        "lr_number": "26068200013115",
+        "purchase_order_id": "<id>",
+        "transporter": "SHREE MARUTI COURIER SERVICES P.LTD."
+      },
+      {
+        "challan_reference": "DOM2601323",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-08",
+        "id": "<id>",
+        "lr_number": "26068200013114",
+        "purchase_order_id": "<id>",
+        "transporter": "SHREE MARUTI COURIER SERVICES P.LTD."
+      },
+      {
+        "challan_reference": "DOM2601617",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-14",
+        "id": "<id>",
+        "lr_number": "30869588",
+        "purchase_order_id": "<id>",
+        "transporter": "SKYKING SERVICE"
+      },
+      {
+        "challan_reference": "DOM2601858",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-18",
+        "id": "<id>",
+        "lr_number": "500943036105",
+        "purchase_order_id": "<id>",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      },
+      {
+        "challan_reference": "DOM2602378",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-30",
+        "id": "<id>",
+        "lr_number": "51952914311",
+        "purchase_order_id": "<id>",
+        "transporter": "BLUE DART EXPRESS LTD AMRITSAR"
+      },
+      {
+        "challan_reference": "DOM2602381",
+        "created_by_id": "<id>",
+        "dispatch_date": "2026-05-31",
+        "id": "<id>",
+        "lr_number": "500943036180",
+        "purchase_order_id": "<id>",
+        "transporter": "SAFEXPRESS PRIVATE LIMITED"
+      }
+    ],
+    "lines": [
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "6.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "5.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "5.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "2.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "3.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      },
+      {
+        "dispatch_id": "<id>",
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "purchase_order_line_id": "<id>"
+      }
+    ]
+  }
+}

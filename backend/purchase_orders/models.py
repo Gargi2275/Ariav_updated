@@ -161,6 +161,7 @@ class PurchaseOrderLine(models.Model):
         validators=[MinValueValidator(Decimal("0.01"))],
     )
     rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    rate_source = models.CharField(max_length=240, blank=True)
     line_total = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     expected_delivery_period = models.CharField(max_length=160, blank=True)
     customer_delivery_date = models.DateField(null=True, blank=True)

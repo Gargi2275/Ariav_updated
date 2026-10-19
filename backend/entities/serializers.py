@@ -4,6 +4,7 @@ from rest_framework import serializers
 from masters.serializers import validate_gstin, validate_pan, validate_phone
 
 from .models import Entity
+from brands.models import Brand
 from .query import active_child_count, descendant_ids, would_create_cycle
 
 
@@ -14,6 +15,13 @@ class EntitySummarySerializer(serializers.ModelSerializer):
 
 
 class EntitySerializer(serializers.ModelSerializer):
+    brand_ids = serializers.PrimaryKeyRelatedField(
+        source="brands",
+        queryset=Brand.objects.all(),
+        many=True,
+        required=True,
+    )
+    brands = serializers.SerializerMethodField()
     parent_entity_id = serializers.PrimaryKeyRelatedField(
         source="parent_entity",
         queryset=Entity.objects.all(),
@@ -67,6 +75,8 @@ class EntitySerializer(serializers.ModelSerializer):
             "other_2",
             "active_children_count",
             "children_count",
+            "brand_ids",
+            "brands",
         )
         read_only_fields = ("id", "created_at", "updated_at", "created_by", "created_by_name")
         extra_kwargs = {
@@ -78,6 +88,25 @@ class EntitySerializer(serializers.ModelSerializer):
         if not obj.created_by_id:
             return ""
         return obj.created_by.display_name or obj.created_by.username
+
+    def get_brands(self, obj):
+        return [
+            {"id": brand.id, "brand_code": brand.brand_code, "brand_name": brand.brand_name}
+            for brand in obj.brands.filter(status=Brand.Status.ACTIVE).order_by("brand_code")
+        ]
+
+    def validate_brand_ids(self, value):
+        inactive = [
+            brand.brand_name
+            for brand in value
+            if brand.status != Brand.Status.ACTIVE
+            and not (self.instance and self.instance.brands.filter(pk=brand.pk).exists())
+        ]
+        if inactive:
+            raise serializers.ValidationError(
+                f"Inactive brands cannot be assigned: {', '.join(inactive)}."
+            )
+        return value
 
     def get_active_children_count(self, obj):
         return active_child_count(obj.id)
@@ -120,6 +149,12 @@ class EntitySerializer(serializers.ModelSerializer):
         return validate_phone(value)
 
     def validate(self, attrs):
+        if "brands" in attrs:
+            brands = attrs["brands"]
+            if not brands:
+                raise serializers.ValidationError({"brand_ids": "Select at least one active brand."})
+        elif self.instance is None:
+            raise serializers.ValidationError({"brand_ids": "Select at least one active brand."})
         parent = attrs.get("parent_entity", getattr(self.instance, "parent_entity", None))
         parent_id = parent.pk if parent is not None else None
         entity_id = self.instance.pk if self.instance else None

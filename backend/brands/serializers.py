@@ -3,11 +3,19 @@ from rest_framework import serializers
 
 from masters.serializers import validate_gstin, validate_pan, validate_phone
 
+from entities.models import Entity
 from .models import Brand
 
 
 class BrandSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
+    branch_ids = serializers.PrimaryKeyRelatedField(
+        source="entities",
+        queryset=Entity.objects.all(),
+        many=True,
+        required=False,
+    )
+    branches = serializers.SerializerMethodField()
 
     class Meta:
         model = Brand
@@ -32,6 +40,8 @@ class BrandSerializer(serializers.ModelSerializer):
             "payment_terms",
             "credit_days",
             "order_method",
+            "branch_ids",
+            "branches",
         )
         read_only_fields = ("id", "created_at", "updated_at", "created_by", "created_by_name")
         extra_kwargs = {
@@ -42,6 +52,29 @@ class BrandSerializer(serializers.ModelSerializer):
         if not obj.created_by_id:
             return ""
         return obj.created_by.display_name or obj.created_by.username
+
+    def get_branches(self, obj):
+        return [
+            {
+                "id": entity.id,
+                "short_code": entity.short_code,
+                "entity_name": entity.entity_name,
+            }
+            for entity in obj.entities.filter(status=Entity.Status.ACTIVE).order_by("short_code")
+        ]
+
+    def validate_branch_ids(self, value):
+        inactive = [
+            entity.entity_name
+            for entity in value
+            if entity.status != Entity.Status.ACTIVE
+            and not (self.instance and self.instance.entities.filter(pk=entity.pk).exists())
+        ]
+        if inactive:
+            raise serializers.ValidationError(
+                f"Inactive branches cannot be assigned: {', '.join(inactive)}."
+            )
+        return value
 
     def validate_brand_code(self, value):
         value = (value or "").strip().upper()

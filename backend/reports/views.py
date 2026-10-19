@@ -46,7 +46,7 @@ def _parse_filters(request):
             entity_id = int(raw_entity)
         except (TypeError, ValueError):
             return Response(
-                {"detail": "entity_id must be an integer or 'all'."},
+                {"detail": "Branch selection must be an integer or 'all'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if not Entity.objects.filter(pk=entity_id).exists():

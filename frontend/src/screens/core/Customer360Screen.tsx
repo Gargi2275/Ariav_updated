@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { BookCopy, ScanSearch } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { LedgerMetricStrip, LedgerMetricItem } from '../../components/common/LedgerMetricStrip';
 import { StatusChip, StatusChipType } from '../../components/common/StatusChip';
@@ -10,18 +11,18 @@ import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterSt
 import { num } from '../../services/mastersApi';
 import { notifyApiError } from '../../services/notify';
 import {
-  PARTY_360_KEY,
-  PARTY_LEDGER_KEY,
-  Party360DispatchRow,
-  Party360InvoiceRow,
-  Party360Payload,
-  Party360PaymentRow,
-  Party360PurchaseRow,
-  Party360TrendRow,
-  PartyLedgerEntry,
+  CUSTOMER_360_KEY,
+  CUSTOMER_LEDGER_KEY,
+  Customer360DispatchRow,
+  Customer360InvoiceRow,
+  Customer360Payload,
+  Customer360PaymentRow,
+  Customer360PurchaseRow,
+  Customer360TrendRow,
+  CustomerLedgerEntry,
   CustomerRow,
   customersApi,
-  writePartyListFilter,
+  writeCustomerListFilter,
 } from '../../services/customersApi';
 import { LEDGER_OPEN_INVOICE_KEY } from '../../services/invoicesApi';
 import { LEDGER_OPEN_PAYMENT_KEY } from '../../services/paymentsApi';
@@ -65,24 +66,26 @@ function typeChip(type: string): StatusChipType | string {
   return 'pending';
 }
 
-export const Party360Screen: React.FC = () => {
-  const { navigateTo } = useErp();
+export const Customer360Screen: React.FC = () => {
+  const { navigateTo, selectedEntityId, entityReady, getPeriod } = useErp();
+  const period = getPeriod();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [customerId, setCustomerId] = useState<number | ''>('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [appliedFrom, setAppliedFrom] = useState('');
-  const [appliedTo, setAppliedTo] = useState('');
-  const [payload, setPayload] = useState<Party360Payload | null>(null);
+  const [payload, setPayload] = useState<Customer360Payload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<TabId>('basic');
 
   const loadCustomers = useCallback(async () => {
+    if (!entityReady) return;
     setListLoading(true);
     try {
-      const rows = await customersApi.list({ status: 'Active', scope: 'visible' });
+      const rows = await customersApi.list({
+        status: 'Active',
+        scope: 'visible',
+        entity_id: selectedEntityId === 'all' ? undefined : selectedEntityId,
+      });
       setCustomers(Array.isArray(rows) ? rows : []);
     } catch (e) {
       notifyApiError(e, 'Could not load parties.');
@@ -90,50 +93,48 @@ export const Party360Screen: React.FC = () => {
     } finally {
       setListLoading(false);
     }
-  }, []);
+  }, [selectedEntityId, entityReady]);
 
   useEffect(() => { void loadCustomers(); }, [loadCustomers]);
 
-  const loadProfile = useCallback(async (id: number, from?: string, to?: string) => {
+  const loadProfile = useCallback(async (id: number) => {
     setLoading(true);
     setError('');
     try {
-      setPayload(await customersApi.profile360(id, { from: from || undefined, to: to || undefined }));
+      setPayload(await customersApi.profile360(id, { from: period.from, to: period.to }));
     } catch (e) {
-      const parsed = notifyApiError(e, 'Could not load customer 360.');
+      const parsed = notifyApiError(e, 'Could not load party 360.');
       setError(parsed.message);
       setPayload(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [period.from, period.to]);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(PARTY_360_KEY);
+    const raw = sessionStorage.getItem(CUSTOMER_360_KEY);
     if (!raw) return;
-    sessionStorage.removeItem(PARTY_360_KEY);
+    sessionStorage.removeItem(CUSTOMER_360_KEY);
     const id = Number(raw);
     if (!id) return;
     setCustomerId(id);
     void loadProfile(id);
   }, [loadProfile]);
 
-  const applyRange = () => {
+  useEffect(() => {
     if (!customerId) return;
-    setAppliedFrom(dateFrom);
-    setAppliedTo(dateTo);
-    void loadProfile(Number(customerId), dateFrom, dateTo);
-  };
+    void loadProfile(Number(customerId));
+  }, [customerId, loadProfile]);
 
   const openLedger = () => {
     if (!customerId) return;
-    sessionStorage.setItem(PARTY_LEDGER_KEY, String(customerId));
+    sessionStorage.setItem(CUSTOMER_LEDGER_KEY, String(customerId));
     navigateTo(44);
   };
 
   const viewAll = (screenId: number) => {
     if (!customerId) return;
-    writePartyListFilter(Number(customerId));
+    writeCustomerListFilter(Number(customerId));
     navigateTo(screenId);
   };
 
@@ -154,7 +155,7 @@ export const Party360Screen: React.FC = () => {
       ]
     : [];
 
-  const purchaseCols: Column<Party360PurchaseRow>[] = [
+  const purchaseCols: Column<Customer360PurchaseRow>[] = [
     { header: 'PO', render: r => (
       <button type="button" className="font-mono text-[var(--erp-gold)] hover:underline cursor-pointer" onClick={() => { sessionStorage.setItem(OPEN_PO_KEY, String(r.id)); navigateTo(40); }}>{r.po_number}</button>
     ) },
@@ -164,7 +165,7 @@ export const Party360Screen: React.FC = () => {
     { header: 'Amount', align: 'right', mono: true, width: '120px', render: r => money(r.total_amount) },
   ];
 
-  const dispatchCols: Column<Party360DispatchRow>[] = [
+  const dispatchCols: Column<Customer360DispatchRow>[] = [
     { header: 'Date', accessorKey: 'dispatch_date', mono: true, width: '110px' },
     { header: 'LR', render: r => (
       <button type="button" className="font-mono text-[var(--erp-gold)] hover:underline cursor-pointer" onClick={() => { sessionStorage.setItem(OPEN_DISPATCH_KEY, String(r.id)); navigateTo(41); }}>{r.lr_number || '—'}</button>
@@ -173,7 +174,7 @@ export const Party360Screen: React.FC = () => {
     { header: 'PO', accessorKey: 'po_number', mono: true },
   ];
 
-  const invoiceCols: Column<Party360InvoiceRow>[] = [
+  const invoiceCols: Column<Customer360InvoiceRow>[] = [
     { header: 'Invoice', render: r => (
       <button type="button" className="font-mono text-[var(--erp-gold)] hover:underline cursor-pointer" onClick={() => { sessionStorage.setItem(LEDGER_OPEN_INVOICE_KEY, String(r.id)); navigateTo(42); }}>{r.invoice_number}</button>
     ) },
@@ -183,7 +184,7 @@ export const Party360Screen: React.FC = () => {
     { header: 'Outstanding', align: 'right', mono: true, width: '120px', render: r => money(r.remaining_balance) },
   ];
 
-  const paymentCols: Column<Party360PaymentRow>[] = [
+  const paymentCols: Column<Customer360PaymentRow>[] = [
     { header: 'Payment', render: r => (
       <button type="button" className="font-mono text-[var(--erp-gold)] hover:underline cursor-pointer" onClick={() => { sessionStorage.setItem(LEDGER_OPEN_PAYMENT_KEY, String(r.id)); navigateTo(43); }}>{r.payment_number}</button>
     ) },
@@ -193,7 +194,7 @@ export const Party360Screen: React.FC = () => {
     { header: 'Unallocated', align: 'right', mono: true, width: '120px', render: r => money(r.unallocated_amount) },
   ];
 
-  const ledgerCols: Column<PartyLedgerEntry>[] = [
+  const ledgerCols: Column<CustomerLedgerEntry>[] = [
     { header: 'Date', accessorKey: 'date', mono: true, width: '110px' },
     { header: 'Type', width: '120px', render: r => <StatusChip status={typeChip(String(r.type))} label={String(r.type).toUpperCase()} /> },
     { header: 'Reference', accessorKey: 'reference', mono: true },
@@ -225,7 +226,7 @@ export const Party360Screen: React.FC = () => {
       <div className="flex flex-col gap-2 bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
           <label htmlFor="c360-customer" className="flex flex-col gap-1 text-xs font-normal text-[var(--erp-muted)] font-sans">
-            Customer
+            Party
             <select
               id="c360-customer"
               value={customerId}
@@ -234,7 +235,6 @@ export const Party360Screen: React.FC = () => {
                 const id = e.target.value ? Number(e.target.value) : '';
                 setCustomerId(id);
                 setPayload(null);
-                if (id) void loadProfile(id, dateFrom, dateTo);
               }}
               className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none disabled:opacity-60"
             >
@@ -250,36 +250,17 @@ export const Party360Screen: React.FC = () => {
               )}
             </select>
           </label>
-          <label htmlFor="c360-from" className="flex flex-col gap-1 text-xs font-normal text-[var(--erp-muted)] font-sans">
-            From
-            <input id="c360-from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none" />
-          </label>
-          <label htmlFor="c360-to" className="flex flex-col gap-1 text-xs font-normal text-[var(--erp-muted)] font-sans">
-            To
-            <input id="c360-to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] font-mono focus:border-[var(--erp-gold)] focus:outline-none" />
-          </label>
-          <button
-            type="button"
-            disabled={!customerId}
-            onClick={applyRange}
-            className={
-              customerId
-                ? `${GOLD_BTN} h-[34px]`
-                : 'h-[34px] px-4 py-1.5 border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface-2)] text-[var(--erp-muted)] font-body text-xs font-semibold flex items-center justify-center cursor-not-allowed'
-            }
-          >
-            Apply dates
-          </button>
         </div>
+        <PeriodScope />
         <p className="text-[11px] font-mono text-[var(--erp-muted)]">
-          Date range scopes history, product trends and payment behaviour. Outstanding / advance / overdue stay current.
+          The header year and month scope history, product trends and payment behaviour. Outstanding, advance and overdue stay current.
         </p>
       </div>
 
-      {error && <MasterError message={error} onRetry={() => customerId && void loadProfile(Number(customerId), appliedFrom, appliedTo)} />}
+      {error && <MasterError message={error} onRetry={() => customerId && void loadProfile(Number(customerId))} />}
 
       {listLoading ? (
-        <MasterLoading label="Loading customers…" rows={4} />
+        <MasterLoading label="Loading parties…" rows={4} />
       ) : !customerId ? (
         <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] py-14 px-6 flex flex-col items-center justify-center gap-3">
           <div className="w-12 h-12 border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface-2)] flex items-center justify-center">
@@ -288,14 +269,14 @@ export const Party360Screen: React.FC = () => {
           <p className="text-xs font-mono text-[var(--erp-muted)] text-center max-w-md">
             {noCustomers
               ? 'No parties found — add one in Party Master'
-              : 'Select a customer to open their 360° profile.'}
+              : 'Select a party to open their 360° profile.'}
           </p>
           {noCustomers ? (
             <button type="button" onClick={() => navigateTo(23)} className={GOLD_BTN}>Open Party Master</button>
           ) : null}
         </div>
       ) : loading ? (
-        <MasterLoading label="Loading customer 360…" />
+        <MasterLoading label="Loading party 360…" />
       ) : payload && info ? (
         <>
           <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-4 flex flex-col gap-3">
@@ -432,7 +413,7 @@ export const Party360Screen: React.FC = () => {
                   { header: 'Product', render: r => <span><span className="font-mono text-[var(--erp-gold)]">{r.product_code}</span> · {r.product_name}</span> },
                   { header: 'Qty', align: 'right', mono: true, width: '100px', render: r => num(r.total_qty).toLocaleString('en-IN') },
                   { header: 'Value', align: 'right', mono: true, width: '120px', render: r => money(r.total_value) },
-                ] as Column<Party360TrendRow>[]}
+                ] as Column<Customer360TrendRow>[]}
                 data={trends}
                 keyExtractor={r => r.product_id}
                 {...emptyTableProps(trends.length, trends.length, 'No invoiced products yet.', 'No invoiced products in this date range.', '', () => undefined)}

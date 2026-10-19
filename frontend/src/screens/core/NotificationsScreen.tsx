@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PeriodScope } from '../../components/common/PeriodScope';
 import { DataTable, Column } from '../../components/common/DataTable';
 import { StatusChip, StatusChipType } from '../../components/common/StatusChip';
-import { TextInput } from '../../components/common/FormControls';
 import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterStatus';
 import { notifyApiError, notifySuccess } from '../../services/notify';
 import { LEDGER_OPEN_INVOICE_KEY } from '../../services/invoicesApi';
@@ -36,15 +36,14 @@ function stampDate(iso?: string | null): string {
 }
 
 export const NotificationsScreen: React.FC = () => {
-  const { navigateTo } = useErp();
+  const { navigateTo, getPeriod } = useErp();
+  const period = getPeriod();
   const [rows, setRows] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,8 +53,8 @@ export const NotificationsScreen: React.FC = () => {
         search: search || undefined,
         notification_type: typeFilter || undefined,
         status: statusFilter || undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
+        date_from: period.from,
+        date_to: period.to,
       }));
     } catch (e) {
       const parsed = notifyApiError(e, 'Could not load notifications.');
@@ -63,7 +62,7 @@ export const NotificationsScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, typeFilter, statusFilter, dateFrom, dateTo]);
+  }, [search, typeFilter, statusFilter, period.from, period.to]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -172,8 +171,7 @@ export const NotificationsScreen: React.FC = () => {
             <option value="">All statuses</option>
             {NOTIFICATION_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
-          <TextInput label="From" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-          <TextInput label="To" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          <PeriodScope />
         </div>
       </div>
       {loading ? (

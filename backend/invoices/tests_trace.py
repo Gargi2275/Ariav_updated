@@ -32,7 +32,7 @@ class InvoiceTraceTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="trace-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
             display_name="Trace Operator",
         )
         self.client = APIClient()

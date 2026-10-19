@@ -150,7 +150,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
             entity_id = int(entity_id)
         except ValueError:
             return None, Response(
-                {"detail": "entity_id must be an integer."},
+                {"detail": "Branch selection must be an integer."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if not can_view_customer(request.user, customer.pk):
@@ -240,7 +240,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
         try:
             entity_id = int(entity_id)
         except ValueError:
-            return Response({"detail": "entity_id must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(            {"detail": "Branch selection must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
 
         statements = CustomerStatement.objects.filter(
             entity_id=entity_id,
@@ -256,16 +256,20 @@ class CustomerViewSet(viewsets.ModelViewSet):
         period_from = (request.query_params.get("period_from") or "").strip()
         period_to = (request.query_params.get("period_to") or "").strip()
         try:
-            if period_from:
-                from datetime import date
+            from datetime import date
 
-                statements = statements.filter(period_from=date.fromisoformat(period_from))
-            if period_to:
-                from datetime import date
-
-                statements = statements.filter(period_to=date.fromisoformat(period_to))
+            parsed_from = date.fromisoformat(period_from) if period_from else None
+            parsed_to = date.fromisoformat(period_to) if period_to else None
         except ValueError:
             return Response({"detail": "period_from and period_to must be YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+        if parsed_from and parsed_to and parsed_from > parsed_to:
+            return Response({"detail": "period_from cannot be after period_to."}, status=status.HTTP_400_BAD_REQUEST)
+        if parsed_from and parsed_to:
+            statements = statements.filter(period_to__gte=parsed_from, period_from__lte=parsed_to)
+        elif parsed_from:
+            statements = statements.filter(period_from=parsed_from)
+        elif parsed_to:
+            statements = statements.filter(period_to=parsed_to)
 
         rows = []
         for statement in statements:

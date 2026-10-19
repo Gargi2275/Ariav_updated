@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from accounts.access import customers_visible_to, is_admin_user
+from config.dates import parse_query_dates
 
 from .models import Notification
 from .permissions import NotificationPermission
@@ -33,8 +34,7 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         entity_id = self.request.query_params.get("entity_id")
         customer_id = self.request.query_params.get("customer_id")
         unread_only = self.request.query_params.get("unread_only")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
+        date_from, date_to = parse_query_dates(self.request.query_params)
         q = self.request.query_params.get("search")
         if status_filter:
             qs = qs.filter(status__iexact=status_filter)

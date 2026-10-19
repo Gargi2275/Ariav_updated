@@ -1,0 +1,31 @@
+{
+  "body": {
+    "challan_reference": "MANUAL-INV",
+    "created_at": "<timestamp>",
+    "created_by": "<id>",
+    "created_by_name": "dsp-imp-admin",
+    "dispatch_date": "2026-09-17",
+    "id": "<id>",
+    "lines": [
+      {
+        "dispatched_meters": null,
+        "dispatched_quantity": "1.00",
+        "id": "<id>",
+        "ordered_quantity": "10.00",
+        "pending_quantity": "9.00",
+        "product_code": "",
+        "product_name": "A-B-C-T-S",
+        "purchase_order_line_id": "<id>",
+        "total_dispatched": "1.00",
+        "unit": ""
+      }
+    ],
+    "lr_number": "LR-GOLDEN",
+    "po_number": "MANUAL-GOLDEN",
+    "purchase_order_id": "<id>",
+    "purchase_order_status": "Partially Dispatched",
+    "transporter": "VRL Logistics",
+    "updated_at": "<timestamp>"
+  },
+  "status_code": 201
+}

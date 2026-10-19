@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from rest_framework.test import APIClient
@@ -27,7 +27,7 @@ class DashboardApiTests(TestCase):
         self.operator = AuthUser.objects.create_user(
             username="dash-op",
             password="pass12345",
-            role=AuthUser.Role.OPERATOR,
+            role=AuthUser.Role.STAFF,
         )
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
@@ -131,6 +131,38 @@ class DashboardApiTests(TestCase):
         self.assertEqual(kpis["total_pos"], 0)
         self.assertEqual(res.json()["debtors"], [])
         self.assertNotIn("commission", str(res.json()).lower())
+
+    def test_admin_dashboard_validates_period_and_exposes_context(self):
+        valid = self.client.get(
+            "/api/dashboards/admin/?from=2025-04-01&to=2025-04-30",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(valid.status_code, 200, valid.content)
+        self.assertEqual(valid.json()["period"], {"from": "2025-04-01", "to": "2025-04-30"})
+        self.assertEqual(valid.json()["as_of"], timezone.localdate().isoformat())
+        for query in (
+            "?from=2025-04-01",
+            "?from=bad&to=2025-04-30",
+            "?from=2025-05-01&to=2025-04-30",
+            "?from=2024-01-01&to=2025-06-01",
+        ):
+            response = self.client.get(f"/api/dashboards/admin/{query}", HTTP_HOST="localhost")
+            self.assertEqual(response.status_code, 400, response.content)
+
+    def test_admin_dashboard_period_filters_period_figures_not_point_in_time(self):
+        old = self._invoice(self.guj, "INV-DASH-OLD", Decimal("40.00"), timezone.localdate())
+        old.invoice_date = date(2025, 4, 10)
+        old.save(update_fields=["invoice_date"])
+        current = self._invoice(self.guj, "INV-DASH-CURRENT", Decimal("60.00"), timezone.localdate())
+        current.invoice_date = date(2025, 5, 10)
+        current.save(update_fields=["invoice_date"])
+        response = self.client.get(
+            "/api/dashboards/admin/?from=2025-04-01&to=2025-04-30",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["kpis"]["total_sales"], "40.00")
+        self.assertEqual(response.json()["kpis"]["total_outstanding"], "100.00")
 
     def test_admin_kpis_and_debtors_from_real_invoices(self):
         today = timezone.localdate()
