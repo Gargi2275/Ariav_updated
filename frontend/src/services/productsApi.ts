@@ -1,6 +1,6 @@
 /**
  * Product Catalogue API — /api/products/
- * Brand + subcategory required. Multipart for image upload.
+ * Multipart for image upload. Category is optional unless the session flag is on.
  */
 
 import { apiUrl } from './apiBase';
@@ -43,7 +43,7 @@ export interface ProductRow {
   brand_id: number;
   brand_code: string;
   brand_name: string;
-  category_id: number;
+  category_id: number | null;
   category_code: string;
   category_name: string;
   parent_category_id: number | null;
@@ -73,6 +73,8 @@ export interface ProductRow {
   created_by_name?: string;
   /** Purchase-order lines using this product; only present when listed with `with_usage: 1`. */
   usage_count?: number | null;
+  /** Shades from the price-list qualities linked to this product. */
+  shades?: { quality: string; shades: string[] }[];
 }
 
 export const emptyProduct = (): Partial<ProductRow> => ({
@@ -141,6 +143,20 @@ export const productsApi = {
     fetch(apiUrl('/api/products/'), { method: 'POST', headers: authHeaders(false), body: fd }).then(r => parse<ProductRow>(r)),
   update: (id: number, fd: FormData) =>
     fetch(apiUrl(`/api/products/${id}/`), { method: 'PUT', headers: authHeaders(false), body: fd }).then(r => parse<ProductRow>(r)),
+  setStatus: (id: number, status: ProductStatus) =>
+    fetch(apiUrl(`/api/products/${id}/`), {
+      method: 'PATCH',
+      headers: authHeaders(true),
+      body: JSON.stringify({ status }),
+    }).then(r => parse<ProductRow>(r)),
   deactivate: (id: number) =>
     fetch(apiUrl(`/api/products/${id}/`), { method: 'DELETE', headers: authHeaders(true) }).then(r => parse<ProductRow>(r)),
+  removePermanent: (id: number) =>
+    fetch(apiUrl(`/api/products/${id}/${qs({ permanent: 'true' })}`), { method: 'DELETE', headers: authHeaders(true) }).then(r => parse<void>(r)),
+  search: (params: { brand_id: number; entity_id?: number | 'all'; q?: string; page?: number }) =>
+    fetch(apiUrl(`/api/products/search/${qs(params)}`), { headers: authHeaders(true) }).then(r => parse<{
+      results: ProductRow[];
+      page: number;
+      has_more: boolean;
+    }>(r)),
 };

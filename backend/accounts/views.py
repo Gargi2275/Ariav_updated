@@ -668,7 +668,12 @@ def session_me(request):
     role = "admin" if user.is_admin_role else "staff"
     if user.branch_id or user.entity_id:
         user = AuthUser.objects.select_related("branch", "entity").get(pk=user.pk)
-    return Response({"success": True, "role": role, "user": public_user(user)})
+    return Response({
+        "success": True,
+        "role": role,
+        "user": public_user(user),
+        "features": {"productCategory": settings.PRODUCT_CATEGORY_ENABLED},
+    })
 
 
 @api_view(["POST"])

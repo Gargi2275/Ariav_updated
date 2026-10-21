@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Edit2, ImageIcon, Plus, Search, Trash2, X } from 'lucide-react';
+import { Edit2, Eye, ImageIcon, Plus, Search, Trash2, X } from 'lucide-react';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable, Column } from '../../components/common/DataTable';
@@ -9,7 +9,7 @@ import { FileDropZone } from '../../components/common/FileDropZone';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { MasterError, MasterLoading, emptyTableProps } from './MasterStatus';
 import { num } from '../../services/mastersApi';
-import { notifyApiError, notifySuccess } from '../../services/notify';
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, parseApiErrorDetails } from '../../services/notify';
 import { clearFieldMessage, collectRequired } from '../../services/requiredFields';
 import { BrandRow, brandsApi } from '../../services/brandsApi';
 import { CategoryRow, categoriesApi } from '../../services/categoriesApi';
@@ -18,6 +18,7 @@ import {
   PRODUCT_AVAILABILITY,
   PRODUCT_UNITS,
   ProductRow,
+  ProductStatus,
   emptyProduct,
   productsApi,
   toProductFormData,
@@ -32,6 +33,40 @@ function nullableDecimal(value: string | number | null | undefined): number | nu
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
 
+function shadeView(lines: { quality: string; shades: string[] }[] | undefined) {
+  const filled = (lines || []).filter(line => line.shades.length);
+  if (!filled.length) return { kind: 'empty' as const };
+  const signature = filled[0].shades.join('\u0001');
+  if (filled.every(line => line.shades.join('\u0001') === signature)) {
+    return { kind: 'shared' as const, shades: filled[0].shades };
+  }
+  return { kind: 'mixed' as const, lines: filled };
+}
+
+function ShadeList({ lines }: { lines: { quality: string; shades: string[] }[] | undefined }) {
+  const view = shadeView(lines);
+  if (view.kind === 'empty') return <dd className="mt-1 text-[var(--erp-muted)]">No shades listed.</dd>;
+  if (view.kind === 'shared') {
+    return (
+      <dd className="mt-1 flex flex-wrap gap-1">
+        {view.shades.map(shade => (
+          <span key={shade} className="rounded-md border border-[var(--erp-hairline-strong)] px-2 py-0.5 text-xs text-[var(--erp-text)]">{shade}</span>
+        ))}
+      </dd>
+    );
+  }
+  return (
+    <dd className="mt-1 max-h-40 space-y-1 overflow-auto">
+      {view.lines.map(line => (
+        <div key={line.quality} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="font-mono text-xs text-[var(--erp-muted)]">{line.quality}</span>
+          <span className="text-xs text-[var(--erp-text)]">{line.shades.join(', ')}</span>
+        </div>
+      ))}
+    </dd>
+  );
+}
+
 function availabilityChip(value: string) {
   if (value === 'In Stock') return <StatusChip status="active" label="IN STOCK" />;
   if (value === 'Out of Stock') return <StatusChip status="overdue" label="OUT OF STOCK" />;
@@ -39,7 +74,7 @@ function availabilityChip(value: string) {
 }
 
 export const ProductCatalogueScreen: React.FC = () => {
-  const { userRole, selectedEntityId } = useErp();
+  const { userRole, selectedEntityId, productCategory } = useErp();
   const canWrite = userRole === 'admin';
   const [rows, setRows] = useState<ProductRow[]>([]);
   const [brands, setBrands] = useState<BrandRow[]>([]);
@@ -49,7 +84,6 @@ export const ProductCatalogueScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [brandFilter, setBrandFilter] = useState<number | ''>('');
   const [parentFilter, setParentFilter] = useState<number | ''>('');
   const [subFilter, setSubFilter] = useState<number | ''>('');
@@ -62,8 +96,15 @@ export const ProductCatalogueScreen: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
-  const [pendingDelete, setPendingDelete] = useState<ProductRow | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<{ row: ProductRow; next: ProductStatus } | null>(null);
+  const [pendingHardDelete, setPendingHardDelete] = useState<ProductRow | null>(null);
+  const [hardDeleteBlock, setHardDeleteBlock] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [pendingBulkDelete, setPendingBulkDelete] = useState<ProductRow[] | null>(null);
+  const [bulkDeleteBlock, setBulkDeleteBlock] = useState('');
   const [currentPrice, setCurrentPrice] = useState<CurrentPriceRow | null>(null);
+  const [viewRow, setViewRow] = useState<ProductRow | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
 
   const loadLookups = useCallback(async () => {
@@ -88,7 +129,6 @@ export const ProductCatalogueScreen: React.FC = () => {
     setError('');
     try {
       setRows(await productsApi.list({
-        status: statusFilter === 'All' ? undefined : statusFilter,
         brand_id: brandFilter || undefined,
         category_id: subFilter || undefined,
         availability: availabilityFilter || undefined,
@@ -99,7 +139,7 @@ export const ProductCatalogueScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, brandFilter, subFilter, availabilityFilter]);
+  }, [brandFilter, subFilter, availabilityFilter]);
 
   useEffect(() => { void loadLookups(); }, [loadLookups]);
   useEffect(() => { void load(); }, [load]);
@@ -130,8 +170,76 @@ export const ProductCatalogueScreen: React.FC = () => {
       || r.product_code.toLowerCase().includes(q)
       || r.product_name.toLowerCase().includes(q)
       || r.design.toLowerCase().includes(q)
-      || r.colour.toLowerCase().includes(q);
+      || r.colour.toLowerCase().includes(q)
+      || (r.quality || '').toLowerCase().includes(q)
+      || (r.client_item_code || '').toLowerCase().includes(q)
+      || (r.collection || '').toLowerCase().includes(q);
   });
+
+  const selectedRows = filtered.filter(row => selectedIds.has(row.id));
+  const selectedCount = selectedRows.length;
+  const allVisibleSelected = filtered.length > 0 && selectedCount === filtered.length;
+  const canDeleteSelection = selectedCount > 0 && selectedRows.every(row => row.status === 'Inactive');
+
+  useEffect(() => {
+    const live = new Set(rows.map(row => row.id));
+    setSelectedIds(prev => {
+      const next = new Set([...prev].filter(id => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rows]);
+
+  const toggleOne = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (filtered.every(row => next.has(row.id))) filtered.forEach(row => next.delete(row.id));
+      else filtered.forEach(row => next.add(row.id));
+      return next;
+    });
+  };
+
+  const applyStatus = async (status: ProductStatus) => {
+    const targets = selectedRows.filter(row => row.status !== status);
+    if (!targets.length) {
+      notifyInfo(selectedCount ? `Selected products are already ${status}.` : 'Select products in the table.');
+      return;
+    }
+    setBulkBusy(true);
+    const outcomes = await Promise.all(targets.map(async row => {
+      try {
+        await productsApi.setStatus(row.id, status);
+        return { ok: true as const, id: row.id };
+      } catch (err) {
+        return { ok: false as const, id: row.id, message: parseApiErrorDetails(err).message };
+      }
+    }));
+    const done = outcomes.filter(item => item.ok).length;
+    const failed = outcomes.filter(item => !item.ok);
+    if (done) {
+      const failedIds = new Set(failed.map(item => item.id));
+      setSelectedIds(prev => new Set([...prev].filter(id => failedIds.has(id))));
+      notifySuccess(`${done} product${done === 1 ? '' : 's'} set to ${status}.`);
+      await load();
+    }
+    if (failed.length) notifyError(failed[0].message);
+    setBulkBusy(false);
+  };
+
+  const askBulkDelete = () => {
+    if (!selectedRows.length) return;
+    const inactive = selectedRows.filter(row => row.status === 'Inactive');
+    setBulkDeleteBlock(inactive.length ? '' : 'Set the selected products to Inactive before deleting them.');
+    setPendingBulkDelete(selectedRows);
+  };
 
   const topLevel = useMemo(() => categories.filter(c => !c.parent_category_id), [categories]);
   const subsForFilter = useMemo(
@@ -195,7 +303,7 @@ export const ProductCatalogueScreen: React.FC = () => {
       product_code: form.product_code,
       product_name: form.product_name,
       brand_id: form.brand_id,
-      category_id: form.category_id,
+      ...(productCategory ? { category_id: form.category_id } : {}),
     });
     if (Object.keys(messages).length) {
       setFieldMessages(messages);
@@ -211,7 +319,7 @@ export const ProductCatalogueScreen: React.FC = () => {
       client_item_code: (form.client_item_code || '').trim(),
       product_name: (form.product_name || '').trim(),
       brand_id: form.brand_id,
-      category_id: form.category_id,
+      ...(productCategory || form.category_id ? { category_id: form.category_id } : {}),
       print_name: form.print_name || '',
       description: form.description || '',
       design: form.design || '',
@@ -248,6 +356,31 @@ export const ProductCatalogueScreen: React.FC = () => {
   };
 
   const columns: Column<ProductRow>[] = [
+    ...(canWrite ? [{
+      header: (
+        <input
+          type="checkbox"
+          aria-label="Select all products"
+          checked={allVisibleSelected}
+          ref={element => { if (element) element.indeterminate = selectedCount > 0 && !allVisibleSelected; }}
+          onClick={event => event.stopPropagation()}
+          onChange={toggleAllVisible}
+          className="cursor-pointer accent-[var(--erp-gold)]"
+        />
+      ),
+      width: '36px',
+      align: 'center' as const,
+      render: (row: ProductRow) => (
+        <input
+          type="checkbox"
+          aria-label={`Select ${row.product_name}`}
+          checked={selectedIds.has(row.id)}
+          onClick={event => event.stopPropagation()}
+          onChange={() => toggleOne(row.id)}
+          className="cursor-pointer accent-[var(--erp-gold)]"
+        />
+      ),
+    }] : []),
     {
       header: '',
       width: '52px',
@@ -260,36 +393,48 @@ export const ProductCatalogueScreen: React.FC = () => {
     { header: 'Code', accessorKey: 'product_code', mono: true, width: '100px', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.product_code}</span> },
     { header: 'Name', accessorKey: 'product_name', render: r => <span className="font-medium">{r.product_name}</span> },
     { header: 'Brand', accessorKey: 'brand_name', width: '120px' },
-    {
+    ...(productCategory ? [{
       header: 'Category',
-      render: r => (
+      render: (r: ProductRow) => (
         <span className="font-mono text-[11px] text-[var(--erp-muted)]">
-          {r.parent_category_name || '—'} <span className="text-[var(--erp-faint)]">›</span> {r.category_name}
+          {r.parent_category_name || '—'} <span className="text-[var(--erp-faint)]">›</span> {r.category_name || '—'}
         </span>
       ),
-    },
+    }] : []),
     { header: 'Ex-Mill', accessorKey: 'rate', align: 'right', mono: true, width: '90px', render: r => <span>₹{num(r.rate).toFixed(2)}</span> },
     { header: 'W/S', align: 'right', mono: true, width: '90px', render: r => <span>{r.frate == null || r.frate === '' ? '—' : `₹${num(r.frate).toFixed(2)}`}</span> },
     { header: 'Retail', align: 'right', mono: true, width: '90px', render: r => <span>{r.trate == null || r.trate === '' ? '—' : `₹${num(r.trate).toFixed(2)}`}</span> },
     { header: 'Availability', width: '130px', render: r => availabilityChip(r.availability) },
     {
       header: 'Status',
-      width: '90px',
+      width: '110px',
       align: 'center',
-      render: r => <StatusChip status={r.status === 'Active' ? 'active' : 'inactive'} label={r.status.toUpperCase()} />,
+      render: r => {
+        const chip = <StatusChip status={r.status === 'Active' ? 'active' : 'inactive'} label={r.status.toUpperCase()} />;
+        if (!canWrite) return chip;
+        const next: ProductStatus = r.status === 'Active' ? 'Inactive' : 'Active';
+        return (
+          <button type="button" aria-label={`Set ${r.product_name} to ${next}`} title={`Set to ${next}`} onClick={() => setPendingStatus({ row: r, next })} className="cursor-pointer">
+            {chip}
+          </button>
+        );
+      },
     },
     {
       header: '',
       align: 'right',
-      width: '72px',
-      render: r => canWrite ? (
-        <div className="flex justify-end gap-1">
-          <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" onClick={() => void openEdit(r.id)}><Edit2 className="w-3.5 h-3.5" /></button>
-          {r.status === 'Active' && (
-            <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] cursor-pointer" onClick={() => setPendingDelete(r)}><Trash2 className="w-3.5 h-3.5" /></button>
+      width: '108px',
+      render: r => (
+        <div className="flex justify-end items-center gap-1">
+          <button type="button" title="View" aria-label={`View ${r.product_name}`} className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" onClick={() => setViewRow(r)}><Eye className="w-3.5 h-3.5" /></button>
+          {canWrite ? (
+            <button type="button" title="Edit" aria-label={`Edit ${r.product_name}`} className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" onClick={() => void openEdit(r.id)}><Edit2 className="w-3.5 h-3.5" /></button>
+          ) : null}
+          {canWrite && r.status === 'Inactive' && (
+            <button type="button" title="Delete" aria-label={`Delete ${r.product_name}`} className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] cursor-pointer" onClick={() => { setHardDeleteBlock(''); setPendingHardDelete(r); }}><Trash2 className="w-3.5 h-3.5" /></button>
           )}
         </div>
-      ) : null,
+      ),
     },
   ];
 
@@ -299,7 +444,7 @@ export const ProductCatalogueScreen: React.FC = () => {
         moduleNumber="39"
         section="Masters"
         title="Product Catalogue"
-        subtitle="Brand SKUs under Category → Subcategory, with rate and availability"
+        subtitle={productCategory ? 'Brand SKUs under Category → Subcategory, with rate and availability' : 'Brand SKUs with rate and availability'}
         actions={
           canWrite ? (
             <button type="button" onClick={openCreate} className="px-4 py-1.5 bg-[var(--erp-gold)] text-[#0F141B] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
@@ -313,13 +458,18 @@ export const ProductCatalogueScreen: React.FC = () => {
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           <div className="relative w-full lg:w-96">
             <Search className="w-4 h-4 text-[var(--erp-muted)] absolute left-3 top-2.5" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search code, name, design or colour…" className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder={productCategory ? 'Search code, name, design or colour…' : 'Search code, name, quality or collection…'} className="w-full pl-9 pr-3 py-1.5 text-xs bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none font-mono" />
           </div>
-          <div className="flex items-center gap-2 font-mono text-xs">
-            {(['All', 'Active', 'Inactive'] as const).map(s => (
-              <button key={s} type="button" onClick={() => setStatusFilter(s)} className={`px-3 py-1 border ${statusFilter === s ? 'border-[var(--erp-gold)] text-[var(--erp-gold)] bg-[var(--erp-surface-2)]' : 'border-[var(--erp-hairline)] text-[var(--erp-muted)]'}`}>{s}</button>
-            ))}
-          </div>
+          {canWrite && selectedCount > 0 && (
+            <div className="flex flex-wrap items-center justify-end gap-2 font-mono text-xs">
+              <span className="text-[var(--erp-muted)]">{selectedCount} selected</span>
+              <button type="button" disabled={!selectedCount || bulkBusy} onClick={() => void applyStatus('Active')} className="px-3 py-1 border border-[var(--erp-gold)] text-[var(--erp-gold)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">Active</button>
+              <button type="button" disabled={!selectedCount || bulkBusy} onClick={() => void applyStatus('Inactive')} className="px-3 py-1 border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">Inactive</button>
+              {canDeleteSelection && (
+                <button type="button" disabled={bulkBusy} onClick={askBulkDelete} className="px-3 py-1 border border-[var(--erp-negative)] text-[var(--erp-negative)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">Delete</button>
+              )}
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           {selectedEntityId !== 'all' && !lookupsReady ? (
@@ -343,14 +493,14 @@ export const ProductCatalogueScreen: React.FC = () => {
               {branchBrands.map(b => <option key={b.id} value={b.id}>{b.brand_code} · {b.brand_name}</option>)}
             </select>
           )}
-          <select value={parentFilter} onChange={e => { setParentFilter(e.target.value ? Number(e.target.value) : ''); setSubFilter(''); }} className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
+          {productCategory ? <select value={parentFilter} onChange={e => { setParentFilter(e.target.value ? Number(e.target.value) : ''); setSubFilter(''); }} className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
             <option value="">All categories</option>
             {topLevel.map(c => <option key={c.id} value={c.id}>{c.category_code} · {c.category_name}</option>)}
-          </select>
-          <select value={subFilter} onChange={e => setSubFilter(e.target.value ? Number(e.target.value) : '')} disabled={!parentFilter} className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] disabled:opacity-50">
+          </select> : null}
+          {productCategory ? <select value={subFilter} onChange={e => setSubFilter(e.target.value ? Number(e.target.value) : '')} disabled={!parentFilter} className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)] disabled:opacity-50">
             <option value="">All subcategories</option>
             {subsForFilter.map(c => <option key={c.id} value={c.id}>{c.category_code} · {c.category_name}</option>)}
-          </select>
+          </select> : null}
           <select value={availabilityFilter} onChange={e => setAvailabilityFilter(e.target.value)} className="px-2 py-1.5 text-xs font-mono bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] text-[var(--erp-text)]">
             <option value="">All availability</option>
             {PRODUCT_AVAILABILITY.map(a => <option key={a}>{a}</option>)}
@@ -370,7 +520,7 @@ export const ProductCatalogueScreen: React.FC = () => {
               ? rows.filter(row => branchBrands.some(brand => brand.id === row.brand_id)).length
               : rows.length,
             filtered.length,
-            statusFilter !== 'All' || brandFilter || subFilter || availabilityFilter
+            brandFilter || subFilter || availabilityFilter
               ? 'No products match this filter.'
               : selectedEntity && branchBrands.length === 0
                 ? 'No brands are mapped to this branch.'
@@ -380,6 +530,44 @@ export const ProductCatalogueScreen: React.FC = () => {
             canWrite ? openCreate : () => undefined,
           )}
         />
+      )}
+
+      {viewRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-5" role="dialog" aria-modal="true" aria-labelledby="product-view-title">
+            <div className="mb-4 flex items-start justify-between gap-3 border-b border-[var(--erp-hairline)] pb-3">
+              <div>
+                <p className="font-mono text-xs text-[var(--erp-gold)]">{viewRow.product_code}</p>
+                <h3 id="product-view-title" className="font-display text-lg font-semibold text-[var(--erp-text)]">{viewRow.product_name}</h3>
+              </div>
+              <button type="button" aria-label="Close product details" onClick={() => setViewRow(null)} className="text-[var(--erp-muted)] hover:text-[var(--erp-text)]"><X className="h-4 w-4" /></button>
+            </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div><dt className="text-xs text-[var(--erp-muted)]">Brand</dt><dd>{viewRow.brand_code} · {viewRow.brand_name}</dd></div>
+              <div><dt className="text-xs text-[var(--erp-muted)]">Status</dt><dd>{viewRow.status}</dd></div>
+              <div><dt className="text-xs text-[var(--erp-muted)]">Ex-mill</dt><dd className="font-mono">₹{num(viewRow.rate).toFixed(2)}</dd></div>
+              <div><dt className="text-xs text-[var(--erp-muted)]">Wholesale</dt><dd className="font-mono">{viewRow.frate == null || viewRow.frate === '' ? '—' : `₹${num(viewRow.frate).toFixed(2)}`}</dd></div>
+              <div><dt className="text-xs text-[var(--erp-muted)]">Retail</dt><dd className="font-mono">{viewRow.trate == null || viewRow.trate === '' ? '—' : `₹${num(viewRow.trate).toFixed(2)}`}</dd></div>
+              <div><dt className="text-xs text-[var(--erp-muted)]">Unit</dt><dd>{viewRow.unit || '—'}</dd></div>
+              <div><dt className="text-xs text-[var(--erp-muted)]">Availability</dt><dd>{viewRow.availability || '—'}</dd></div>
+              {productCategory ? <div><dt className="text-xs text-[var(--erp-muted)]">Category</dt><dd>{viewRow.parent_category_name || '—'} · {viewRow.category_name || '—'}</dd></div> : null}
+              {viewRow.collection ? <div><dt className="text-xs text-[var(--erp-muted)]">Collection</dt><dd>{viewRow.collection}</dd></div> : null}
+              {viewRow.quality ? <div><dt className="text-xs text-[var(--erp-muted)]">Quality</dt><dd>{viewRow.quality}</dd></div> : null}
+              {viewRow.design ? <div><dt className="text-xs text-[var(--erp-muted)]">Design</dt><dd>{viewRow.design}</dd></div> : null}
+              {viewRow.colour ? <div><dt className="text-xs text-[var(--erp-muted)]">Colour</dt><dd>{viewRow.colour}</dd></div> : null}
+              <div className="col-span-2">
+                <dt className="text-xs text-[var(--erp-muted)]">Shades</dt>
+                <ShadeList lines={viewRow.shades} />
+              </div>
+            </dl>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setViewRow(null)} className="h-9 border border-[var(--erp-hairline)] px-3 text-xs text-[var(--erp-muted)]">Close</button>
+              {canWrite ? (
+                <button type="button" onClick={() => { const id = viewRow.id; setViewRow(null); void openEdit(id); }} className="h-9 bg-[var(--erp-gold)] px-3 text-xs font-semibold text-[#1B2430]">Edit</button>
+              ) : null}
+            </div>
+          </div>
+        </div>
       )}
 
       {modalOpen && canWrite && (
@@ -465,6 +653,7 @@ export const ProductCatalogueScreen: React.FC = () => {
                     </select>
                   )}
                 </FormField>
+                {productCategory ? <>
                 <FormField label="Category">
                   <select value={formParentId} onChange={e => { const v = e.target.value ? Number(e.target.value) : ''; setFormParentId(v); setForm({ ...form, category_id: undefined }); setFieldMessages(prev => clearFieldMessage(prev, 'category_id')); }} className="px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]">
                     <option value="">Select category…</option>
@@ -491,6 +680,7 @@ export const ProductCatalogueScreen: React.FC = () => {
                     ))}
                   </select>
                 </FormField>
+                </> : null}
               </div>
             </section>
 
@@ -551,17 +741,11 @@ export const ProductCatalogueScreen: React.FC = () => {
             </section>
 
             <section>
-              <h4 className={sectionTitle}>Availability & Status</h4>
+              <h4 className={sectionTitle}>Availability</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Availability
                   <select value={form.availability || 'In Stock'} onChange={e => setForm({ ...form, availability: e.target.value })} className="px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]">
                     {PRODUCT_AVAILABILITY.map(a => <option key={a}>{a}</option>)}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)]">Status
-                  <select value={form.status || 'Active'} onChange={e => setForm({ ...form, status: e.target.value as ProductRow['status'] })} className="px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]">
-                    <option>Active</option>
-                    <option>Inactive</option>
                   </select>
                 </label>
               </div>
@@ -576,28 +760,119 @@ export const ProductCatalogueScreen: React.FC = () => {
       )}
 
       <ConfirmDialog
-        open={!!pendingDelete}
+        open={!!pendingStatus}
         entityType="product"
-        entityLabel={pendingDelete ? `${pendingDelete.product_name} (${pendingDelete.product_code})` : ''}
-        title="Deactivate product?"
-        message={
-          pendingDelete
-            ? `${pendingDelete.product_name} (${pendingDelete.product_code}) will be set to Inactive. This does not delete any records — it can be reactivated later from the Inactive filter.`
-            : ''
-        }
-        confirmLabel="Deactivate"
-        busyLabel="Deactivating…"
-        onCancel={() => setPendingDelete(null)}
+        entityLabel={pendingStatus ? `${pendingStatus.row.product_name} (${pendingStatus.row.product_code})` : ''}
+        title={pendingStatus?.next === 'Inactive' ? 'Set product to Inactive?' : 'Set product to Active?'}
+        message={pendingStatus ? `${pendingStatus.row.product_name} (${pendingStatus.row.product_code}) will be set to ${pendingStatus.next}.` : ''}
+        confirmLabel={pendingStatus?.next === 'Inactive' ? 'Inactive' : 'Active'}
+        busyLabel="Saving…"
+        confirmTone={pendingStatus?.next === 'Active' ? 'gold' : 'danger'}
+        onCancel={() => setPendingStatus(null)}
         onConfirm={async () => {
-          if (!pendingDelete) return;
+          if (!pendingStatus) return;
           try {
-            await productsApi.deactivate(pendingDelete.id);
-            notifySuccess(`${pendingDelete.product_name} (${pendingDelete.product_code}) deactivated.`);
-            setPendingDelete(null);
+            await productsApi.setStatus(pendingStatus.row.id, pendingStatus.next);
+            notifySuccess(`${pendingStatus.row.product_name} set to ${pendingStatus.next}.`);
+            setPendingStatus(null);
             await load();
           } catch (err) {
             notifyApiError(err);
           }
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!pendingHardDelete}
+        entityType="product"
+        entityLabel={pendingHardDelete ? `${pendingHardDelete.product_name} (${pendingHardDelete.product_code})` : ''}
+        title={hardDeleteBlock ? 'Cannot delete product' : 'Delete product?'}
+        message={
+          hardDeleteBlock
+          || (pendingHardDelete
+            ? `Delete ${pendingHardDelete.product_name} (${pendingHardDelete.product_code})? This cannot be undone.`
+            : '')
+        }
+        confirmLabel={hardDeleteBlock ? 'Understood' : 'Delete'}
+        busyLabel={hardDeleteBlock ? 'Understood' : 'Deleting…'}
+        confirmTone="critical"
+        onCancel={() => { setPendingHardDelete(null); setHardDeleteBlock(''); }}
+        onConfirm={async () => {
+          if (!pendingHardDelete) return;
+          if (hardDeleteBlock) {
+            setPendingHardDelete(null);
+            setHardDeleteBlock('');
+            return;
+          }
+          try {
+            await productsApi.removePermanent(pendingHardDelete.id);
+            notifySuccess(`${pendingHardDelete.product_name} (${pendingHardDelete.product_code}) deleted.`);
+            setPendingHardDelete(null);
+            await load();
+          } catch (err) {
+            const status = (err as { status?: number }).status;
+            if (status === 409 || status === 400) {
+              setHardDeleteBlock(parseApiErrorDetails(err).message);
+              return;
+            }
+            notifyApiError(err);
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!pendingBulkDelete}
+        entityType="product"
+        entityLabel={pendingBulkDelete ? `${pendingBulkDelete.length} selected` : ''}
+        title={bulkDeleteBlock ? 'Cannot delete products' : 'Delete products?'}
+        message={
+          bulkDeleteBlock
+          || (pendingBulkDelete
+            ? (() => {
+              const inactive = pendingBulkDelete.filter(row => row.status === 'Inactive');
+              const activeCount = pendingBulkDelete.length - inactive.length;
+              const names = inactive.map(row => row.product_name).slice(0, 8).join(', ');
+              const extra = inactive.length > 8 ? ` and ${inactive.length - 8} more` : '';
+              const staying = activeCount
+                ? ` ${activeCount} active product${activeCount === 1 ? '' : 's'} in this selection will stay.`
+                : '';
+              return `Delete ${inactive.length} product${inactive.length === 1 ? '' : 's'} (${names}${extra})? This cannot be undone.${staying}`;
+            })()
+            : '')
+        }
+        confirmLabel={bulkDeleteBlock ? 'Understood' : 'Delete'}
+        busyLabel={bulkDeleteBlock ? 'Understood' : 'Deleting…'}
+        confirmTone="critical"
+        onCancel={() => { setPendingBulkDelete(null); setBulkDeleteBlock(''); }}
+        onConfirm={async () => {
+          if (!pendingBulkDelete) return;
+          if (bulkDeleteBlock) {
+            setPendingBulkDelete(null);
+            setBulkDeleteBlock('');
+            return;
+          }
+          const inactive = pendingBulkDelete.filter(row => row.status === 'Inactive');
+          const outcomes = await Promise.all(inactive.map(async row => {
+            try {
+              await productsApi.removePermanent(row.id);
+              return { ok: true as const, id: row.id };
+            } catch (err) {
+              return { ok: false as const, id: row.id, message: parseApiErrorDetails(err).message };
+            }
+          }));
+          const removedIds = outcomes.filter(item => item.ok).map(item => item.id);
+          const failed = outcomes.filter(item => !item.ok);
+          if (removedIds.length) {
+            const failedIds = new Set(failed.map(item => item.id));
+            setSelectedIds(prev => new Set([...prev].filter(id => failedIds.has(id))));
+            notifySuccess(`${removedIds.length} product${removedIds.length === 1 ? '' : 's'} deleted.`);
+            await load();
+          }
+          if (failed.length) {
+            setBulkDeleteBlock(failed.map(item => item.message).join(' '));
+            return;
+          }
+          setPendingBulkDelete(null);
         }}
       />
     </div>

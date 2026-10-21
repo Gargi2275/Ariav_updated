@@ -52,6 +52,13 @@ export interface PurchaseOrderLineRow {
   product_code: string;
   product_name: string;
   unit: string;
+  quantity_unit?: 'Pieces' | 'Meters' | string;
+  shade?: string;
+  size?: string;
+  delivery_from?: string | null;
+  delivery_to?: string | null;
+  line_remarks?: string;
+  form_row_no?: number | null;
   quantity: string | number;
   rate: string | number | null;
   line_total: string | number | null;
@@ -81,6 +88,13 @@ export interface PurchaseOrderRow {
   brand_code: string;
   brand_name: string;
   po_date: string;
+  place?: string;
+  mode_of_despatch?: string;
+  destination?: string;
+  documents_through?: string;
+  special_instructions?: string;
+  print_profile?: string;
+  print_copies?: { id: string; label: string }[];
   status: POStatus | string;
   remarks: string;
   source_format?: string;
@@ -124,6 +138,11 @@ export const emptyPurchaseOrder = (): Partial<PurchaseOrderRow> => ({
   customer_id: undefined,
   brand_id: undefined,
   po_date: todayIso(),
+  place: '',
+  mode_of_despatch: '',
+  destination: '',
+  documents_through: '',
+  special_instructions: '',
   remarks: '',
   lines: [],
   status: 'Draft',
@@ -261,6 +280,20 @@ export interface PoImportCommitResult {
   parties_linked_count: number;
 }
 
+export interface FormQuality {
+  quality_code: string;
+  quality_label: string;
+  shades: string[];
+  price: string | null;
+  ex_mill?: string | null;
+  wholesale?: string | null;
+  retail?: string | null;
+  collection?: string;
+  product_id: number | null;
+  product_code: string;
+  product_name: string;
+}
+
 export const purchaseOrdersApi = {
   list: (params: {
     status?: string;
@@ -347,9 +380,15 @@ export const purchaseOrdersApi = {
         decisions: args.decisions,
       }),
     }),
-  pdf: async (id: number): Promise<Blob> => {
+  formQualities: (brandId: number, q = '') =>
+    request<FormQuality[]>(`/api/purchase-orders/form-qualities/${qs({ brand_id: brandId, q })}`),
+  pdf: async (id: number, params: { form?: boolean; copy?: string; blank?: boolean } = {}): Promise<Blob> => {
     const token = localStorage.getItem('ariav_auth_token');
-    const res = await fetch(apiUrl(`/api/purchase-orders/${id}/pdf/`), {
+    const res = await fetch(apiUrl(`/api/purchase-orders/${id}/pdf/${qs({
+      form: params.form ? 1 : undefined,
+      copy: params.copy,
+      blank: params.blank ? 1 : undefined,
+    })}`), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) {

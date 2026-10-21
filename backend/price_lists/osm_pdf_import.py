@@ -704,14 +704,17 @@ def commit_osm_pdf_import(*, user, token, branch_id, brand_id, year, season):
             items = group["items"]
             first = items[0]
             prefixes = {item["quality_prefix"] for item in items}
-            if len(prefixes) == 1:
-                category_key = next(iter(prefixes))
-            else:
-                category_key = re.sub(r"[^A-Za-z0-9]", "", group["code"]).upper()[:17]
-                if not category_key:
-                    raise ValidationError({"file": f"Collection {group['name']} has no code that can be stored as a category."})
-            if category_key not in categories:
-                categories[category_key] = _category_for_prefix(category_key, user)
+            category = None
+            if settings.PRODUCT_CATEGORY_ENABLED:
+                if len(prefixes) == 1:
+                    category_key = next(iter(prefixes))
+                else:
+                    category_key = re.sub(r"[^A-Za-z0-9]", "", group["code"]).upper()[:17]
+                    if not category_key:
+                        raise ValidationError({"file": f"Collection {group['name']} has no code that can be stored as a category."})
+                if category_key not in categories:
+                    categories[category_key] = _category_for_prefix(category_key, user)
+                category = categories[category_key]
             if group["collection"]:
                 printed = (first.get("collection_code") or first.get("collection_name") or "").strip()
                 shared = {
@@ -748,7 +751,7 @@ def commit_osm_pdf_import(*, user, token, branch_id, brand_id, year, season):
                 product = Product.objects.create(
                     product_code=group["code"],
                     brand=brand,
-                    category=categories[category_key],
+                    category=category,
                     created_by=user,
                     **shared,
                 )

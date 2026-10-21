@@ -167,6 +167,9 @@ PIN_MAX_ATTEMPTS = 5
 PIN_LOCKOUT_SECONDS = 300
 OTP_MAX_ATTEMPTS = 5
 SESSION_TOKEN_HOURS = 24
+# Product Category → Subcategory is optional and hidden while this is false.
+# Set PRODUCT_CATEGORY_ENABLED=true to restore the previous required behaviour.
+PRODUCT_CATEGORY_ENABLED = os.environ.get("PRODUCT_CATEGORY_ENABLED", "false").lower() in ("1", "true", "yes")
 TEMP_TOKEN_SECONDS = 600
 # Only enable behind a reverse proxy that overwrites X-Forwarded-For; otherwise
 # clients could spoof their IP and dodge the per-IP rate limits.

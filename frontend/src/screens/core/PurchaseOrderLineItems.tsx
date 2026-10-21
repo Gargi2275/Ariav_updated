@@ -4,15 +4,26 @@ import { AccessibleSelectModal, SelectOption } from '../../components/common/Acc
 import { rateIsUnset } from '../../components/common/RateNotSetBadge';
 import { num } from '../../services/mastersApi';
 import { REQUIRED_MSG } from '../../services/requiredFields';
+import { productsApi } from '../../services/productsApi';
+import { ProductLinePicker, ProductSearchHit, ProductSearchPage, productOptionLabel } from './ProductLinePicker';
 
 export type LineDraft = {
   key: string;
   category_id?: number;
   product_id?: number;
+  product_code?: string;
+  product_name?: string;
   product_description: string;
   manualEntry: boolean;
   quantity: string;
   rate: string;
+  shade?: string;
+  size?: string;
+  quantity_unit?: 'Pieces' | 'Meters';
+  delivery_from?: string;
+  delivery_to?: string;
+  line_remarks?: string;
+  form_row_no?: number | null;
 };
 
 interface PurchaseOrderLineItemsProps {
@@ -20,12 +31,17 @@ interface PurchaseOrderLineItemsProps {
   setLines: React.Dispatch<React.SetStateAction<LineDraft[]>>;
   onAddLine: () => void;
   onCategoryChange: (key: string, categoryId: number, index: number) => void;
-  onProductChange: (key: string, productId: number, index: number) => void;
+  onProductChange: (key: string, productId: number, index: number, picked?: ProductSearchHit) => void;
   categories: SelectOption[];
   productOptionsByCategory: Map<number, SelectOption[]>;
   products: { id: number; unit?: string | null; product_name?: string; product_code?: string }[];
   brandSelected: boolean;
+  brandId?: number;
+  brandCode?: string;
+  entityId?: number;
   brandName?: string;
+  productCategory?: boolean;
+  searchProducts?: (query: string, page: number, brandId: number) => Promise<ProductSearchPage>;
   isManual: boolean;
   readOnly?: boolean;
   fieldMessages: Record<string, string>;
@@ -37,9 +53,12 @@ function money(value: number): string {
 }
 
 /** Shared by the header row and every line so columns stay on one axis. */
-const GRID_COLUMNS =
+const GRID_WITH_CATEGORY =
   '@2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.45fr)_80px_96px_minmax(112px,0.75fr)_44px] ' +
   '@3xl:grid-cols-[minmax(0,30fr)_minmax(0,28fr)_minmax(84px,11fr)_minmax(100px,13fr)_minmax(128px,18fr)_44px]';
+const GRID_WITHOUT_CATEGORY =
+  '@2xl:grid-cols-[minmax(0,1.7fr)_80px_96px_minmax(112px,0.75fr)_44px] ' +
+  '@3xl:grid-cols-[minmax(0,40fr)_minmax(84px,11fr)_minmax(100px,13fr)_minmax(128px,18fr)_44px]';
 
 const inputBase =
   'h-12 w-full px-3 rounded-md border bg-[var(--erp-surface)] text-[15px] text-[var(--erp-text)] placeholder:text-[var(--erp-faint)] transition-[border-color,box-shadow] duration-150 hover:border-[var(--erp-text)]/40 focus:outline-none focus:border-[var(--erp-gold)] focus:ring-[3px] focus:ring-[color:var(--erp-gold)]/30';
@@ -87,13 +106,19 @@ export const PurchaseOrderLineItems: React.FC<PurchaseOrderLineItemsProps> = ({
   productOptionsByCategory,
   products,
   brandSelected,
+  brandId,
+  brandCode,
+  entityId,
   brandName,
+  productCategory = false,
+  searchProducts = (query, page, id) => productsApi.search({ brand_id: id, entity_id: entityId, q: query, page }),
   isManual,
   readOnly = false,
   fieldMessages,
   totals,
 }) => {
   const baseId = useId();
+  const gridColumns = productCategory ? GRID_WITH_CATEGORY : GRID_WITHOUT_CATEGORY;
 
   const patchLine = (key: string, patch: Partial<LineDraft>) =>
     setLines(prev => prev.map(l => (l.key === key ? { ...l, ...patch } : l)));
@@ -121,9 +146,9 @@ export const PurchaseOrderLineItems: React.FC<PurchaseOrderLineItemsProps> = ({
           <div role="rowgroup" className="hidden @2xl:block">
             <div
               role="row"
-              className={`grid ${GRID_COLUMNS} items-center h-10 px-2 bg-[var(--erp-surface-2)]/70 border-b border-[var(--erp-hairline-strong)] font-mono text-[11.5px] font-semibold uppercase tracking-[0.06em] text-[var(--erp-text)]/65`}
+              className={`grid ${gridColumns} items-center h-10 px-2 bg-[var(--erp-surface-2)]/70 border-b border-[var(--erp-hairline-strong)] font-mono text-[11.5px] font-semibold uppercase tracking-[0.06em] text-[var(--erp-text)]/65`}
             >
-              <div role="columnheader" className="px-1.5"><span className="block px-3">Category<RequiredMark /></span></div>
+              {productCategory ? <div role="columnheader" className="px-1.5"><span className="block px-3">Category<RequiredMark /></span></div> : null}
               <div role="columnheader" className="px-1.5"><span className="block px-3">Product<RequiredMark /></span></div>
               <div role="columnheader" className="px-1.5 text-right"><span className="block px-3">Qty<RequiredMark /></span></div>
               <div role="columnheader" className="px-1.5 text-right"><span className="block px-3">Rate</span></div>
@@ -171,14 +196,14 @@ export const PurchaseOrderLineItems: React.FC<PurchaseOrderLineItemsProps> = ({
                   key={line.key}
                   role="row"
                   aria-rowindex={n + 1}
-                  className={`grid grid-cols-2 gap-x-3 gap-y-4 p-4 @2xl:gap-0 @2xl:px-2 @2xl:py-3 ${GRID_COLUMNS} items-start focus-within:bg-[var(--erp-gold)]/[0.035]`}
+                  className={`grid grid-cols-2 gap-x-3 gap-y-4 p-4 @2xl:gap-0 @2xl:px-2 @2xl:py-3 ${gridColumns} items-start focus-within:bg-[var(--erp-gold)]/[0.035]`}
                 >
                   <div role="cell" className="col-span-2 flex items-center justify-between -mt-1 -mb-1 @2xl:hidden">
                     <span className="font-mono text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--erp-muted)]">Line {n}</span>
                     {removeButton}
                   </div>
 
-                  <div role="cell" className="col-span-2 @2xl:col-span-1 @2xl:px-1.5 min-w-0">
+                  {productCategory ? <div role="cell" className="col-span-2 @2xl:col-span-1 @2xl:px-1.5 min-w-0">
                     <span aria-hidden className={`${mobileLabel} @2xl:hidden`}>Category<RequiredMark /></span>
                     {readOnly ? (
                       <div className="min-h-12 flex items-center px-3 rounded-md border border-[var(--erp-hairline-strong)] text-[14px] text-[var(--erp-text)]">
@@ -211,12 +236,16 @@ export const PurchaseOrderLineItems: React.FC<PurchaseOrderLineItemsProps> = ({
                         <FieldError id={ids.category} message={msg.category} />
                       </>
                     )}
-                  </div>
+                  </div> : null}
 
                   <div role="cell" className="col-span-2 @2xl:col-span-1 @2xl:px-1.5 min-w-0">
                     {readOnly ? (
                       <div className="min-h-12 flex items-center px-3 rounded-md border border-[var(--erp-hairline-strong)] text-[14px] text-[var(--erp-text)]">
-                        {product?.product_name || product?.product_code || line.product_description || '—'}
+                        {line.product_code && line.product_name
+                          ? productOptionLabel(line)
+                          : product?.product_code && product?.product_name
+                            ? productOptionLabel(product)
+                            : product?.product_name || product?.product_code || line.product_description || '—'}
                       </div>
                     ) : freeText ? (
                       <>
@@ -236,7 +265,7 @@ export const PurchaseOrderLineItems: React.FC<PurchaseOrderLineItemsProps> = ({
                         />
                         <FieldError id={`${ids.desc}-error`} message={msg.desc} />
                       </>
-                    ) : (
+                    ) : productCategory ? (
                       <>
                         <span aria-hidden className={`${mobileLabel} @2xl:hidden`}>Product<RequiredMark /></span>
                         <AccessibleSelectModal
@@ -256,6 +285,22 @@ export const PurchaseOrderLineItems: React.FC<PurchaseOrderLineItemsProps> = ({
                           invalid={!!msg.product}
                           describedBy={msg.product ? ids.product : undefined}
                           onChange={productId => onProductChange(line.key, productId, index)}
+                        />
+                        <FieldError id={ids.product} message={msg.product} />
+                      </>
+                    ) : (
+                      <>
+                        <span aria-hidden className={`${mobileLabel} @2xl:hidden`}>Product<RequiredMark /></span>
+                        <ProductLinePicker
+                          brandId={brandId}
+                          brandCode={brandCode}
+                          lineNumber={n}
+                          disabled={!brandSelected}
+                          invalid={!!msg.product}
+                          describedBy={msg.product ? ids.product : undefined}
+                          selectedLabel={line.product_code && line.product_name ? productOptionLabel(line) : ''}
+                          searchProducts={searchProducts}
+                          onSelect={picked => onProductChange(line.key, picked.id, index, picked)}
                         />
                         <FieldError id={ids.product} message={msg.product} />
                       </>

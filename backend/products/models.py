@@ -35,9 +35,11 @@ class Product(models.Model):
     )
     category = models.ForeignKey(
         "categories.Category",
+        null=True,
+        blank=True,
         on_delete=models.PROTECT,
         related_name="products",
-        help_text="Must be a subcategory (Category with a parent).",
+        help_text="Optional while PRODUCT_CATEGORY_ENABLED is off. When the flag is on, this must be a subcategory.",
     )
     print_name = models.CharField(max_length=200, blank=True)
     description = models.TextField(blank=True)

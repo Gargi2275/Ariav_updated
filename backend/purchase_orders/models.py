@@ -53,6 +53,11 @@ class PurchaseOrder(models.Model):
     po_date = models.DateField(default=date.today)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.DRAFT)
     remarks = models.TextField(blank=True)
+    place = models.CharField(max_length=80, blank=True)
+    mode_of_despatch = models.CharField(max_length=80, blank=True)
+    destination = models.CharField(max_length=120, blank=True)
+    documents_through = models.CharField(max_length=120, blank=True)
+    special_instructions = models.TextField(blank=True)
     source_format = models.CharField(max_length=80, blank=True)
     extra_data = models.JSONField(default=dict)
     handy_form_upload = models.FileField(upload_to="po_handy_forms/", blank=True, null=True)
@@ -142,6 +147,10 @@ class PurchaseOrderStatusChange(models.Model):
 
 
 class PurchaseOrderLine(models.Model):
+    class Unit(models.TextChoices):
+        PIECES = "Pieces", "Pieces"
+        METERS = "Meters", "Meters"
+
     purchase_order = models.ForeignKey(
         PurchaseOrder,
         on_delete=models.CASCADE,
@@ -162,6 +171,13 @@ class PurchaseOrderLine(models.Model):
     )
     rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     rate_source = models.CharField(max_length=240, blank=True)
+    shade = models.CharField(max_length=40, blank=True)
+    size = models.CharField(max_length=40, blank=True)
+    unit = models.CharField(max_length=16, choices=Unit.choices, default=Unit.PIECES)
+    delivery_from = models.DateField(null=True, blank=True)
+    delivery_to = models.DateField(null=True, blank=True)
+    line_remarks = models.CharField(max_length=240, blank=True)
+    form_row_no = models.PositiveIntegerField(null=True, blank=True)
     line_total = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     expected_delivery_period = models.CharField(max_length=160, blank=True)
     customer_delivery_date = models.DateField(null=True, blank=True)

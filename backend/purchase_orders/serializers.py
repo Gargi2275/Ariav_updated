@@ -20,22 +20,32 @@ def _order_type_for_brand(brand: Brand) -> str:
     return PurchaseOrder.OrderType.DIGITAL
 
 
+def _line_values(row: dict) -> dict:
+    return {
+        "product": row.get("product"),
+        "product_description": (row.get("product_description") or "").strip(),
+        "quantity": row["quantity"],
+        "rate": row.get("rate"),
+        "shade": (row.get("shade") or "").strip(),
+        "size": (row.get("size") or "").strip(),
+        "unit": row.get("unit") or PurchaseOrderLine.Unit.PIECES,
+        "delivery_from": row.get("delivery_from"),
+        "delivery_to": row.get("delivery_to"),
+        "line_remarks": (row.get("line_remarks") or "").strip(),
+        "form_row_no": row.get("form_row_no"),
+        "expected_delivery_period": row.get("expected_delivery_period", ""),
+        "customer_delivery_date": row.get("customer_delivery_date"),
+        "extra_data": row.get("extra_data") or {},
+    }
+
+
 def create_purchase_order_with_lines(*, user=None, lines, **validated_data):
     if user is not None and getattr(user, "is_authenticated", False):
         validated_data["created_by"] = user
     with transaction.atomic():
         po = PurchaseOrder.objects.create(**validated_data)
         for row in lines:
-            PurchaseOrderLine.objects.create(
-                purchase_order=po,
-                product=row.get("product"),
-                product_description=(row.get("product_description") or "").strip(),
-                quantity=row["quantity"],
-                rate=row.get("rate"),
-                expected_delivery_period=row.get("expected_delivery_period", ""),
-                customer_delivery_date=row.get("customer_delivery_date"),
-                extra_data=row.get("extra_data", {}),
-            )
+            PurchaseOrderLine.objects.create(purchase_order=po, **_line_values(row))
     return po
 
 
@@ -53,6 +63,12 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
     pending_quantity = serializers.SerializerMethodField()
     total_invoiced = serializers.SerializerMethodField()
     invoiceable_quantity = serializers.SerializerMethodField()
+    quantity_unit = serializers.ChoiceField(
+        source="unit",
+        choices=PurchaseOrderLine.Unit.choices,
+        required=False,
+        default=PurchaseOrderLine.Unit.PIECES,
+    )
 
     class Meta:
         model = PurchaseOrderLine
@@ -63,6 +79,13 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
             "product_code",
             "product_name",
             "unit",
+            "quantity_unit",
+            "shade",
+            "size",
+            "delivery_from",
+            "delivery_to",
+            "line_remarks",
+            "form_row_no",
             "quantity",
             "rate",
             "line_total",
@@ -101,6 +124,11 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
             data["product_id"] = None
         if data.get("rate") in ("", None):
             data["rate"] = None
+        for key in ("delivery_from", "delivery_to", "form_row_no"):
+            if data.get(key) in ("", None):
+                data[key] = None
+        if data.get("quantity_unit") in ("", None):
+            data["quantity_unit"] = PurchaseOrderLine.Unit.PIECES
         desc = data.get("product_description")
         if desc is None:
             data["product_description"] = ""
@@ -204,6 +232,8 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     debit_amount = serializers.SerializerMethodField()
     credit_amount = serializers.SerializerMethodField()
     allowed_transitions = serializers.SerializerMethodField()
+    print_profile = serializers.SerializerMethodField()
+    print_copies = serializers.SerializerMethodField()
 
     class Meta:
         model = PurchaseOrder
@@ -223,8 +253,15 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             "brand_code",
             "brand_name",
             "po_date",
+            "place",
+            "mode_of_despatch",
+            "destination",
+            "documents_through",
+            "special_instructions",
             "status",
             "remarks",
+            "print_profile",
+            "print_copies",
             "source_format",
             "extra_data",
             "handy_form_upload",
@@ -532,7 +569,40 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                         }
                     }
                 )
+        self._validate_order_form_lines(lines)
         return attrs
+
+    def _validate_order_form_lines(self, lines):
+        seen = {}
+        for index, row in enumerate(lines):
+            shade = (row.get("shade") or "").strip()
+            form_row = row.get("form_row_no")
+            unit = row.get("unit") or PurchaseOrderLine.Unit.PIECES
+            quantity = row.get("quantity") or Decimal("0")
+            if shade or form_row:
+                if unit == PurchaseOrderLine.Unit.PIECES and quantity != quantity.to_integral_value():
+                    raise serializers.ValidationError(
+                        {"lines": {index: {"quantity": "Pieces must be a whole number."}}}
+                    )
+                start = row.get("delivery_from")
+                end = row.get("delivery_to")
+                if start and end and end < start:
+                    raise serializers.ValidationError(
+                        {"lines": {index: {"delivery_to": "Delivery To cannot be before Delivery From."}}}
+                    )
+            if not shade:
+                continue
+            product = row.get("product")
+            if product is not None:
+                quality = ("product", product.pk)
+            else:
+                quality = ("text", (row.get("product_description") or "").strip().casefold())
+            key = (quality, shade.casefold())
+            if key in seen:
+                raise serializers.ValidationError(
+                    {"lines": {index: {"shade": "This shade is already on this quality."}}}
+                )
+            seen[key] = index
 
     def create(self, validated_data):
         lines = validated_data.pop("lines")
@@ -553,13 +623,19 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                 self._replace_lines(instance, lines)
         return instance
 
+    def get_print_profile(self, obj):
+        from .print_profiles import profile_id_for_brand
+        return profile_id_for_brand(obj.brand.brand_code)
+
+    def get_print_copies(self, obj):
+        from .print_profiles import profile_copies_for_brand
+        return profile_copies_for_brand(obj.brand.brand_code)
+
     def _replace_lines(self, po: PurchaseOrder, lines: list):
         po.lines.all().delete()
         for row in lines:
-            PurchaseOrderLine.objects.create(
-                purchase_order=po,
-                product=row.get("product"),
-                product_description=(row.get("product_description") or "").strip(),
-                quantity=row["quantity"],
-                rate=row.get("rate"),
-            )
+            values = _line_values(row)
+            values.pop("extra_data", None)
+            values.pop("expected_delivery_period", None)
+            values.pop("customer_delivery_date", None)
+            PurchaseOrderLine.objects.create(purchase_order=po, **values)

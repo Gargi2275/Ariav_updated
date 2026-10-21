@@ -1,7 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Count, DecimalField, Q, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models import CharField, Count, DecimalField, Q, Sum, Value
+from django.db.models.functions import Coalesce, Concat
 from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -10,6 +10,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from accounts.access import scope_to_visible_customers
+from accounts.models import AuditLog
 from config.dates import parse_query_dates
 from brands.models import Brand
 from entities.models import Entity
@@ -21,7 +22,9 @@ from .import_service import (
     store_preview,
 )
 from .models import PurchaseOrder, PurchaseOrderStatusChange
+from .form_pdf import build_order_form_pdf
 from .pdf import build_po_pdf
+from .print_profiles import profile_for_brand
 from .dispatch_export import build_dispatch_workbook
 from .permissions import PurchaseOrderPermission
 from .serializers import PurchaseOrderSerializer
@@ -46,6 +49,9 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     pagination_class = None
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
+
+    def get_authenticate_header(self, request):
+        return "Bearer"
 
     def get_queryset(self, include_order_type=True):
         qs = scope_to_visible_customers(super().get_queryset(), self.request.user)
@@ -221,12 +227,112 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):
         po = self.get_object()
-        payload = build_po_pdf(po)
+        form_requested = (request.query_params.get("form") or "") == "1"
+        blank = (request.query_params.get("blank") or "") == "1"
+        copy = (request.query_params.get("copy") or "").strip().lower()
+        profile = profile_for_brand(po.brand.brand_code) if form_requested else None
+        if profile:
+            if copy not in profile.copies:
+                return Response(
+                    {"copy": "Choose mill, buyer, or rep."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            payload = build_order_form_pdf(po, profile, copy, blank=blank)
+            disposition = "inline"
+        else:
+            payload = build_po_pdf(po)
+            disposition = "inline"
+        user = request.user
+        AuditLog.objects.create(
+            user=getattr(user, "display_name", "") or getattr(user, "username", ""),
+            role=getattr(user, "role", ""),
+            action="Purchase Order PDF",
+            module="Purchase Orders",
+            details=(
+                f"PO {po.po_number}; form={'1' if profile else '0'}; "
+                f"copy={copy or '-'}; blank={'1' if blank and profile else '0'}"
+            ),
+        )
         safe_name = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in po.po_number)
         response = HttpResponse(payload, content_type="application/pdf")
         prefix = "POR" if po.order_type == PurchaseOrder.OrderType.MANUAL else "PO"
-        response["Content-Disposition"] = f'inline; filename="{prefix}-{safe_name}.pdf"'
+        response["Content-Disposition"] = f'{disposition}; filename="{prefix}-{safe_name}.pdf"'
         return response
+
+    @action(detail=False, methods=["get"], url_path="form-qualities")
+    def form_qualities(self, request):
+        from price_lists.models import BrandQualityPrice, PriceList
+
+        brand_id = (request.query_params.get("brand_id") or "").strip()
+        if not brand_id.isdigit():
+            return Response({"brand_id": "Choose a brand."}, status=status.HTTP_400_BAD_REQUEST)
+        query = (request.query_params.get("q") or "").strip()
+        rows = BrandQualityPrice.objects.select_related("product", "price_list").filter(
+            price_list__brand_id=brand_id,
+            price_list__status__in=[PriceList.Status.ACTIVE, PriceList.Status.DRAFT],
+        )
+        if query:
+            rows = rows.annotate(
+                short_code=Concat(
+                    "quality_prefix",
+                    Value("-"),
+                    "quality_number",
+                    output_field=CharField(),
+                )
+            ).filter(
+                Q(quality_code__icontains=query)
+                | Q(quality_prefix__icontains=query)
+                | Q(quality_number__icontains=query)
+                | Q(collection_name__icontains=query)
+                | Q(short_code__icontains=query)
+                | Q(product__product_code__icontains=query)
+                | Q(product__product_name__icontains=query)
+            )
+        def money(value):
+            return None if value is None else f"{value:.2f}"
+
+        payload = []
+        for row in rows.order_by("quality_code")[:50]:
+            short = "-".join(part for part in (row.quality_prefix, row.quality_number) if part)
+            shades = [part.strip() for part in (row.shades_raw or "").replace(";", ",").split(",") if part.strip()]
+            price = row.wholesale if row.wholesale is not None else row.ex_mill
+            payload.append({
+                "quality_code": row.quality_code,
+                "quality_label": short or row.quality_code,
+                "shades": shades,
+                "price": money(price),
+                "ex_mill": money(row.ex_mill),
+                "wholesale": money(row.wholesale),
+                "retail": money(row.retail),
+                "collection": row.collection_name or "",
+                "product_id": row.product_id,
+                "product_code": row.product.product_code if row.product_id else "",
+                "product_name": row.product.product_name if row.product_id else (row.collection_name or ""),
+            })
+        from products.models import Product
+
+        linked = {item["product_id"] for item in payload if item["product_id"]}
+        products = Product.objects.filter(brand_id=brand_id, status=Product.Status.ACTIVE)
+        if query:
+            products = products.filter(Q(product_code__icontains=query) | Q(product_name__icontains=query))
+        for product in products.order_by("product_code")[:30]:
+            if product.id in linked:
+                continue
+            wholesale = product.frate if product.frate is not None else None
+            payload.append({
+                "quality_code": product.product_code,
+                "quality_label": product.product_code,
+                "shades": [],
+                "price": money(wholesale if wholesale is not None else product.rate),
+                "ex_mill": money(product.rate),
+                "wholesale": money(wholesale),
+                "retail": money(product.trate),
+                "collection": product.collection or "",
+                "product_id": product.id,
+                "product_code": product.product_code,
+                "product_name": product.product_name,
+            })
+        return Response(payload)
 
     @action(detail=True, methods=["get"], url_path="dispatch-excel")
     def dispatch_excel(self, request, pk=None):

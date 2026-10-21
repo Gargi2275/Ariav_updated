@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 export interface Column<T> {
-  header: string;
+  header: React.ReactNode;
   accessorKey?: keyof T;
   render?: (row: T, index: number) => React.ReactNode;
   align?: 'left' | 'center' | 'right';

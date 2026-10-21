@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from rest_framework.test import APIClient
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import AuthUser
@@ -164,6 +164,7 @@ class DashboardApiTests(TestCase):
         self.assertEqual(response.json()["kpis"]["total_sales"], "40.00")
         self.assertEqual(response.json()["kpis"]["total_outstanding"], "100.00")
 
+    @override_settings(PRODUCT_CATEGORY_ENABLED=True)
     def test_admin_kpis_and_debtors_from_real_invoices(self):
         today = timezone.localdate()
         self._invoice(self.guj, "INV-DASH-A", Decimal("40.00"), today - timedelta(days=5))

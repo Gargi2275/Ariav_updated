@@ -40,6 +40,7 @@ class Brand(models.Model):
     mobile = models.CharField(max_length=30, blank=True)
     email = models.EmailField(blank=True)
     address = models.TextField(blank=True)
+    logo = models.ImageField(upload_to="brand_logos/", blank=True, null=True)
 
     gst_no = models.CharField(max_length=20, blank=True)
     pan_no = models.CharField(max_length=16, blank=True)

@@ -243,7 +243,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
               <Upload className="w-4 h-4 text-[var(--erp-gold)]" /> Import Purchase Orders
             </h3>
             <p className="text-xs font-mono text-[var(--erp-muted)] mt-1">
-              {step === 'setup' ? 'Step 1 of 2 · Select brand and upload file' : 'Step 2 of 2 · Preview before commit'}
+              {step === 'setup' ? (activeBrands.length === 1 ? 'Step 1 of 2 · Upload file' : 'Step 1 of 2 · Select brand and upload file') : 'Step 2 of 2 · Preview before commit'}
             </p>
           </div>
           <ConfirmDialog

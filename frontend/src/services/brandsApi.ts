@@ -57,6 +57,9 @@ export interface BrandRow {
   payment_terms: string;
   credit_days: number;
   order_method: OrderMethod | string;
+  print_profile?: string;
+  print_copies?: { id: string; label: string }[];
+  logo_url?: string;
   branch_ids?: number[];
   branches?: Array<{ id: number; short_code: string; entity_name: string }>;
 }

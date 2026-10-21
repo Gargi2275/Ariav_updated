@@ -215,6 +215,10 @@ def _entity_turnover(entity_id=None, date_from=None, date_to=None) -> list[dict]
 
 
 def _category_share(entity_id=None, date_from=None, date_to=None) -> list[dict]:
+    from django.conf import settings
+
+    if not settings.PRODUCT_CATEGORY_ENABLED:
+        return []
     lines = InvoiceLine.objects.filter(
         invoice__status__in=SALES_STATUSES,
         product_id__isnull=False,
