@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, CheckCircle2, Clock3, Download, Eye, FileText, LayoutDashboard, Plus, Search, ShoppingCart, Table2, Trash2, Truck, Upload, X, XCircle } from 'lucide-react';
+import { BarChart3, CheckCircle2, Clock3, Download, Eye, FileText, LayoutDashboard, Mail, Plus, Printer, Search, ShoppingCart, Table2, Trash2, Upload, X, XCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useErp } from '../../context/ErpContext';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -14,7 +14,7 @@ import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { InputDialog } from '../../components/common/InputDialog';
 import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterStatus';
 import { num } from '../../services/mastersApi';
-import { notifyApiError, notifySuccess } from '../../services/notify';
+import { notifyApiError, notifyError, notifySuccess } from '../../services/notify';
 import { acquireSaveLock, releaseSaveLock } from '../../services/saveLock';
 import { clearFieldMessage, collectRequired, REQUIRED_MSG } from '../../services/requiredFields';
 import { BrandRow, brandsApi } from '../../services/brandsApi';
@@ -33,15 +33,15 @@ import {
 } from '../../services/purchaseOrdersApi';
 import { RateNotSetBadge, rateIsUnset } from '../../components/common/RateNotSetBadge';
 import { ImportExcludedReport, PurchaseOrderImportModal } from './PurchaseOrderImportModal';
-import {
-  DispatchRow,
-  canRecordDispatch,
-  dispatchesApi,
-  todayIso as dispatchToday,
-} from '../../services/dispatchesApi';
 import { INVOICE_FROM_PO_KEY } from '../../services/invoicesApi';
 import { PoInvoicesList } from './PoInvoicesList';
 import { LineDraft, PurchaseOrderLineItems } from './PurchaseOrderLineItems';
+import { OrderFormView } from './OrderFormView';
+import { OcmOfficialPanel } from './OcmOfficialPanel';
+import { PoEmailComposer, PoEmailHistory } from './PoEmailComposer';
+import { EmailModeBanner } from '../../components/common/EmailModeBanner';
+import { EmailBadge, SENDABLE_PO_STATUSES, emailBadgeLabel, poEmailApi } from '../../services/poEmailApi';
+import { blocksFromLines, emptyBlock, linesFromBlocks, OrderBlock, OrderLine, validateBlocks } from '../../services/orderForm';
 import {
   lineItemsAreReadOnly,
   PurchaseOrderLineImportToggle,
@@ -84,41 +84,94 @@ function money(value: string | number | null | undefined): string {
   return `₹${num(value).toFixed(2)}`;
 }
 
-function BrandChoice({
+function BrandSelectModal({
+  branchLabel,
   brands,
-  value,
-  onChange,
+  initialId,
+  onCancel,
+  onContinue,
 }: {
+  branchLabel: string;
   brands: BrandRow[];
-  value?: number;
-  onChange: (id: number) => void;
+  initialId?: number;
+  onCancel: () => void;
+  onContinue: (id: number) => void;
 }) {
   const [query, setQuery] = useState('');
-  const visible = brands.length > 4
-    ? brands.filter(brand => `${brand.brand_code} ${brand.brand_name}`.toLowerCase().includes(query.toLowerCase().trim()))
-    : brands;
-  if (brands.length === 1) {
-    const brand = brands[0];
-    return (
-      <div className="px-3 py-2.5 border border-[var(--erp-gold)]/45 bg-[var(--erp-gold)]/10 text-sm text-[var(--erp-text)]" aria-label={`Selected brand ${brand.brand_name}`}>
-        <span className="font-mono text-[var(--erp-gold)]">{brand.brand_code}</span>
-        <span className="mx-2 text-[var(--erp-muted)]">·</span>
-        {brand.brand_name}
-      </div>
-    );
-  }
+  const [selectedId, setSelectedId] = useState<number | null>(initialId ?? null);
+  const trimmed = query.trim().toLowerCase();
+  const visible = brands.filter(brand => (
+    !trimmed || `${brand.brand_code} ${brand.brand_name}`.toLowerCase().includes(trimmed)
+  ));
   return (
-    <div className="space-y-2">
-      {brands.length > 4 && (
-        <input aria-label="Search allowed brands" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search allowed brands…" className="w-full px-3 py-2 text-sm bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)]" />
-      )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Allowed brands">
-        {visible.map(brand => (
-          <button key={brand.id} type="button" role="radio" aria-checked={value === brand.id} onClick={() => onChange(brand.id)} className={`flex items-center justify-between gap-3 px-3 py-2 text-left border text-xs ${value === brand.id ? 'border-[var(--erp-gold)] bg-[var(--erp-gold)]/10 text-[var(--erp-text)]' : 'border-[var(--erp-hairline)] text-[var(--erp-muted)] hover:border-[var(--erp-gold)]/60'}`}>
-            <span><span className="font-mono text-[var(--erp-gold)]">{brand.brand_code}</span> · {brand.brand_name}</span>
-            <span aria-hidden className={`h-2 w-2 rounded-full shrink-0 ${value === brand.id ? 'bg-[var(--erp-gold)]' : 'border border-[var(--erp-muted)]'}`} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button type="button" aria-label="Close brand selection" className="absolute inset-0 bg-black/70 cursor-default" onClick={onCancel} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="po-brand-title"
+        className="relative flex w-full max-w-xl max-h-[88vh] flex-col bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+      >
+        <div aria-hidden className="h-[2px] bg-gradient-to-r from-transparent via-[var(--erp-gold)] to-transparent" />
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--erp-hairline)] px-6 pt-5 pb-4">
+          <div>
+            <p className="mb-1 text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--erp-muted)]">Step 1 · Brand</p>
+            <h3 id="po-brand-title" className="font-display text-xl font-bold text-[var(--erp-text)]">Choose a brand</h3>
+            <p className="mt-1 text-xs text-[var(--erp-muted)]">{branchLabel} · {brands.length} brands mapped to this branch</p>
+          </div>
+          <button type="button" aria-label="Close" onClick={onCancel} className="inline-flex h-8 w-8 items-center justify-center border border-[var(--erp-hairline)] text-[var(--erp-muted)] hover:border-[var(--erp-gold)] hover:text-[var(--erp-text)]">
+            <X className="h-4 w-4" />
           </button>
-        ))}
+        </div>
+        <div className="space-y-4 overflow-y-auto px-6 py-5">
+          {brands.length > 4 ? (
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--erp-muted)]" />
+              <input
+                aria-label="Search brands"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                placeholder="Search brand code or name…"
+                className="w-full border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface-2)] py-2 pl-9 pr-3 text-sm text-[var(--erp-text)] focus:border-[var(--erp-gold)] focus:outline-none"
+              />
+            </div>
+          ) : null}
+          <div role="radiogroup" aria-label="Brands for this branch" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {visible.map(brand => {
+              const selected = selectedId === brand.id;
+              const manual = isManualOrderBrand(brand);
+              return (
+                <button
+                  key={brand.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setSelectedId(brand.id)}
+                  className={`flex min-h-[92px] flex-col items-start gap-1.5 border px-4 py-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--erp-gold)] ${selected ? 'border-[var(--erp-gold)] bg-[var(--erp-gold)]/10' : 'border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] hover:border-[var(--erp-gold)]/60'}`}
+                >
+                  <span className="flex w-full items-center justify-between gap-2">
+                    <span className="font-mono text-xs text-[var(--erp-gold)]">{brand.brand_code}</span>
+                    <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${selected ? 'bg-[var(--erp-gold)]' : 'border border-[var(--erp-muted)]'}`} />
+                  </span>
+                  <span className="text-sm font-medium text-[var(--erp-text)]">{brand.brand_name}</span>
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--erp-muted)]">{manual ? 'Manual / POR' : 'Digital PO'}</span>
+                </button>
+              );
+            })}
+          </div>
+          {visible.length === 0 ? <p className="text-xs text-[var(--erp-muted)]">No brands match this search.</p> : null}
+        </div>
+        <div className="flex justify-end gap-3 border-t border-[var(--erp-hairline)] px-6 py-4">
+          <button type="button" onClick={onCancel} className="border border-[var(--erp-hairline)] px-4 py-2.5 text-xs font-mono text-[var(--erp-muted)] hover:text-[var(--erp-text)]">Cancel</button>
+          <button
+            type="button"
+            disabled={selectedId == null}
+            onClick={() => { if (selectedId != null) onContinue(selectedId); }}
+            className="bg-[var(--erp-gold)] px-5 py-2.5 text-xs font-semibold text-[#0F141B] hover:bg-[var(--erp-gold-soft)] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            Continue
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -134,6 +187,22 @@ function newLine(manualEntry = false): LineDraft {
     quantity: '',
     rate: '',
   };
+}
+
+function storedLinesToOrderLines(rows: PurchaseOrderLineRow[]): OrderLine[] {
+  return rows.map(line => ({
+    product_id: line.product_id,
+    product_description: line.product_description || line.product_code || line.product_name || '',
+    shade: line.shade || '',
+    quantity: String(line.quantity),
+    rate: rateIsUnset(line.rate) ? null : String(line.rate),
+    quantity_unit: line.quantity_unit === 'Meters' ? 'Meters' : 'Pieces',
+    size: line.size || '',
+    delivery_from: line.delivery_from || null,
+    delivery_to: line.delivery_to || null,
+    line_remarks: line.line_remarks || '',
+    form_row_no: line.form_row_no ?? null,
+  }));
 }
 
 type PurchaseOrderViewMode = 'graphical' | 'table';
@@ -165,7 +234,7 @@ function statusTone(status: string): string {
   return 'var(--erp-muted)';
 }
 
-function ProgressView({ rows, onOpen }: { rows: PurchaseOrderRow[]; onOpen: (id: number) => void }) {
+function ProgressView({ rows, onOpen, emailBadges }: { rows: PurchaseOrderRow[]; onOpen: (id: number) => void; emailBadges: Record<string, EmailBadge> }) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
       {rows.map(row => {
@@ -177,7 +246,7 @@ function ProgressView({ rows, onOpen }: { rows: PurchaseOrderRow[]; onOpen: (id:
                 <div className="font-mono text-base font-semibold text-[var(--erp-gold)] truncate">{row.po_number}</div>
                 <div className="mt-1 text-xs text-[var(--erp-text)] truncate">{row.customer_name} · {row.brand_name}</div>
               </div>
-              <span className="shrink-0"><StatusChip status={poChipStatus(row.status)} label={row.status} /></span>
+              <span className="shrink-0 flex items-center gap-1"><Mail className="w-3.5 h-3.5 text-[var(--erp-gold)]" aria-label={emailBadgeLabel(emailBadges[String(row.id)])} /><StatusChip status={poChipStatus(row.status)} label={row.status} /></span>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[var(--erp-muted)]">
               <span>{row.po_date}</span>
@@ -250,13 +319,13 @@ function StatusOverview({ rows, onStatus }: { rows: PurchaseOrderRow[]; onStatus
   );
 }
 
-function GraphicalView({ rows, onStatus, onOpen }: { rows: PurchaseOrderRow[]; onStatus: (status: string) => void; onOpen: (id: number) => void }) {
+function GraphicalView({ rows, onStatus, onOpen, emailBadges }: { rows: PurchaseOrderRow[]; onStatus: (status: string) => void; onOpen: (id: number) => void; emailBadges: Record<string, EmailBadge> }) {
   return (
     <div className="space-y-4">
       <StatusOverview rows={rows} onStatus={onStatus} />
       <div className="rounded-lg border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-4 sm:p-5">
         <div className="mb-4"><h3 className="font-display text-lg font-bold text-[var(--erp-text)]">Dispatch Progress</h3><p className="mt-1 text-xs text-[var(--erp-muted)]">Ordered, dispatched, and remaining quantities for the filtered orders.</p></div>
-        <ProgressView rows={rows} onOpen={onOpen} />
+        <ProgressView rows={rows} onOpen={onOpen} emailBadges={emailBadges} />
       </div>
     </div>
   );
@@ -283,12 +352,23 @@ function normalizedOrderTypeFilter(value: string): '' | 'Manual' | 'Digital' {
   return normalized === 'manual' ? 'Manual' : normalized === 'digital' ? 'Digital' : '';
 }
 
+function apiFieldText(error: unknown, keys: string[]): string {
+  const data = (error as { data?: Record<string, unknown> } | null)?.data;
+  if (!data) return '';
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === 'string' && value.trim()) return value;
+    if (Array.isArray(value) && typeof value[0] === 'string') return value[0];
+  }
+  return '';
+}
+
 function isManualOrderBrand(brand: BrandRow): boolean {
   return String(brand.order_method || '').trim().toLowerCase() === 'manual/por';
 }
 
 export const PurchaseOrderScreen: React.FC = () => {
-  const { userRole, sessionUserName, navigateTo, selectedEntityId, entityReady, canEditRecords, canDeleteRecords, getPeriod } = useErp();
+  const { userRole, sessionUserName, navigateTo, selectedEntityId, entityReady, canEditRecords, canDeleteRecords, getPeriod, productCategory } = useErp();
   const canDraftWrite = userRole === 'admin' || userRole === 'staff';
   const canEdit = userRole === 'admin' || (userRole === 'staff' && canEditRecords);
   const canDelete = userRole === 'admin' || (userRole === 'staff' && canDeleteRecords);
@@ -307,6 +387,12 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [customerFilter, setCustomerFilter] = useState<number | ''>(() => readCustomerListFilter());
   const [brandFilter, setBrandFilter] = useState<number | ''>('');
   const [unpricedOnly, setUnpricedOnly] = useState(false);
+  const [emailFilter, setEmailFilter] = useState('');
+  const [emailBadges, setEmailBadges] = useState<Record<string, EmailBadge>>({});
+  const [emailMode, setEmailMode] = useState('');
+  const [emailTestRecipient, setEmailTestRecipient] = useState('');
+  const [selectedPoIds, setSelectedPoIds] = useState<number[]>([]);
+  const [emailComposerOpen, setEmailComposerOpen] = useState(false);
   const [orderTypeFilter, setOrderTypeFilter] = useState(() => (
     normalizedOrderTypeFilter(localStorage.getItem(`po-type:${sessionUserName || userRole}`) || '')
   ));
@@ -326,6 +412,9 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [customerStatementSummary, setCustomerStatementSummary] = useState<CustomerStatementSummary | null>(null);
   const [lines, setLines] = useState<LineDraft[]>([newLine()]);
   const [lineEntryMode, setLineEntryMode] = useState<'manual' | 'upload'>('manual');
+  const [entryView, setEntryView] = useState<'order' | 'list'>('list');
+  const [blocks, setBlocks] = useState<OrderBlock[]>([]);
+  const [pdfCopy, setPdfCopy] = useState('');
   const [lineImportFile, setLineImportFile] = useState<File | null>(null);
   const [lineImportLoaded, setLineImportLoaded] = useState(false);
   const [lineImportBusy, setLineImportBusy] = useState(false);
@@ -333,26 +422,19 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [lineImportSkipped, setLineImportSkipped] = useState<Array<{ rowNumber: number; reason: string }>>([]);
   const [detail, setDetail] = useState<PurchaseOrderRow | null>(null);
   const [fieldMessages, setFieldMessages] = useState<Record<string, string>>({});
+  const [numberPreview, setNumberPreview] = useState('');
+  const [numberPreviewError, setNumberPreviewError] = useState('');
+  const [numberPreviewLoading, setNumberPreviewLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PurchaseOrderRow | null>(null);
   const [pendingStatus, setPendingStatus] = useState<{ row: PurchaseOrderRow; next: string } | null>(null);
-  const [poDispatches, setPoDispatches] = useState<DispatchRow[]>([]);
-  const [showDispatchForm, setShowDispatchForm] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [officialOpen, setOfficialOpen] = useState(false);
+  const [brandPickerOpen, setBrandPickerOpen] = useState(false);
   const [importReport, setImportReport] = useState<PoImportCommitResult | null>(null);
-  const [dispatchForm, setDispatchForm] = useState({
-    dispatch_date: dispatchToday(),
-    lr_number: '',
-    transporter: '',
-    challan_reference: '',
-  });
-  const [dispatchQtys, setDispatchQtys] = useState<Record<number, string>>({});
-  const [dispatchMessages, setDispatchMessages] = useState<Record<string, string>>({});
-  const [pendingDeleteDispatch, setPendingDeleteDispatch] = useState<DispatchRow | null>(null);
   const [pendingRateLine, setPendingRateLine] = useState<PurchaseOrderLineRow | null>(null);
   const [lineImportConfirmation, setLineImportConfirmation] = useState<'upload' | 'replace' | null>(null);
   const [pendingLineImportFile, setPendingLineImportFile] = useState<File | null>(null);
-  const dispatchLock = useRef(false);
   const savingLock = useRef(false);
   const numberRef = useRef<HTMLInputElement>(null);
 
@@ -387,6 +469,32 @@ export const PurchaseOrderScreen: React.FC = () => {
   const selectedBrand = activeBrands.find(b => b.id === form.brand_id);
   const isManual = selectedBrand?.order_method === 'Manual/POR';
   const isDigitalPo = isDigitalPoBrand(selectedBrand);
+  const manualNumberPending = Boolean(isManual && !form.id && (numberPreviewLoading || !numberPreview || numberPreviewError));
+
+  useEffect(() => {
+    if (mode !== 'form' || !isManual || form.id || !form.entity_id || !form.brand_id) {
+      setNumberPreview('');
+      setNumberPreviewError('');
+      setNumberPreviewLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setNumberPreviewLoading(true);
+    setNumberPreviewError('');
+    void purchaseOrdersApi.nextNumber(form.entity_id, form.brand_id)
+      .then(row => {
+        if (!cancelled) setNumberPreview(row.po_number);
+      })
+      .catch(error => {
+        if (cancelled) return;
+        setNumberPreview('');
+        setNumberPreviewError(apiFieldText(error, ['po_number', 'brand_id', 'entity_id', 'detail']) || 'Could not prepare the purchase order number.');
+      })
+      .finally(() => {
+        if (!cancelled) setNumberPreviewLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [mode, isManual, form.id, form.entity_id, form.brand_id]);
 
   useEffect(() => {
     if (brandFilter !== '' && !headerBrandOptions.some(brand => brand.id === brandFilter)) {
@@ -455,6 +563,13 @@ export const PurchaseOrderScreen: React.FC = () => {
 
   useEffect(() => { void loadLookups(); }, [loadLookups]);
   useEffect(() => {
+    poEmailApi.badges().then(result => {
+      setEmailBadges(result.statuses);
+      setEmailMode(result.mode);
+      setEmailTestRecipient(result.test_recipient);
+    }).catch(() => undefined);
+  }, [rows]);
+  useEffect(() => {
     void load();
   }, [load]);
 
@@ -488,7 +603,8 @@ export const PurchaseOrderScreen: React.FC = () => {
     return counts;
   }, {}), [searchedRows]);
   const filtered = searchedRows.filter(row => (
-    !orderTypeFilter || normalizedOrderType(row.order_type) === orderTypeFilter
+    (!orderTypeFilter || normalizedOrderType(row.order_type) === orderTypeFilter)
+    && (!emailFilter || (emailFilter === 'not_sent' ? !emailBadges[String(row.id)] : emailBadges[String(row.id)] === emailFilter))
   ));
 
   useEffect(() => {
@@ -535,21 +651,35 @@ export const PurchaseOrderScreen: React.FC = () => {
     return { qty, amt };
   }, [lines]);
 
-  const openCreate = () => {
+  const beginCreate = (brandId?: number) => {
     const initial = emptyPurchaseOrder();
     if (selectedEntityId !== 'all') initial.entity_id = selectedEntityId;
-    if (activeBrands.length === 1) initial.brand_id = activeBrands[0].id;
+    if (brandId) initial.brand_id = brandId;
+    else if (headerBrandOptions.length === 1) initial.brand_id = headerBrandOptions[0].id;
+    const nextBrand = headerBrandOptions.find(brand => brand.id === initial.brand_id);
     setForm(initial);
     setCustomerStatementSummary(null);
     setLines([newLine()]);
-    setLineEntryMode('manual');
+    const profile = Boolean(nextBrand?.print_profile);
+    setEntryView(profile ? 'order' : 'list');
+    setBlocks(profile ? [emptyBlock(1)] : []);
+    setLineEntryMode(isDigitalPoBrand(nextBrand) ? 'upload' : 'manual');
     setLineImportFile(null);
     setLineImportLoaded(false);
     setLineImportError('');
     setLineImportSkipped([]);
     setHandyFile(null);
     setFieldMessages({});
+    setBrandPickerOpen(false);
     setMode('form');
+  };
+
+  const openCreate = () => {
+    if (headerBrandOptions.length > 1) {
+      setBrandPickerOpen(true);
+      return;
+    }
+    beginCreate();
   };
 
   useEffect(() => {
@@ -575,8 +705,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     try {
       const row = await purchaseOrdersApi.retrieve(id);
       setDetail(row);
-      setPoDispatches(await dispatchesApi.list({ purchase_order_id: id }));
-      setShowDispatchForm(false);
+      setPdfCopy('');
       setMode('detail');
     } catch (e) {
       notifyApiError(e);
@@ -601,6 +730,8 @@ export const PurchaseOrderScreen: React.FC = () => {
       }
       setForm(row);
       setHandyFile(null);
+      setEntryView(row.print_profile ? 'order' : 'list');
+      setBlocks(row.print_profile ? blocksFromLines(storedLinesToOrderLines(row.lines)) : []);
       setLineEntryMode('manual');
       setLineImportFile(null);
       setLineImportLoaded(false);
@@ -615,6 +746,13 @@ export const PurchaseOrderScreen: React.FC = () => {
           manualEntry: !l.product_id,
           quantity: String(l.quantity),
           rate: rateIsUnset(l.rate) ? '' : String(l.rate),
+          shade: l.shade || '',
+          size: l.size || '',
+          quantity_unit: l.quantity_unit === 'Meters' ? 'Meters' as const : 'Pieces' as const,
+          delivery_from: l.delivery_from || '',
+          delivery_to: l.delivery_to || '',
+          line_remarks: l.line_remarks || '',
+          form_row_no: l.form_row_no ?? null,
         }))
         : [newLine()]);
       setFieldMessages({});
@@ -624,23 +762,52 @@ export const PurchaseOrderScreen: React.FC = () => {
     }
   };
 
-  const buildPayload = () => ({
-    po_number: (form.po_number || '').trim(),
-    brand_order_code: (form.brand_order_code || '').trim() || null,
-    entity_id: form.entity_id,
-    customer_id: form.customer_id,
-    brand_id: form.brand_id,
-    po_date: form.po_date,
-    remarks: form.remarks || '',
-    lines: lines
-      .filter(l => l.product_id || l.product_description.trim())
-      .map(l => ({
-        product_id: l.manualEntry ? null : (l.product_id || null),
-        product_description: l.manualEntry ? l.product_description.trim() : '',
-        quantity: num(l.quantity).toFixed(2),
-        rate: l.rate.trim() === '' ? null : num(l.rate).toFixed(2),
-      })),
-  });
+  const buildPayload = () => {
+    const orderLines = entryView === 'order' ? linesFromBlocks(blocks) : null;
+    return {
+      po_number: (form.po_number || '').trim(),
+      brand_order_code: (form.brand_order_code || '').trim() || null,
+      entity_id: form.entity_id,
+      customer_id: form.customer_id,
+      brand_id: form.brand_id,
+      po_date: form.po_date,
+      place: form.place || '',
+      mode_of_despatch: form.mode_of_despatch || '',
+      destination: form.destination || '',
+      documents_through: form.documents_through || '',
+      special_instructions: form.special_instructions || '',
+      remarks: form.remarks || '',
+      lines: orderLines
+        ? orderLines.map(line => ({
+          product_id: line.product_id,
+          product_description: line.product_description,
+          quantity: line.quantity,
+          rate: line.rate,
+          shade: line.shade,
+          size: line.size,
+          quantity_unit: line.quantity_unit,
+          delivery_from: line.delivery_from,
+          delivery_to: line.delivery_to,
+          line_remarks: line.line_remarks,
+          form_row_no: line.form_row_no,
+        }))
+        : lines
+          .filter(l => l.product_id || l.product_description.trim())
+          .map(l => ({
+            product_id: l.manualEntry ? null : (l.product_id || null),
+            product_description: l.manualEntry || l.shade ? l.product_description.trim() : '',
+            quantity: num(l.quantity).toFixed(2),
+            rate: l.rate.trim() === '' ? null : num(l.rate).toFixed(2),
+            shade: l.shade || '',
+            size: l.size || '',
+            quantity_unit: l.quantity_unit || 'Pieces',
+            delivery_from: l.delivery_from || null,
+            delivery_to: l.delivery_to || null,
+            line_remarks: l.line_remarks || '',
+            form_row_no: l.form_row_no ?? null,
+          })),
+    };
+  };
 
   const brandCategories = useMemo(() => {
     const map = new Map<number, SelectOption & { usage: number }>();
@@ -682,17 +849,38 @@ export const PurchaseOrderScreen: React.FC = () => {
 
   const validateForm = (): boolean => {
     const messages = collectRequired({
-      po_number: form.po_number,
+      ...(isManual && !form.id ? {} : { po_number: form.po_number }),
       entity_id: form.entity_id,
       brand_id: form.brand_id,
       customer_id: form.customer_id,
       po_date: form.po_date,
     });
+    if (isManual && !form.id) {
+      if (numberPreviewLoading) messages.po_number = 'The purchase order number is still being prepared.';
+      else if (numberPreviewError) messages.po_number = numberPreviewError;
+      else if (!numberPreview) messages.po_number = 'The purchase order number is not ready.';
+    }
+    if (entryView === 'order') {
+      Object.assign(messages, validateBlocks(blocks));
+      setFieldMessages(messages);
+      if (messages.po_number) requestAnimationFrame(() => numberRef.current?.focus());
+      return Object.keys(messages).length === 0;
+    }
     const filled = lines.filter(l => l.product_id || l.product_description.trim());
     if (lineImportError) messages.lines = 'Resolve the Excel upload errors before submitting.';
     if (!filled.length) messages.lines = 'Add at least one line item.';
     lines.forEach((l, i) => {
       const hasItem = !!(l.product_id || l.product_description.trim());
+      if (!productCategory) {
+        if (!hasItem && lines.length === 1) return;
+        if (l.manualEntry) {
+          if (!l.product_description.trim()) messages[`line_${i}_desc`] = REQUIRED_MSG;
+        } else if (!l.product_id) {
+          messages[`line_${i}_product`] = REQUIRED_MSG;
+        }
+        if (hasItem && !num(l.quantity)) messages[`line_${i}_qty`] = REQUIRED_MSG;
+        return;
+      }
       if (!hasItem && !l.category_id && lines.length === 1) return;
       if (l.manualEntry) {
         if (!l.product_description.trim()) messages[`line_${i}_desc`] = REQUIRED_MSG;
@@ -732,6 +920,8 @@ export const PurchaseOrderScreen: React.FC = () => {
       }
       await load();
     } catch (err) {
+      const poNumber = apiFieldText(err, ['po_number', 'brand_id', 'entity_id']);
+      if (poNumber) setFieldMessages(prev => ({ ...prev, po_number: poNumber }));
       notifyApiError(err);
     } finally {
       setSaving(false);
@@ -757,11 +947,25 @@ export const PurchaseOrderScreen: React.FC = () => {
     }
   };
 
-  const openPdf = async (id: number) => {
+  const openPdf = async (id: number, params?: { form?: boolean; copy?: string }) => {
     try {
-      const blob = await purchaseOrdersApi.pdf(id);
+      const blob = await purchaseOrdersApi.pdf(id, params);
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener');
+    } catch (err) {
+      notifyApiError(err, 'Could not generate PDF.');
+    }
+  };
+
+  const downloadPdf = async (id: number, params?: { form?: boolean; copy?: string }) => {
+    try {
+      const blob = await purchaseOrdersApi.pdf(id, params);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${detail?.po_number || id}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
       notifyApiError(err, 'Could not generate PDF.');
     }
@@ -778,62 +982,6 @@ export const PurchaseOrderScreen: React.FC = () => {
       URL.revokeObjectURL(url);
     } catch (err) {
       notifyApiError(err, 'Could not generate dispatch Excel.');
-    }
-  };
-
-  const openDispatchForm = () => {
-    setDispatchForm({
-      dispatch_date: dispatchToday(),
-      lr_number: '',
-      transporter: '',
-      challan_reference: '',
-    });
-    setDispatchQtys({});
-    setDispatchMessages({});
-    setShowDispatchForm(true);
-  };
-
-  const persistDispatch = async () => {
-    if (!detail) return;
-    const pendingLines = detail.lines.filter(l => l.id && num(l.pending_quantity) > 0);
-    const messages = collectRequired({
-      dispatch_date: dispatchForm.dispatch_date,
-      lr_number: dispatchForm.lr_number,
-      transporter: dispatchForm.transporter,
-      challan_reference: dispatchForm.challan_reference,
-    });
-    const filled = pendingLines.filter(l => num(dispatchQtys[l.id as number]) > 0);
-    if (!filled.length) messages.lines = 'Enter a dispatch quantity for at least one pending line.';
-    filled.forEach(l => {
-      const qty = num(dispatchQtys[l.id as number]);
-      const pending = num(l.pending_quantity);
-      if (qty > pending) messages[`qty_${l.id}`] = `Cannot exceed pending ${pending.toFixed(2)}.`;
-    });
-    setDispatchMessages(messages);
-    if (Object.keys(messages).length) return;
-    if (!acquireSaveLock(dispatchLock)) return;
-    setSaving(true);
-    try {
-      const saved = await dispatchesApi.create({
-        purchase_order_id: detail.id,
-        dispatch_date: dispatchForm.dispatch_date,
-        lr_number: dispatchForm.lr_number.trim(),
-        transporter: dispatchForm.transporter.trim(),
-        challan_reference: dispatchForm.challan_reference.trim(),
-        lines: filled.map(l => ({
-          purchase_order_line_id: l.id,
-          dispatched_quantity: num(dispatchQtys[l.id as number]).toFixed(2),
-        })),
-      });
-      notifySuccess(`Dispatch recorded. PO status: ${saved.purchase_order_status}.`);
-      setShowDispatchForm(false);
-      await openDetail(detail.id);
-      await load();
-    } catch (err) {
-      notifyApiError(err);
-    } finally {
-      setSaving(false);
-      releaseSaveLock(dispatchLock);
     }
   };
 
@@ -870,8 +1018,8 @@ export const PurchaseOrderScreen: React.FC = () => {
     ));
   };
 
-  const setLineProduct = async (key: string, productId: number, index: number) => {
-    const product = products.find(p => p.id === productId);
+  const setLineProduct = async (key: string, productId: number, index: number, picked?: { id: number; product_code: string; product_name: string; rate: string | number; category_id?: number | null }) => {
+    const product = picked ?? products.find(p => p.id === productId);
     let rate = product ? String(product.rate) : '';
     try {
       if (product) {
@@ -885,7 +1033,9 @@ export const PurchaseOrderScreen: React.FC = () => {
       ? {
         ...l,
         product_id: productId,
-        category_id: product?.category_id ?? l.category_id,
+        product_code: product?.product_code,
+        product_name: product?.product_name,
+        category_id: product ? (product.category_id ?? undefined) : l.category_id,
         product_description: '',
         rate: product ? rate : l.rate,
       }
@@ -972,7 +1122,28 @@ export const PurchaseOrderScreen: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const sendableIds = filtered.filter(row => SENDABLE_PO_STATUSES.has(row.status)).map(row => row.id);
   const columns: Column<PurchaseOrderRow>[] = [
+    {
+      header: (
+        <input
+          type="checkbox"
+          aria-label="Select purchase orders"
+          checked={sendableIds.length > 0 && sendableIds.every(id => selectedPoIds.includes(id))}
+          onChange={event => setSelectedPoIds(event.target.checked ? sendableIds : [])}
+        />
+      ),
+      width: '36px',
+      render: row => (
+        <input
+          type="checkbox"
+          aria-label={`Select ${row.po_number}`}
+          disabled={!SENDABLE_PO_STATUSES.has(row.status)}
+          checked={selectedPoIds.includes(row.id)}
+          onChange={event => setSelectedPoIds(current => event.target.checked ? [...current, row.id] : current.filter(id => id !== row.id))}
+        />
+      ),
+    },
     { header: 'PO Number', accessorKey: 'po_number', sortable: true, mono: true, width: '140px', render: r => <span className="font-mono text-[var(--erp-gold)]">{r.po_number}</span> },
     {
       header: 'Type',
@@ -997,6 +1168,11 @@ export const PurchaseOrderScreen: React.FC = () => {
       render: r => <StatusChip status={poChipStatus(r.status)} label={r.status.toUpperCase()} />,
     },
     {
+      header: 'Email',
+      width: '110px',
+      render: row => <span className="inline-flex items-center gap-1 text-[11px]"><Mail className="w-3 h-3 text-[var(--erp-gold)]" />{emailBadgeLabel(emailBadges[String(row.id)])}</span>,
+    },
+    {
       header: '',
       align: 'right',
       width: '88px',
@@ -1013,6 +1189,18 @@ export const PurchaseOrderScreen: React.FC = () => {
 
   const formParties = customers.filter(c => c.status === 'Active' || c.id === form.customer_id);
   const statusActions = detail?.allowed_transitions || [];
+  const formParty = formParties.find(row => row.id === form.customer_id);
+
+  useEffect(() => {
+    if (mode !== 'form' || !form.customer_id || form.place) return;
+    const party = customers.find(row => row.id === form.customer_id);
+    if (!party?.city) return;
+    setForm(prev => (prev.place ? prev : { ...prev, place: party.city }));
+  }, [mode, form.customer_id, form.place, customers]);
+
+  if (officialOpen) {
+    return <OcmOfficialPanel onClose={() => setOfficialOpen(false)} />;
+  }
 
   return (
     <div className="min-h-full p-3 flex flex-col gap-3 text-left">
@@ -1023,8 +1211,16 @@ export const PurchaseOrderScreen: React.FC = () => {
         title="Purchase Orders"
         compact
         actions={
-          canDraftWrite ? (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!selectedPoIds.length}
+              onClick={() => setEmailComposerOpen(true)}
+              className="h-8 px-2.5 border border-[var(--erp-gold)] text-[var(--erp-gold)] font-body text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <Mail className="w-3.5 h-3.5" /> Send email ({selectedPoIds.length})
+            </button>
+            {canDraftWrite ? (
               <button
                 type="button"
                 onClick={() => setImportOpen(true)}
@@ -1032,6 +1228,15 @@ export const PurchaseOrderScreen: React.FC = () => {
               >
                 <Upload className="w-3.5 h-3.5" /> Import from file
               </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setOfficialOpen(true)}
+              className="h-8 px-2.5 border border-[var(--erp-gold)] text-[var(--erp-gold)] font-body text-xs font-semibold cursor-pointer"
+            >
+              OCM official reconciliation
+            </button>
+            {canDraftWrite ? (
               <button
                 type="button"
                 onClick={openCreate}
@@ -1042,11 +1247,12 @@ export const PurchaseOrderScreen: React.FC = () => {
               >
                 <Plus className="w-3.5 h-3.5" /> Create PO
               </button>
-            </div>
-          ) : undefined
+            ) : null}
+          </div>
         }
       />
       {error && <MasterError message={error} onRetry={load} />}
+      <EmailModeBanner mode={emailMode} testRecipient={emailTestRecipient} />
       {importReport && importReport.excluded.length > 0 && mode === 'list' && (
         <ImportExcludedReport excluded={importReport.excluded} onDismiss={() => setImportReport(null)} />
       )}
@@ -1108,6 +1314,14 @@ export const PurchaseOrderScreen: React.FC = () => {
             {PO_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
           <button type="button" onClick={() => setUnpricedOnly(value => !value)} aria-pressed={unpricedOnly} className={`box-border h-9 shrink-0 whitespace-nowrap border border-[var(--erp-hairline)] px-3 ${unpricedOnly ? 'bg-[var(--erp-gold)] text-[#0F141B]' : 'text-[var(--erp-muted)]'}`}>Unpriced</button>
+          <select value={emailFilter} onChange={event => setEmailFilter(event.target.value)} aria-label="Email status" className="box-border h-9 min-w-[120px] bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] px-2 text-[var(--erp-text)]">
+            <option value="">All email</option>
+            <option value="not_sent">Not sent</option>
+            <option value="queued">Queued</option>
+            <option value="sent">Sent</option>
+            <option value="failed">Failed</option>
+            <option value="unknown">Unknown</option>
+          </select>
       </div>
 
       {loading ? (
@@ -1115,7 +1329,7 @@ export const PurchaseOrderScreen: React.FC = () => {
       ) : filtered.length === 0 ? (
         <div className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] py-14 text-center text-xs text-[var(--erp-muted)]">No purchase orders match the active filters.</div>
       ) : viewMode === 'graphical' ? (
-        <GraphicalView rows={filtered} onStatus={setStatusFilter} onOpen={id => void openDetail(id)} />
+        <GraphicalView rows={filtered} emailBadges={emailBadges} onStatus={setStatusFilter} onOpen={id => void openDetail(id)} />
       ) : (
         <DataTable
           columns={columns}
@@ -1133,6 +1347,24 @@ export const PurchaseOrderScreen: React.FC = () => {
         />
       )}
 
+      {emailComposerOpen ? (
+        <PoEmailComposer
+          poIds={selectedPoIds}
+          isAdmin={userRole === 'admin'}
+          onClose={() => setEmailComposerOpen(false)}
+          onSent={() => { setEmailComposerOpen(false); setSelectedPoIds([]); void load(); }}
+        />
+      ) : null}
+
+      {brandPickerOpen && (
+        <BrandSelectModal
+          branchLabel={headerBranch ? `${headerBranch.short_code} · ${headerBranch.entity_name}` : 'All branches'}
+          brands={headerBrandOptions}
+          onCancel={() => setBrandPickerOpen(false)}
+          onContinue={beginCreate}
+        />
+      )}
+
       {mode === 'form' && (form.id ? canEdit : canDraftWrite) && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -1146,60 +1378,80 @@ export const PurchaseOrderScreen: React.FC = () => {
           <form
             noValidate
             onSubmit={e => { e.preventDefault(); void persist(false); }}
-            className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+            className={`relative flex w-full max-h-[92vh] flex-col overflow-hidden bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] shadow-[0_24px_64px_rgba(15,20,27,0.28)] ${entryView === 'order' ? 'max-w-[1120px] rounded-lg' : 'max-w-5xl'}`}
           >
             <div
               aria-hidden
-              className="sticky top-0 z-20 h-[2px] bg-gradient-to-r from-transparent via-[var(--erp-gold)] to-transparent"
+              className="h-px shrink-0 bg-[var(--erp-gold)]"
             />
 
-            <div className="sticky top-[2px] z-10 flex justify-between items-start gap-4 border-b border-[var(--erp-hairline)] bg-[var(--erp-surface)]/95 backdrop-blur-md px-6 pt-5 pb-4">
-              <div>
-                <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--erp-muted)] mb-1">
-                  {form.id ? 'Draft edit' : 'New document'}
-                </p>
-                <h3 className="font-display text-xl font-bold flex items-center gap-2.5 text-[var(--erp-text)]">
-                  <span className="inline-flex h-8 w-8 items-center justify-center border border-[var(--erp-gold)]/40 bg-[var(--erp-gold)]/10">
-                    <FileText className="w-4 h-4 text-[var(--erp-gold)]" />
-                  </span>
-                  {form.id ? 'Edit Purchase Order' : 'Create Purchase Order'}
-                </h3>
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--erp-hairline)] bg-[var(--erp-surface)] px-5 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--erp-gold)]/40 bg-[var(--erp-gold)]/10">
+                  <FileText className="w-4 h-4 text-[var(--erp-gold)]" />
+                </span>
+            data-po-form=""
+                <div className="min-w-0">
+                  <h3 className="font-display text-lg font-semibold leading-tight text-[var(--erp-text)]">
+                    {form.id ? 'Edit Purchase Order' : 'Create Purchase Order'}
+                  </h3>
+                  <p className="truncate text-xs text-[var(--erp-muted)]">
+                    {entryView === 'order'
+                      ? 'Enter order details and product assortments.'
+                      : (form.id ? 'Draft edit' : 'New document')}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setMode('list')}
-                className="h-8 w-8 inline-flex items-center justify-center border border-[var(--erp-hairline)] text-[var(--erp-muted)] hover:text-[var(--erp-text)] hover:border-[var(--erp-gold)] transition-colors"
+                aria-label="Close"
+                className="h-8 w-8 inline-flex shrink-0 items-center justify-center rounded-md border border-[var(--erp-hairline)] text-[var(--erp-muted)] hover:text-[var(--erp-text)] hover:border-[var(--erp-gold)]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="px-6 py-5 space-y-7">
+            <div className={`@container min-h-0 flex-1 overflow-y-auto px-5 py-4 ${entryView === 'order' ? 'space-y-4' : 'space-y-7'}`}>
               <RequiredLegend />
 
               <section
-                className="rounded-none border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 p-4 sm:p-5"
+                className={entryView === 'order'
+                  ? 'rounded-lg border border-[var(--erp-hairline)] bg-[var(--erp-surface)] p-3'
+                  : 'rounded-none border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 p-4 sm:p-5'}
               >
-                <h4 className={sectionTitle}>
-                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
-                  Header
+                <h4 className={entryView === 'order' ? 'mb-2 text-xs font-medium text-[var(--erp-text)]' : sectionTitle}>
+                  {entryView === 'order' ? null : <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />}
+                  {entryView === 'order' ? 'Document' : 'Header'}
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <TextInput
-                    ref={numberRef}
-                    label="PO number"
-                    mono
-                    required
-                    error={fieldMessages.po_number}
-                    value={form.po_number || ''}
-                    onChange={e => {
-                      setForm({ ...form, po_number: e.target.value });
-                      setFieldMessages(prev => clearFieldMessage(prev, 'po_number'));
-                    }}
-                  />
+                <div className={entryView === 'order' ? 'grid grid-cols-1 gap-2.5 @md:grid-cols-2 @4xl:grid-cols-4' : 'grid grid-cols-1 sm:grid-cols-2 gap-4'}>
+                  {entryView === 'order' ? null : isManual ? (
+                    <TextInput
+                      label="PO number"
+                      mono
+                      readOnly
+                      helper={numberPreviewLoading && !form.id ? 'Preparing number…' : 'Automatically generated'}
+                      error={fieldMessages.po_number || (!form.id ? numberPreviewError : '')}
+                      value={form.id ? (form.po_number || '') : numberPreview}
+                    />
+                  ) : (
+                    <TextInput
+                      ref={numberRef}
+                      label="PO number"
+                      mono
+                      required
+                      error={fieldMessages.po_number}
+                      value={form.po_number || ''}
+                      onChange={e => {
+                        setForm({ ...form, po_number: e.target.value });
+                        setFieldMessages(prev => clearFieldMessage(prev, 'po_number'));
+                      }}
+                    />
+                  )}
                   <TextInput
                     label="Brand order code"
                     mono
+                    className={entryView === 'order' ? '!h-9 !rounded-md !py-0' : ''}
                     value={form.brand_order_code || ''}
                     onChange={e => setForm({ ...form, brand_order_code: e.target.value })}
                   />
@@ -1207,6 +1459,7 @@ export const PurchaseOrderScreen: React.FC = () => {
                     label="PO date"
                     type="date"
                     required
+                    className={entryView === 'order' ? '!h-9 !rounded-md !py-0' : ''}
                     error={fieldMessages.po_date}
                     value={form.po_date || ''}
                     onChange={e => {
@@ -1215,22 +1468,19 @@ export const PurchaseOrderScreen: React.FC = () => {
                     }}
                   />
                   <FormField label="Brand" required error={fieldMessages.brand_id}>
-                    {activeBrands.length > 0 ? <BrandChoice
-                      brands={activeBrands}
-                      value={form.brand_id}
-                      onChange={id => {
-                        const nextBrand = activeBrands.find(brand => brand.id === id);
-                        setForm({ ...form, entity_id: activeBranch?.id, brand_id: id });
-                        setLines([newLine()]);
-                        setLineEntryMode(isDigitalPoBrand(nextBrand) ? 'upload' : 'manual');
-                        setLineImportFile(null);
-                        setLineImportLoaded(false);
-                        setLineImportError('');
-                        setLineImportSkipped([]);
-                        setHandyFile(null);
-                        setFieldMessages(prev => clearFieldMessage(prev, 'brand_id'));
-                      }}
-                    /> : (
+                    {selectedBrand ? (
+                      <div className={`border border-[var(--erp-gold)]/45 bg-[var(--erp-gold)]/10 text-sm text-[var(--erp-text)] ${entryView === 'order' ? 'flex h-9 items-center gap-2 rounded-md px-2.5' : 'px-3 py-2.5'}`} aria-label={`Selected brand ${selectedBrand.brand_name}`}>
+                        <div className="min-w-0 flex-1 truncate">
+                          <span className="font-mono text-[var(--erp-gold)]">{selectedBrand.brand_code}</span>
+                          <span className="mx-2 text-[var(--erp-muted)]">·</span>
+                          {selectedBrand.brand_name}
+                        </div>
+                        <p className={`inline-flex items-center gap-1.5 border border-[var(--erp-gold)]/35 bg-[var(--erp-gold)]/10 text-[10px] font-mono uppercase tracking-wider text-[var(--erp-gold)] ${entryView === 'order' ? 'shrink-0 px-1.5 py-0.5' : 'mt-2 px-2 py-1'}`}>
+                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
+                          {entryView === 'order' ? (isManual ? 'Manual' : 'Digital') : `Order type · ${isManual ? 'Manual / POR' : 'Digital PO'}`}
+                        </p>
+                      </div>
+                    ) : (
                       <div className="px-3 py-2.5 border border-[var(--erp-negative)]/60 text-xs text-[var(--erp-negative)]">
                         <p>No active brands are mapped to this branch.</p>
                         <button type="button" onClick={() => { setMode('list'); navigateTo(36); }} className="mt-2 underline text-[var(--erp-gold)]">
@@ -1238,17 +1488,8 @@ export const PurchaseOrderScreen: React.FC = () => {
                         </button>
                       </div>
                     )}
-                    {selectedBrand && (
-                        <p
-                          className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono uppercase tracking-wider border border-[var(--erp-gold)]/35 bg-[var(--erp-gold)]/10 text-[var(--erp-gold)]"
-                        >
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
-                          Order type · {isManual ? 'Manual / POR' : 'Digital PO'}
-                        </p>
-                      )}
-                    
                   </FormField>
-                  <FormField label="Party" required error={fieldMessages.customer_id} className="sm:col-span-2">
+                  <FormField label="Party" required error={fieldMessages.customer_id} className={entryView === 'order' ? '@md:col-span-2' : 'sm:col-span-2'}>
                     <CustomerPicker
                       customers={formParties}
                       value={form.customer_id || ''}
@@ -1271,13 +1512,70 @@ export const PurchaseOrderScreen: React.FC = () => {
               </section>
 
               <section
-                className="rounded-none border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 p-4 sm:p-5"
+                className={entryView === 'order' ? '' : 'rounded-none border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 p-4 sm:p-5'}
               >
-                <h4 className={sectionTitle}>
-                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
-                  Line items
-                </h4>
-                {isDigitalPo ? (
+                {entryView === 'order' ? null : (
+                  <h4 className={sectionTitle}>
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
+                    Line items
+                  </h4>
+                )}
+                {entryView === 'order' ? (
+                  <OrderFormView
+                    blocks={blocks}
+                    brandId={form.brand_id || undefined}
+                    partyCode={formParty?.customer_code || ''}
+                    partyControl={(
+                      <>
+                      <CustomerPicker
+                        compact
+                        customers={formParties}
+                        value={form.customer_id || ''}
+                        disabled={!form.entity_id}
+                        error={!!fieldMessages.customer_id}
+                        placeholder={form.entity_id ? 'Search party…' : 'Select a party…'}
+                        onChange={id => {
+                          setForm(prev => ({ ...prev, customer_id: id || undefined }));
+                          setCustomerStatementSummary(null);
+                          setFieldMessages(prev => clearFieldMessage(prev, 'customer_id'));
+                        }}
+                      />
+                      {customerStatementSummary ? (
+                        <span className="mt-1 inline-flex w-fit items-center border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2 py-1 text-[11px] font-mono text-[var(--erp-muted)]">
+                          Outstanding: {money(customerStatementSummary.closing_amount)} {customerStatementSummary.closing_dc}
+                        </span>
+                      ) : null}
+                      </>
+                    )}
+                    partyError={fieldMessages.customer_id}
+                    indent={isManual ? (form.id ? (form.po_number || '') : numberPreview) : (form.po_number || '')}
+                    indentReadOnly={isManual}
+                    indentHint={isManual ? (numberPreviewLoading && !form.id ? 'Preparing number…' : 'Automatically generated') : undefined}
+                    indentError={fieldMessages.po_number || (isManual && !form.id ? numberPreviewError : '')}
+                    onIndent={isManual ? undefined : value => {
+                      setForm(prev => ({ ...prev, po_number: value }));
+                      setFieldMessages(prev => clearFieldMessage(prev, 'po_number'));
+                    }}
+                    date={form.po_date || ''}
+                    place={form.place || ''}
+                    footer={{
+                      mode: form.mode_of_despatch || '',
+                      destination: form.destination || '',
+                      documents: form.documents_through || '',
+                      instructions: form.special_instructions || '',
+                    }}
+                    messages={fieldMessages}
+                    onChange={setBlocks}
+                    onPlace={value => setForm(prev => ({ ...prev, place: value }))}
+                    onFooter={footer => setForm(prev => ({
+                      ...prev,
+                      mode_of_despatch: footer.mode,
+                      destination: footer.destination,
+                      documents_through: footer.documents,
+                      special_instructions: footer.instructions,
+                    }))}
+                  />
+                ) : isDigitalPo ? (
                   <div className="mb-4 space-y-3">
                     <PurchaseOrderLineImportToggle
                       isDigitalPo={isDigitalPo}
@@ -1347,7 +1645,7 @@ export const PurchaseOrderScreen: React.FC = () => {
                     ) : null}
                   </div>
                 ) : null}
-                {shouldShowLineItemsGrid(lineEntryMode, lineImportLoaded) ? (
+                {entryView !== 'order' && shouldShowLineItemsGrid(lineEntryMode, lineImportLoaded) ? (
                   <PurchaseOrderLineItems
                     lines={lines}
                     setLines={setLines}
@@ -1358,6 +1656,10 @@ export const PurchaseOrderScreen: React.FC = () => {
                     productOptionsByCategory={productOptionsByCategory}
                     products={products}
                     brandSelected={!!form.brand_id}
+                    brandId={form.brand_id || undefined}
+                    brandCode={selectedBrand?.brand_code}
+                    entityId={form.entity_id || undefined}
+                    productCategory={productCategory}
                     brandName={selectedBrand?.brand_name}
                     isManual={isManual}
                     readOnly={lineItemsAreReadOnly(lineEntryMode, lineImportLoaded)}
@@ -1368,42 +1670,44 @@ export const PurchaseOrderScreen: React.FC = () => {
               </section>
 
               <section
-                className="rounded-none border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 p-4 sm:p-5"
+                className={entryView === 'order'
+                  ? ''
+                  : 'rounded-none border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)]/40 p-4 sm:p-5'}
               >
-                <h4 className={sectionTitle}>
-                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />
+                <h4 className={entryView === 'order' ? 'mb-2 text-xs font-medium text-[var(--erp-text)]' : sectionTitle}>
+                  {entryView === 'order' ? null : <span className="h-1.5 w-1.5 rounded-full bg-[var(--erp-gold)]" />}
                   Remarks
                 </h4>
                 <textarea
                   value={form.remarks || ''}
                   onChange={e => setForm({ ...form, remarks: e.target.value })}
-                  rows={3}
+                  rows={entryView === 'order' ? 2 : 3}
                   placeholder="Optional notes for this purchase order…"
                   className="w-full px-3 py-2.5 text-sm bg-[var(--erp-surface-2)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)] focus:outline-none focus:border-[var(--erp-gold)] focus:shadow-[0_0_0_3px_rgba(201,162,39,0.12)] transition-[border-color,box-shadow] duration-200 rounded-none placeholder:text-[var(--erp-faint)]"
                 />
               </section>
             </div>
 
-            <div className="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-[var(--erp-hairline)] bg-[var(--erp-surface)]/95 backdrop-blur-md px-6 py-4">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--erp-hairline)] bg-[var(--erp-surface)] px-5 py-3">
               <button
                 type="button"
                 onClick={() => setMode('list')}
-                className="px-4 py-2.5 border border-[var(--erp-hairline)] text-xs font-mono text-[var(--erp-muted)] hover:text-[var(--erp-text)] hover:border-[var(--erp-hairline-strong)] transition-colors"
+                className="h-9 px-3.5 border border-[var(--erp-hairline)] rounded-md text-xs text-[var(--erp-muted)] hover:text-[var(--erp-text)] hover:border-[var(--erp-hairline-strong)]"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={saving}
-                className="px-5 py-2.5 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold hover:bg-[var(--erp-gold)]/10 transition-colors disabled:opacity-50"
+                disabled={saving || manualNumberPending}
+                className="h-9 px-3.5 border border-[var(--erp-gold)] rounded-md text-[var(--erp-gold)] text-xs font-medium hover:bg-[var(--erp-gold)]/10 disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Save as Draft'}
               </button>
               <button
                 type="button"
-                disabled={saving}
+                disabled={saving || manualNumberPending}
                 onClick={() => void persist(true)}
-                className="px-5 py-2.5 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold hover:bg-[var(--erp-gold-soft)] shadow-[0_8px_24px_rgba(201,162,39,0.25)] hover:shadow-[0_10px_28px_rgba(201,162,39,0.35)] transition-all disabled:opacity-50"
+                className="h-9 px-4 bg-[var(--erp-gold)] rounded-md text-[#1B2430] text-xs font-semibold hover:bg-[var(--erp-gold-soft)] disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Submit'}
               </button>
@@ -1484,70 +1788,7 @@ export const PurchaseOrderScreen: React.FC = () => {
                 )}
               </div>
             ) : null}
-            <section>
-              <div className="flex items-center justify-between border-b border-[var(--erp-hairline)] pb-1 mb-3">
-                <h4 className="text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)]">Dispatches</h4>
-                {canDraftWrite && canRecordDispatch(detail.status, detail.lines.reduce((sum, l) => sum + num(l.pending_quantity), 0)) && (
-                  <button type="button" onClick={openDispatchForm} className="px-3 py-1 text-[11px] font-mono border border-[var(--erp-gold)] text-[var(--erp-gold)]">Record Dispatch</button>
-                )}
-              </div>
-              <div className="overflow-x-auto border border-[var(--erp-hairline)] mb-3">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-[var(--erp-surface-2)] font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">
-                    <tr>
-                      <th className="px-3 py-2">Product</th>
-                      <th className="px-3 py-2 text-right">Ordered</th>
-                      <th className="px-3 py-2 text-right">Dispatched</th>
-                      <th className="px-3 py-2 text-right">Pending</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.lines.map(line => (
-                      <tr key={line.id} className="border-t border-[var(--erp-hairline)]">
-                        <td className="px-3 py-2">{line.product_code ? `${line.product_code} · ${line.product_name}` : line.product_name}</td>
-                        <td className="px-3 py-2 text-right font-mono">{num(line.quantity).toFixed(2)}</td>
-                        <td className="px-3 py-2 text-right font-mono">{num(line.total_dispatched).toFixed(2)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-[var(--erp-gold)]">{num(line.pending_quantity).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {poDispatches.length ? (
-                <div className="overflow-x-auto border border-[var(--erp-hairline)]">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[var(--erp-surface-2)] font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">
-                      <tr>
-                        <th className="px-3 py-2">Date</th>
-                        <th className="px-3 py-2">LR Number</th>
-                        <th className="px-3 py-2">Transporter</th>
-                        <th className="px-3 py-2">Challan Ref</th>
-                        <th className="px-3 py-2">Lines</th>
-                        <th className="px-3 py-2 w-10" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {poDispatches.map(row => (
-                        <tr key={row.id} className="border-t border-[var(--erp-hairline)]">
-                          <td className="px-3 py-2 font-mono">{row.dispatch_date}</td>
-                          <td className="px-3 py-2 font-mono text-[var(--erp-gold)]">{row.lr_number}</td>
-                          <td className="px-3 py-2">{row.transporter}</td>
-                          <td className="px-3 py-2 font-mono">{row.challan_reference}</td>
-                          <td className="px-3 py-2 font-mono">{row.lines.map(l => `${l.product_name} ${num(l.dispatched_quantity).toFixed(2)}`).join(', ')}</td>
-                          <td className="px-3 py-2">
-                            {canDelete && (
-                              <button type="button" className="text-[var(--erp-muted)] hover:text-[var(--erp-negative)]" title="Delete dispatch" onClick={() => setPendingDeleteDispatch(row)}><Trash2 className="w-3.5 h-3.5" /></button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-xs font-mono text-[var(--erp-muted)]">No dispatches recorded yet.</p>
-              )}
-            </section>
+            <PoEmailHistory poId={detail.id} isAdmin={userRole === 'admin'} onChanged={() => { void load(); }} />
             <section>
               <h4 className={sectionTitle}>Invoices on this PO</h4>
               <PoInvoicesList purchaseOrderId={detail.id} />
@@ -1587,106 +1828,40 @@ export const PurchaseOrderScreen: React.FC = () => {
                     Create Invoice
                   </button>
                 )}
-                <button type="button" onClick={() => void openPdf(detail.id)} className="px-4 py-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold flex items-center gap-1.5">
-                  <Download className="w-3.5 h-3.5" /> Download PDF
-                </button>
+                {detail.print_copies && detail.print_copies.length > 0 ? (
+                  <>
+                    <label className="text-[11px] font-mono text-[var(--erp-muted)]">
+                      Copy
+                      <select
+                        aria-label="PDF copy"
+                        value={pdfCopy}
+                        onChange={event => setPdfCopy(event.target.value)}
+                        className="ml-2 h-9 border border-[var(--erp-hairline)] bg-[var(--erp-surface)] px-2 text-xs"
+                      >
+                        <option value="">Choose copy</option>
+                        {detail.print_copies.map(copy => (
+                          <option key={copy.id} value={copy.id}>{copy.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <button type="button" disabled={!pdfCopy} onClick={() => void openPdf(detail.id, { form: true, copy: pdfCopy })} className="px-4 py-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold flex items-center gap-1.5 disabled:opacity-40">
+                      <Printer className="w-3.5 h-3.5" /> Print
+                    </button>
+                    <button type="button" disabled={!pdfCopy} onClick={() => void downloadPdf(detail.id, { form: true, copy: pdfCopy })} className="px-4 py-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold flex items-center gap-1.5 disabled:opacity-40">
+                      <Download className="w-3.5 h-3.5" /> Download PDF
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => void openPdf(detail.id)} className="px-4 py-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold flex items-center gap-1.5">
+                    <Download className="w-3.5 h-3.5" /> Download PDF
+                  </button>
+                )}
                 <button type="button" onClick={() => void downloadDispatchExcel(detail.id)} className="px-4 py-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold flex items-center gap-1.5">
                   <Download className="w-3.5 h-3.5" /> Client Dispatch Excel
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {showDispatchForm && detail && (
-        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4">
-          <form
-            noValidate
-            onSubmit={e => { e.preventDefault(); void persistDispatch(); }}
-            className="w-full max-w-3xl max-h-[92vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-5"
-          >
-            <div className="flex justify-between border-b border-[var(--erp-hairline)] pb-3">
-              <h3 className="font-display text-lg font-bold flex items-center gap-2"><Truck className="w-4 h-4 text-[var(--erp-gold)]" />Record Dispatch · {detail.po_number}</h3>
-              <button type="button" onClick={() => setShowDispatchForm(false)}><X className="w-4 h-4" /></button>
-            </div>
-            <RequiredLegend />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <TextInput
-                label="Dispatch date"
-                type="date"
-                required
-                error={dispatchMessages.dispatch_date}
-                value={dispatchForm.dispatch_date}
-                onChange={e => {
-                  setDispatchForm({ ...dispatchForm, dispatch_date: e.target.value });
-                  setDispatchMessages(prev => clearFieldMessage(prev, 'dispatch_date'));
-                }}
-              />
-              <TextInput
-                label="LR number"
-                required
-                error={dispatchMessages.lr_number}
-                value={dispatchForm.lr_number}
-                onChange={e => {
-                  setDispatchForm({ ...dispatchForm, lr_number: e.target.value });
-                  setDispatchMessages(prev => clearFieldMessage(prev, 'lr_number'));
-                }}
-              />
-              <TextInput
-                label="Transporter"
-                required
-                error={dispatchMessages.transporter}
-                value={dispatchForm.transporter}
-                onChange={e => {
-                  setDispatchForm({ ...dispatchForm, transporter: e.target.value });
-                  setDispatchMessages(prev => clearFieldMessage(prev, 'transporter'));
-                }}
-              />
-              <TextInput
-                label="Challan / reference"
-                required
-                error={dispatchMessages.challan_reference}
-                value={dispatchForm.challan_reference}
-                onChange={e => {
-                  setDispatchForm({ ...dispatchForm, challan_reference: e.target.value });
-                  setDispatchMessages(prev => clearFieldMessage(prev, 'challan_reference'));
-                }}
-              />
-            </div>
-            {dispatchMessages.lines && <p className="text-xs font-mono text-[var(--erp-negative)]">{dispatchMessages.lines}</p>}
-            <div className="overflow-x-auto border border-[var(--erp-hairline)]">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[var(--erp-surface-2)] font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">
-                  <tr>
-                    <th className="px-3 py-2">Product</th>
-                    <th className="px-3 py-2 text-right">Pending</th>
-                    <th className="px-3 py-2 w-36">Dispatch qty this time *</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.lines.filter(l => l.id && num(l.pending_quantity) > 0).map(line => (
-                    <tr key={line.id} className="border-t border-[var(--erp-hairline)]">
-                      <td className="px-3 py-2">{line.product_code ? `${line.product_code} · ${line.product_name}` : line.product_name}</td>
-                      <td className="px-3 py-2 text-right font-mono">{num(line.pending_quantity).toFixed(2)}</td>
-                      <td className="px-3 py-2">
-                        <input
-                          value={dispatchQtys[line.id as number] || ''}
-                          onChange={e => setDispatchQtys(prev => ({ ...prev, [line.id as number]: e.target.value }))}
-                          className={`w-full px-2 py-1.5 font-mono bg-[var(--erp-surface)] border text-[var(--erp-text)] ${dispatchMessages[`qty_${line.id}`] ? 'border-[var(--erp-negative)]' : 'border-[var(--erp-hairline-strong)]'}`}
-                        />
-                        {dispatchMessages[`qty_${line.id}`] && <p className="text-[10px] font-mono text-[var(--erp-negative)] mt-1">{dispatchMessages[`qty_${line.id}`]}</p>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex justify-end gap-3 pt-2 border-t border-[var(--erp-hairline)]">
-              <button type="button" onClick={() => setShowDispatchForm(false)} className="px-4 py-2 border border-[var(--erp-hairline)] text-xs font-mono">Cancel</button>
-              <button type="submit" disabled={saving} className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">{saving ? 'Saving…' : 'Save dispatch'}</button>
-            </div>
-          </form>
         </div>
       )}
 
@@ -1742,29 +1917,6 @@ export const PurchaseOrderScreen: React.FC = () => {
         onConfirm={async () => {
           if (!pendingStatus) return;
           await applyStatus(pendingStatus.row, pendingStatus.next);
-        }}
-      />
-
-      <ConfirmDialog
-        open={!!pendingDeleteDispatch}
-        entityType="dispatch"
-        entityLabel={pendingDeleteDispatch ? pendingDeleteDispatch.lr_number : ''}
-        title="Delete dispatch?"
-        message={pendingDeleteDispatch ? `Delete dispatch '${pendingDeleteDispatch.lr_number}'? Pending quantities will be recalculated.` : ''}
-        confirmLabel="Delete"
-        confirmTone="critical"
-        onCancel={() => setPendingDeleteDispatch(null)}
-        onConfirm={async () => {
-          if (!pendingDeleteDispatch || !detail) return;
-          try {
-            await dispatchesApi.remove(pendingDeleteDispatch.id);
-            notifySuccess(`Dispatch '${pendingDeleteDispatch.lr_number}' deleted.`);
-            setPendingDeleteDispatch(null);
-            await openDetail(detail.id);
-            await load();
-          } catch (err) {
-            notifyApiError(err);
-          }
         }}
       />
 

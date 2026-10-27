@@ -48,6 +48,7 @@ interface ErpContextType {
   setUserRole: (role: UserRole) => void;
   canEditRecords: boolean;
   canDeleteRecords: boolean;
+  productCategory: boolean;
   sessionUserName: string;
   logout: () => void;
 
@@ -184,6 +185,7 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [canEditRecords, setCanEditRecords] = useState(false);
   const [canDeleteRecords, setCanDeleteRecords] = useState(false);
+  const [productCategory, setProductCategory] = useState(false);
   const [sessionUserName, setSessionUserName] = useState<string>(
     () => localStorage.getItem('ariav_auth_name') || ''
   );
@@ -249,6 +251,7 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUserRole(me.role);
         setCanEditRecords(me.role === 'admin' || !!me.user?.can_edit);
         setCanDeleteRecords(me.role === 'admin' || !!me.user?.can_delete);
+        setProductCategory(me.features?.productCategory === true);
         localStorage.setItem('ariav_auth_role', me.role);
         const name = me.user?.name || '';
         if (name) {
@@ -347,6 +350,7 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserRole('staff');
     setCanEditRecords(false);
     setCanDeleteRecords(false);
+    setProductCategory(false);
     setCurrentScreenId(1);
   }, []);
 
@@ -453,6 +457,9 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserRole(role);
     localStorage.setItem('ariav_auth_role', role);
     setSessionUserName(localStorage.getItem('ariav_auth_name') || '');
+    void authApi.me().then(me => {
+      if (me.success) setProductCategory(me.features?.productCategory === true);
+    });
   }, []);
 
   const currentScreen = ERP_SCREENS.find(s => s.id === currentScreenId) || ERP_SCREENS[5];
@@ -613,6 +620,7 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserRole('staff');
     setCanEditRecords(false);
     setCanDeleteRecords(false);
+    setProductCategory(false);
     setCurrentScreenId(1);
   };
 
@@ -638,6 +646,7 @@ export const ErpProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUserRole: commitUserRole,
         canEditRecords,
         canDeleteRecords,
+        productCategory,
         sessionUserName,
         logout,
         pythonStatus,

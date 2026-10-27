@@ -47,10 +47,18 @@ export interface PriceListRow {
   brand_name: string;
   season_label: string;
   valid_from: string;
-  valid_to: string;
+  valid_to: string | null;
   status: PriceListStatus;
+  revision_label?: string;
+  season_name?: string;
+  season_year?: number | null;
+  source_filename?: string;
+  tax_note?: string;
+  unit_text?: string;
+  packing_note?: string;
   entry_count: number;
   quality_entry_count?: number;
+  brand_quality_count?: number;
   entries: PriceListEntryRow[];
   warning?: string;
 }
@@ -189,6 +197,11 @@ export interface QualityPriceRow extends QualityPriceEntry {
   id: number;
   shades: string[];
   review_status: string;
+  product_code?: string;
+  product_name?: string;
+  discount_percent?: string;
+  discount_note?: string;
+  unit_text?: string;
 }
 
 export const priceListsApi = {

@@ -79,3 +79,21 @@ class DispatchLine(models.Model):
 
     def __str__(self):
         return f"{self.dispatch_id} line {self.pk}"
+
+
+class OcmDispatchSource(models.Model):
+    """Stops the same OCM invoice line from being counted twice."""
+
+    invoice_no = models.CharField(max_length=80)
+    invoice_line = models.CharField(max_length=40)
+    dispatch_line = models.OneToOneField(
+        DispatchLine,
+        on_delete=models.CASCADE,
+        related_name="ocm_source",
+    )
+
+    class Meta:
+        db_table = "dispatches_ocmdispatchsource"
+        constraints = [
+            models.UniqueConstraint(fields=["invoice_no", "invoice_line"], name="ocm_dispatch_invoice_line_unique"),
+        ]

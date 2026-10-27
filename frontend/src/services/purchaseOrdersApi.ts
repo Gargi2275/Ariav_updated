@@ -52,6 +52,13 @@ export interface PurchaseOrderLineRow {
   product_code: string;
   product_name: string;
   unit: string;
+  quantity_unit?: 'Pieces' | 'Meters' | string;
+  shade?: string;
+  size?: string;
+  delivery_from?: string | null;
+  delivery_to?: string | null;
+  line_remarks?: string;
+  form_row_no?: number | null;
   quantity: string | number;
   rate: string | number | null;
   line_total: string | number | null;
@@ -81,6 +88,13 @@ export interface PurchaseOrderRow {
   brand_code: string;
   brand_name: string;
   po_date: string;
+  place?: string;
+  mode_of_despatch?: string;
+  destination?: string;
+  documents_through?: string;
+  special_instructions?: string;
+  print_profile?: string;
+  print_copies?: { id: string; label: string }[];
   status: POStatus | string;
   remarks: string;
   source_format?: string;
@@ -124,6 +138,11 @@ export const emptyPurchaseOrder = (): Partial<PurchaseOrderRow> => ({
   customer_id: undefined,
   brand_id: undefined,
   po_date: todayIso(),
+  place: '',
+  mode_of_despatch: '',
+  destination: '',
+  documents_through: '',
+  special_instructions: '',
   remarks: '',
   lines: [],
   status: 'Draft',
@@ -261,6 +280,20 @@ export interface PoImportCommitResult {
   parties_linked_count: number;
 }
 
+export interface FormQuality {
+  quality_code: string;
+  quality_label: string;
+  shades: string[];
+  price: string | null;
+  ex_mill?: string | null;
+  wholesale?: string | null;
+  retail?: string | null;
+  collection?: string;
+  product_id: number | null;
+  product_code: string;
+  product_name: string;
+}
+
 export const purchaseOrdersApi = {
   list: (params: {
     status?: string;
@@ -347,9 +380,17 @@ export const purchaseOrdersApi = {
         decisions: args.decisions,
       }),
     }),
-  pdf: async (id: number): Promise<Blob> => {
+  nextNumber: (entityId: number, brandId: number) =>
+    request<{ po_number: string }>(`/api/purchase-orders/next-number/${qs({ entity_id: entityId, brand_id: brandId })}`),
+  formQualities: (brandId: number, q = '') =>
+    request<FormQuality[]>(`/api/purchase-orders/form-qualities/${qs({ brand_id: brandId, q })}`),
+  pdf: async (id: number, params: { form?: boolean; copy?: string; blank?: boolean } = {}): Promise<Blob> => {
     const token = localStorage.getItem('ariav_auth_token');
-    const res = await fetch(apiUrl(`/api/purchase-orders/${id}/pdf/`), {
+    const res = await fetch(apiUrl(`/api/purchase-orders/${id}/pdf/${qs({
+      form: params.form ? 1 : undefined,
+      copy: params.copy,
+      blank: params.blank ? 1 : undefined,
+    })}`), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) {
@@ -376,4 +417,64 @@ export const purchaseOrdersApi = {
     }
     return res.blob();
   },
+  ocmOfficialList: async (params: { search?: string; status?: string; unresolved?: boolean } = {}) => {
+    const body = await request<{ orders?: Record<string, unknown>[]; total?: number } | Record<string, unknown>[]>(
+      `/api/purchase-orders/ocm-official/${qs({
+        search: params.search || undefined,
+        status: params.status || undefined,
+        unresolved: params.unresolved ? '1' : undefined,
+      })}`,
+    );
+    if (Array.isArray(body)) return { orders: body, total: body.length };
+    return { orders: body.orders || [], total: body.total ?? (body.orders || []).length };
+  },
+  ocmOfficialImport: async (file: File) => {
+    const token = localStorage.getItem('ariav_auth_token');
+    const body = new FormData();
+    body.append('file', file);
+    const res = await fetch(apiUrl('/api/purchase-orders/ocm-official/'), {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const body = data as { detail?: string; file?: string; rows?: { row: number; reason: string }[] };
+      const rowText = Array.isArray(body.rows)
+        ? body.rows.map((row) => `Row ${row.row}: ${row.reason}`).join(' ')
+        : '';
+      const error = new Error(body.file || (typeof body.detail === 'string' ? body.detail : '') || rowText || `HTTP ${res.status}`);
+      (error as Error & { data: unknown; status: number }).data = data;
+      (error as Error & { status: number }).status = res.status;
+      throw error;
+    }
+    return data as { duplicate_file: boolean; orders: Record<string, unknown>[]; row_errors: { row: number; reason: string }[] };
+  },
+  ocmOfficialDetail: (id: number) => request<Record<string, unknown>>(`/api/purchase-orders/ocm-official/${id}/`),
+  ocmOfficialSelect: (id: number, purchaseOrderId: number) =>
+    request<Record<string, unknown>>(`/api/purchase-orders/ocm-official/${id}/select/`, {
+      method: 'POST',
+      body: JSON.stringify({ purchase_order_id: purchaseOrderId }),
+    }),
+  ocmOfficialMapping: (id: number, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/purchase-orders/ocm-official/${id}/mapping/`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  ocmOfficialApprove: (id: number, reason: string) =>
+    request<Record<string, unknown>>(`/api/purchase-orders/ocm-official/${id}/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  ocmOfficialDelete: (ids: number[], allUnapproved = false) =>
+    request<{
+      deleted: { id: number; order_number: string }[];
+      deleted_count: number;
+      blocked: { id: number; order_number: string; reason: string }[];
+      missing: number[];
+      remaining: number;
+    }>('/api/purchase-orders/ocm-official/delete/', {
+      method: 'POST',
+      body: JSON.stringify(allUnapproved ? { all_unapproved: true } : { ids }),
+    }),
 };

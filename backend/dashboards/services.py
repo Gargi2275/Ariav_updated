@@ -6,7 +6,7 @@ are reported as unavailable rather than fabricated values.
 
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -17,8 +17,7 @@ from invoices.models import Invoice, InvoiceLine
 from invoices.services import invoice_is_overdue, money
 from payments.models import Payment, PaymentAllocation
 from products.models import Product
-from purchase_orders.models import PurchaseOrder
-from dispatches.models import Dispatch
+from purchase_orders.models import PurchaseOrder, PurchaseOrderLine
 
 SALES_STATUSES = (
     Invoice.Status.ISSUED,
@@ -121,14 +120,13 @@ def _kpis(entity_id=None, customer_ids=None, date_from=None, date_to=None) -> di
         Decimal("0.00"),
     )
     advance = _sum(payments, "unallocated_amount")
-    po_rows = list(
-        period_pos.prefetch_related(
-            "invoices__allocations",
-            "lines__dispatch_lines",
-        )
-    )
+    closed_out = (PurchaseOrder.Status.CANCELLED, PurchaseOrder.Status.REJECTED)
+    open_pos = period_pos.exclude(status__in=closed_out)
+    po_rows = list(open_pos.prefetch_related("invoices__allocations", "lines__dispatch_lines"))
     pending_financial_pos = 0
     clear_pos = 0
+    fully_dispatched_pos = 0
+    partially_dispatched_pos = 0
     for po in po_rows:
         invoice_rows = [row for row in po.invoices.all() if row.status != Invoice.Status.CANCELLED]
         invoiced = sum((row.net_amount for row in invoice_rows), Decimal("0"))
@@ -136,35 +134,36 @@ def _kpis(entity_id=None, customer_ids=None, date_from=None, date_to=None) -> di
             (allocation.allocated_amount for row in invoice_rows for allocation in row.allocations.all()),
             Decimal("0"),
         )
-        fully_dispatched = bool(po.lines.all()) and all(
-            sum((dispatch.dispatched_quantity for dispatch in line.dispatch_lines.all()), Decimal("0"))
-            >= line.quantity
-            for line in po.lines.all()
-        )
-        if fully_dispatched and invoiced - paid <= 0:
+        lines = list(po.lines.all())
+        any_dispatched = False
+        every_line_full = bool(lines)
+        for line in lines:
+            sent = sum((row.dispatched_quantity or Decimal("0") for row in line.dispatch_lines.all()), Decimal("0"))
+            if sent > 0:
+                any_dispatched = True
+            if sent < (line.quantity or Decimal("0")):
+                every_line_full = False
+        if every_line_full:
+            fully_dispatched_pos += 1
+        elif any_dispatched:
+            partially_dispatched_pos += 1
+        if every_line_full and invoiced - paid <= 0:
             clear_pos += 1
         else:
             pending_financial_pos += 1
-    dispatched = Dispatch.objects.filter(
-        purchase_order__in=period_pos,
-        dispatch_date__range=(date_from, date_to),
-    ) if date_from and date_to else Dispatch.objects.filter(purchase_order__in=pos)
+    order_booking = PurchaseOrderLine.objects.filter(purchase_order__in=open_pos).aggregate(total=Sum("line_total"))["total"]
     customers = scope_customers(Customer.objects.filter(status=Customer.Status.ACTIVE), customer_ids, "id")
     brands = Brand.objects.filter(status=Brand.Status.ACTIVE)
     products = Product.objects.filter(status=Product.Status.ACTIVE)
     entities = Entity.objects.filter(status=Entity.Status.ACTIVE)
     if entity_id:
         customers = customers.filter(entity_links__entity_id=entity_id)
-        brands = brands.filter(
-            Q(purchase_orders__entity_id=entity_id) | Q(invoices__entity_id=entity_id)
-        ).distinct()
-        products = products.filter(
-            Q(purchase_order_lines__purchase_order__entity_id=entity_id)
-            | Q(invoice_lines__invoice__entity_id=entity_id)
-        ).distinct()
+        brands = brands.filter(entity_links__entity_id=entity_id)
+        products = products.filter(brand__status=Brand.Status.ACTIVE, brand__entity_links__entity_id=entity_id)
         entities = entities.filter(pk=entity_id)
     return {
         "total_sales": money_str(_sum(period_sales, "net_amount")),
+        "order_booking": money_str(order_booking),
         "total_invoices": period_sales.count(),
         "total_collections": money_str(_sum(period_payments, "amount")),
         "total_outstanding": money_str(outstanding),
@@ -176,12 +175,12 @@ def _kpis(entity_id=None, customer_ids=None, date_from=None, date_to=None) -> di
         "pending_pos": period_pos.filter(status__in=PENDING_PO_STATUSES).count(),
         "pending_financial_pos": pending_financial_pos,
         "clear_pos": clear_pos,
-        "dispatched_pos": dispatched.filter(purchase_order__status=PurchaseOrder.Status.FULLY_DISPATCHED).values("purchase_order_id").distinct().count(),
-        "partially_dispatched_pos": dispatched.filter(purchase_order__status=PurchaseOrder.Status.PARTIALLY_DISPATCHED).values("purchase_order_id").distinct().count(),
-        "unpriced_po_lines": period_pos.filter(lines__rate__isnull=True).count(),
-        "active_customers": customers.distinct().count(),
-        "active_brands": brands.count(),
-        "active_products": products.count(),
+        "dispatched_pos": fully_dispatched_pos,
+        "partially_dispatched_pos": partially_dispatched_pos,
+        "unpriced_po_lines": PurchaseOrderLine.objects.filter(purchase_order__in=period_pos, rate__isnull=True).count(),
+        "active_customers": customers.values("id").distinct().count(),
+        "active_brands": brands.values("id").distinct().count(),
+        "active_products": products.values("id").distinct().count(),
         "active_entities": entities.count(),
     }
 
@@ -215,6 +214,10 @@ def _entity_turnover(entity_id=None, date_from=None, date_to=None) -> list[dict]
 
 
 def _category_share(entity_id=None, date_from=None, date_to=None) -> list[dict]:
+    from django.conf import settings
+
+    if not settings.PRODUCT_CATEGORY_ENABLED:
+        return []
     lines = InvoiceLine.objects.filter(
         invoice__status__in=SALES_STATUSES,
         product_id__isnull=False,

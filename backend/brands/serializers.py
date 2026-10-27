@@ -9,6 +9,9 @@ from .models import Brand
 
 class BrandSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
+    logo_url = serializers.SerializerMethodField()
+    print_profile = serializers.SerializerMethodField()
+    print_copies = serializers.SerializerMethodField()
     branch_ids = serializers.PrimaryKeyRelatedField(
         source="entities",
         queryset=Entity.objects.all(),
@@ -33,6 +36,10 @@ class BrandSerializer(serializers.ModelSerializer):
             "mobile",
             "email",
             "address",
+            "logo",
+            "logo_url",
+            "print_profile",
+            "print_copies",
             "gst_no",
             "pan_no",
             "commission_rate",
@@ -43,10 +50,27 @@ class BrandSerializer(serializers.ModelSerializer):
             "branch_ids",
             "branches",
         )
-        read_only_fields = ("id", "created_at", "updated_at", "created_by", "created_by_name")
+        read_only_fields = ("id", "created_at", "updated_at", "created_by", "created_by_name", "logo_url", "print_profile", "print_copies")
         extra_kwargs = {
             "brand_code": {"validators": []},
         }
+
+    def get_logo_url(self, obj):
+        if not obj.logo:
+            return ""
+        request = self.context.get("request")
+        url = obj.logo.url
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
+
+    def get_print_profile(self, obj):
+        from purchase_orders.print_profiles import profile_id_for_brand
+        return profile_id_for_brand(obj.brand_code)
+
+    def get_print_copies(self, obj):
+        from purchase_orders.print_profiles import profile_copies_for_brand
+        return profile_copies_for_brand(obj.brand_code)
 
     def get_created_by_name(self, obj):
         if not obj.created_by_id:

@@ -167,6 +167,9 @@ PIN_MAX_ATTEMPTS = 5
 PIN_LOCKOUT_SECONDS = 300
 OTP_MAX_ATTEMPTS = 5
 SESSION_TOKEN_HOURS = 24
+# Product Category → Subcategory is optional and hidden while this is false.
+# Set PRODUCT_CATEGORY_ENABLED=true to restore the previous required behaviour.
+PRODUCT_CATEGORY_ENABLED = os.environ.get("PRODUCT_CATEGORY_ENABLED", "false").lower() in ("1", "true", "yes")
 TEMP_TOKEN_SECONDS = 600
 # Only enable behind a reverse proxy that overwrites X-Forwarded-For; otherwise
 # clients could spoof their IP and dodge the per-IP rate limits.
@@ -190,3 +193,34 @@ DEV_OPERATOR_PASSWORD = os.environ.get("DEV_OPERATOR_PASSWORD", "operator123")
 
 # Invoice reminder lead time for `python manage.py generate_reminders`.
 NOTIFICATION_UPCOMING_DUE_DAYS = int(os.environ.get("NOTIFICATION_UPCOMING_DUE_DAYS", "3"))
+
+# Purchase-order mail. Host, account and password stay in the environment.
+# EMAIL_MODE: off (default) sends nothing, test redirects every message, live
+# also requires the admin EmailSettings.enabled toggle.
+EMAIL_MODE = os.environ.get("EMAIL_MODE", "off").strip().lower()
+if EMAIL_MODE not in {"off", "test", "live"}:
+    EMAIL_MODE = "off"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "").strip()
+try:
+    EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587") or "587")
+except ValueError:
+    EMAIL_PORT = 587
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+_tls_raw = os.environ.get("EMAIL_USE_TLS")
+_ssl_raw = os.environ.get("EMAIL_USE_SSL")
+if _tls_raw is None and _ssl_raw is None:
+    EMAIL_USE_TLS = EMAIL_MODE != "off"
+    EMAIL_USE_SSL = False
+else:
+    EMAIL_USE_TLS = (_tls_raw or "").strip().lower() in ("1", "true", "yes")
+    EMAIL_USE_SSL = (_ssl_raw or "").strip().lower() in ("1", "true", "yes")
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise ImproperlyConfigured("Set only one of EMAIL_USE_TLS or EMAIL_USE_SSL.")
+if not DEBUG and EMAIL_MODE in {"test", "live"} and not (EMAIL_USE_TLS or EMAIL_USE_SSL):
+    raise ImproperlyConfigured(
+        "SMTP requires EMAIL_USE_TLS or EMAIL_USE_SSL when DJANGO_DEBUG is false."
+    )
+EMAIL_TIMEOUT = 20
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "").strip()
+EMAIL_TEST_RECIPIENT = os.environ.get("EMAIL_TEST_RECIPIENT", "").strip().lower()

@@ -50,6 +50,17 @@ class AuthUser(AbstractUser):
         return self.role == self.Role.ADMIN or self.is_superuser
 
 
+class UserPreference(models.Model):
+    """Personal workspace settings for one account. Business records are not stored here."""
+
+    user = models.OneToOneField(AuthUser, on_delete=models.CASCADE, related_name="preferences")
+    data = models.JSONField(blank=True, default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "accounts_userpreference"
+
+
 class AuthUserMstLogin(models.Model):
     """Per-user login gate: PIN attempt counter and 5-minute lockout (DB, not memory)."""
 

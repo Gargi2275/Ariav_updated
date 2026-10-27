@@ -91,12 +91,6 @@ class PriceListViewSet(viewsets.ModelViewSet):
         response.data["warning"] = overlapping_active_warning(price_list) if price_list.status == PriceList.Status.ACTIVE else ""
         return response
 
-    def destroy(self, request, *args, **kwargs):
-        price_list = self.get_object()
-        if price_list.status != PriceList.Status.DRAFT:
-            return Response({"detail": "Only Draft Price Lists can be deleted."}, status=status.HTTP_400_BAD_REQUEST)
-        return super().destroy(request, *args, **kwargs)
-
     def entries(self, request, pk=None):
         price_list = self.get_object()
         if request.method == "POST":
@@ -120,12 +114,53 @@ class PriceListViewSet(viewsets.ModelViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+    def _brand_quality_rows(self, price_list, search):
+        query = price_list.brand_quality_prices.select_related("product")
+        if search:
+            query = query.filter(
+                Q(quality_code__icontains=search)
+                | Q(collection_name__icontains=search)
+                | Q(collection_code__icontains=search)
+                | Q(shades_raw__icontains=search)
+                | Q(product__product_name__icontains=search)
+                | Q(product__product_code__icontains=search)
+            )
+        rows = []
+        for item in query:
+            rows.append({
+                "id": item.id,
+                "source_row": item.sr_no,
+                "source_page": item.source_page,
+                "collection_name": item.collection_name,
+                "collection_code": item.collection_code,
+                "serial_no": item.sr_no,
+                "quality_no": item.quality_code,
+                "shades_raw": item.shades_raw,
+                "shades": [],
+                "delivery_raw": item.delivery_raw,
+                "delivery_month": None,
+                "ex_mill": str(item.ex_mill) if item.ex_mill is not None else None,
+                "wholesale": str(item.wholesale) if item.wholesale is not None else None,
+                "retail": str(item.retail) if item.retail is not None else None,
+                "flags": [],
+                "raw_values": {},
+                "review_status": "",
+                "product_code": item.product.product_code if item.product_id else item.collection_code,
+                "product_name": item.product.product_name if item.product_id else item.collection_name,
+                "discount_percent": str(item.discount_percent) if item.discount_percent else "",
+                "discount_note": item.discount_note,
+                "unit_text": item.unit_text,
+            })
+        return rows
+
     @action(detail=True, methods=["get"], url_path="quality-entries")
     def quality_entries(self, request, pk=None):
         price_list = self.get_object()
+        search = (request.query_params.get("search") or "").strip()
+        if not price_list.quality_entries.exists():
+            return Response(self._brand_quality_rows(price_list, search))
         rows = []
         query = price_list.quality_entries.prefetch_related("shades").all()
-        search = (request.query_params.get("search") or "").strip()
         if search:
             query = query.filter(quality_no__icontains=search)
         for entry in query:
@@ -147,6 +182,11 @@ class PriceListViewSet(viewsets.ModelViewSet):
                 "flags": entry.flags,
                 "raw_values": entry.raw_values,
                 "review_status": entry.review_status,
+                "product_code": entry.collection_code,
+                "product_name": entry.collection_name,
+                "discount_percent": "",
+                "discount_note": "",
+                "unit_text": entry.unit_text,
             })
         return Response(rows)
 
@@ -156,18 +196,30 @@ class PriceListViewSet(viewsets.ModelViewSet):
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Quality Prices"
-        sheet.append(["Collection", "Collection Code", "Serial No.", "Quality No.", "Shades", "Delivery", "Ex-Mill", "W/S", "Retail", "Source Row", "Page"])
         def safe(value):
             if isinstance(value, str) and value[:1] in "=+-@":
                 return "'" + value
             return value
 
-        for entry in price_list.quality_entries.prefetch_related("shades").all():
-            sheet.append([
-                safe(entry.collection_name), safe(entry.collection_code), entry.serial_no, safe(entry.quality_no),
-                safe(entry.shades_raw), safe(entry.delivery_raw), entry.ex_mill, entry.wholesale, entry.retail,
-                entry.source_row, entry.source_page,
-            ])
+        excel_rows = price_list.quality_entries.prefetch_related("shades").all()
+        if excel_rows.exists():
+            sheet.append(["Collection", "Collection Code", "Serial No.", "Quality No.", "Shades", "Delivery", "Ex-Mill", "W/S", "Retail", "Source Row", "Page"])
+            for entry in excel_rows:
+                sheet.append([
+                    safe(entry.collection_name), safe(entry.collection_code), entry.serial_no, safe(entry.quality_no),
+                    safe(entry.shades_raw), safe(entry.delivery_raw), entry.ex_mill, entry.wholesale, entry.retail,
+                    entry.source_row, entry.source_page,
+                ])
+        else:
+            sheet.append(["Product", "Product Code", "Collection", "Collection Code", "Serial No.", "Quality No.", "Shades", "Delivery", "Ex-Mill", "W/S", "Retail", "Discount", "Unit", "Page"])
+            for item in price_list.brand_quality_prices.select_related("product"):
+                sheet.append([
+                    safe(item.product.product_name if item.product_id else item.collection_name),
+                    safe(item.product.product_code if item.product_id else item.collection_code),
+                    safe(item.collection_name), safe(item.collection_code), item.sr_no, safe(item.quality_code),
+                    safe(item.shades_raw), safe(item.delivery_raw), item.ex_mill, item.wholesale, item.retail,
+                    safe(item.discount_note), safe(item.unit_text), item.source_page,
+                ])
         response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f'attachment; filename="quality-prices-{price_list.id}.xlsx"'
         workbook.save(response)

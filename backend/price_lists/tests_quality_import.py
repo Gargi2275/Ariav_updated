@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import AuthUser
 from brands.models import Brand
+from categories.models import Category
 from entities.models import Entity
 
 from .models import PriceList, PriceListImportBatch, PriceListQualityEntry, PriceListQualityShade
@@ -116,6 +117,7 @@ class OcmQualityImportTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(Category.objects.count(), 0)
         self.assertEqual(PriceList.objects.count(), 1)
         self.assertEqual(PriceListImportBatch.objects.count(), 1)
         self.assertEqual(PriceListQualityEntry.objects.count(), 5)

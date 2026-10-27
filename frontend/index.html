@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Remix Ariav ERP</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%231B2430'/%3E%3Ctext x='8' y='12' text-anchor='middle' font-size='9' fill='%23C9A24E' font-family='Georgia,serif'%3EAE%3C/text%3E%3C/svg%3E" />
     <meta name="description" content="Production Gujarat textile ERP for order booking, sales billing, double-entry ledger, and multi-entity operations." />
     <meta property="og:title" content="Remix Ariav ERP" />
     <meta property="og:description" content="Production Gujarat textile ERP for order booking, sales billing, double-entry ledger, and multi-entity operations." />
@@ -36,6 +37,28 @@
     </style>
   </head>
   <body class="bg-[#0F141B] text-[#ECE9E1] antialiased selection:bg-[#C9A24E] selection:text-[#0F141B]">
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('ariav_prefs_cache');
+          var prefs = raw ? JSON.parse(raw) : {};
+          var theme = prefs.theme || localStorage.getItem('ariav_theme') || 'dark';
+          var dark = theme === 'dark' || (theme !== 'light' && (theme !== 'system' || window.matchMedia('(prefers-color-scheme: dark)').matches));
+          var root = document.documentElement;
+          root.classList.add(dark ? 'theme-dark' : 'theme-light');
+          if (prefs.highContrast) root.classList.add('theme-contrast');
+          if (prefs.largeTargets) root.classList.add('targets-large');
+          if (prefs.textSize) root.dataset.textSize = prefs.textSize;
+          if (prefs.density) root.dataset.uiDensity = prefs.density;
+          if (prefs.tableDensity) root.dataset.tableDensity = prefs.tableDensity;
+          if (prefs.reducedMotion === 'reduce' || (prefs.reducedMotion !== 'allow' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+            root.classList.add('motion-reduce');
+          }
+          document.body.style.backgroundColor = dark ? '#0F141B' : '#F6F2E8';
+          document.body.style.color = dark ? '#ECE9E1' : '#1B2430';
+        } catch (error) {}
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

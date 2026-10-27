@@ -12,7 +12,7 @@ export const QuickJumpModal: React.FC = () => {
 
   const categories: string[] = ['All', 'Auth', 'Admin', 'Core Operations', 'Masters', 'Reports'];
 
-  const adminOnly = new Set([4, 5, 7, 8, 9, 10]);
+  const adminOnly = new Set([4, 5, 7, 8, 9, 10, 11]);
   const filteredScreens = ERP_SCREENS.filter(s => {
     if (userRole !== 'admin' && (s.category === 'Admin' || adminOnly.has(s.id))) return false;
     const matchesCategory = selectedCategory === 'All' || s.category === selectedCategory;

@@ -38,6 +38,8 @@ urlpatterns = [
     path("api/auth/operator/verify-otp", views.verify_otp),
     path("api/auth/me", views.session_me),
     path("api/auth/me/", views.session_me),
+    path("api/auth/preferences/", views.preferences_view),
+    path("api/auth/preferences/reset/", views.preferences_reset),
     path("api/auth/logout", views.logout_view),
     path("api/auth/audit-trail", views.audit_trail),
     path("api/", include(router.urls)),

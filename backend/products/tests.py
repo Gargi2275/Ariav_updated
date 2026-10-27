@@ -1,9 +1,10 @@
+from datetime import date
 from decimal import Decimal
 
 from rest_framework.test import APIClient
 
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 
 from accounts.models import AuthUser
@@ -11,6 +12,7 @@ from brands.models import Brand
 from categories.models import Category
 from customers.models import Customer
 from entities.models import Entity
+from price_lists.models import BrandQualityPrice, PriceList, PriceListEntry
 from products.models import Product
 from purchase_orders.models import PurchaseOrder, PurchaseOrderLine
 
@@ -55,6 +57,7 @@ class ProductCatalogueApiTests(TestCase):
         payload.update(kwargs)
         return self.client.post("/api/products/", payload, format="json", HTTP_HOST="localhost")
 
+    @override_settings(PRODUCT_CATEGORY_ENABLED=True)
     def test_rejects_top_level_category(self):
         res = self._product(category_id=self.root.id)
         self.assertEqual(res.status_code, 400)
@@ -90,6 +93,53 @@ class ProductCatalogueApiTests(TestCase):
 
         cat_ok = self.client.delete(f"/api/categories/{self.sub.id}/", HTTP_HOST="localhost")
         self.assertEqual(cat_ok.status_code, 200)
+
+    def test_view_includes_shades_from_the_price_list(self):
+        product = Product.objects.get(pk=self._product(product_code="AN", product_name="Anovate").json()["id"])
+        price_list = PriceList.objects.create(
+            brand=self.brand,
+            season_label="Winter 2026",
+            valid_from=date(2026, 10, 1),
+            status=PriceList.Status.DRAFT,
+        )
+
+        def quality(number, shades):
+            BrandQualityPrice.objects.create(
+                price_list=price_list,
+                product=product,
+                sr_no=int(number[-2:]),
+                source_page=1,
+                quality_code=f"AN-1-1-100-{number}",
+                quality_prefix="AN",
+                seg_a="1",
+                seg_b="1",
+                seg_c="100",
+                quality_number=number,
+                shades_raw=shades,
+            )
+
+        quality("4116812", "1")
+        quality("4116822", "1")
+        same = self.client.get(f"/api/products/{product.id}/", HTTP_HOST="localhost")
+        self.assertEqual(same.status_code, 200)
+        self.assertEqual(
+            same.json()["shades"],
+            [
+                {"quality": "AN-4116812", "shades": ["1"]},
+                {"quality": "AN-4116822", "shades": ["1"]},
+            ],
+        )
+
+        quality("4116830", "2, 3")
+        mixed = self.client.get(f"/api/products/{product.id}/", HTTP_HOST="localhost")
+        self.assertEqual(
+            mixed.json()["shades"],
+            [
+                {"quality": "AN-4116812", "shades": ["1"]},
+                {"quality": "AN-4116822", "shades": ["1"]},
+                {"quality": "AN-4116830", "shades": ["2", "3"]},
+            ],
+        )
 
     def test_operator_read_only(self):
         self.client.force_authenticate(self.operator)
@@ -184,3 +234,40 @@ class ProductCatalogueApiTests(TestCase):
         self.assertIsNone(again["frate"])
         self.assertIsNone(again["trate"])
         self.assertEqual(again["rate"], "125.50")
+
+    def test_permanent_delete_requires_inactive_then_removes_the_product(self):
+        pid = self._product().json()["id"]
+        refused = self.client.delete(f"/api/products/{pid}/?permanent=true", HTTP_HOST="localhost")
+        self.assertEqual(refused.status_code, 400, refused.content)
+        self.assertTrue(Product.objects.filter(pk=pid, status="Active").exists())
+        soft = self.client.delete(f"/api/products/{pid}/", HTTP_HOST="localhost")
+        self.assertEqual(soft.status_code, 200)
+        hard = self.client.delete(f"/api/products/{pid}/?permanent=true", HTTP_HOST="localhost")
+        self.assertEqual(hard.status_code, 204, hard.content)
+        self.assertFalse(Product.objects.filter(pk=pid).exists())
+
+    def test_permanent_delete_blocked_when_the_product_is_on_a_price_list(self):
+        pid = self._product().json()["id"]
+        self.client.delete(f"/api/products/{pid}/", HTTP_HOST="localhost")
+        price_list = PriceList.objects.create(
+            brand=self.brand, season_label="Winter", valid_from=date(2026, 7, 1), status="Active",
+        )
+        PriceListEntry.objects.create(
+            price_list=price_list,
+            product_id=pid,
+            taka_length_meters=Decimal("25"),
+            price_basis="Per Meter",
+            price_value=Decimal("10"),
+        )
+        hard = self.client.delete(f"/api/products/{pid}/?permanent=true", HTTP_HOST="localhost")
+        self.assertEqual(hard.status_code, 409, hard.content)
+        self.assertIn("price list", hard.json()["detail"])
+        self.assertTrue(Product.objects.filter(pk=pid).exists())
+
+    def test_operator_cannot_permanently_delete_a_product(self):
+        pid = self._product().json()["id"]
+        self.client.delete(f"/api/products/{pid}/", HTTP_HOST="localhost")
+        self.client.force_authenticate(self.operator)
+        res = self.client.delete(f"/api/products/{pid}/?permanent=true", HTTP_HOST="localhost")
+        self.assertEqual(res.status_code, 403)
+        self.assertTrue(Product.objects.filter(pk=pid).exists())

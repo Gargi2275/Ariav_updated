@@ -469,6 +469,10 @@ export const EntityMasterScreen: React.FC = () => {
                 <TextInput label="Mobile" mono value={form.mobile || ''} onChange={e => setForm({ ...form, mobile: e.target.value })} />
                 <TextInput label="Fax" mono value={form.fax || ''} onChange={e => setForm({ ...form, fax: e.target.value })} />
                 <TextInput label="Email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} />
+                <TextInput label="Reply-to" value={form.reply_to || ''} onChange={e => setForm({ ...form, reply_to: e.target.value })} />
+                <label className="flex flex-col gap-1 text-xs text-[var(--erp-muted)] sm:col-span-2">Email signature
+                  <textarea value={form.email_signature || ''} onChange={e => setForm({ ...form, email_signature: e.target.value })} rows={3} className="px-3 py-2 text-sm bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] text-[var(--erp-text)]" />
+                </label>
                 <TextInput label="Website" value={form.website || ''} onChange={e => setForm({ ...form, website: e.target.value })} className="sm:col-span-2" />
               </div>
             </section>
@@ -545,6 +549,8 @@ export const EntityMasterScreen: React.FC = () => {
               <DetailField label="Contact person" value={detail.contact_person} />
               <DetailField label="Phone / Mobile" value={[detail.phone, detail.mobile].filter(Boolean).join(' / ')} />
               <DetailField label="Email" value={detail.email} />
+              <DetailField label="Reply-to" value={detail.reply_to} />
+              <DetailField label="Email signature" value={detail.email_signature} />
               <DetailField label="Website" value={detail.website} />
               <DetailField label="Address" value={[detail.address_line_1, detail.street, detail.area, detail.city, detail.district, detail.state, detail.pin_code].filter(Boolean).join(', ')} />
               <DetailField label="GST No." value={detail.gst_no} />

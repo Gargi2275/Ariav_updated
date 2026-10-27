@@ -309,6 +309,7 @@ export const authApi = {
       can_edit?: boolean;
       can_delete?: boolean;
     };
+    features?: { productCategory?: boolean };
     error?: string;
   }> {
     const token = localStorage.getItem('ariav_auth_token');

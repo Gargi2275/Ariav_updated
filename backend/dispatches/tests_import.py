@@ -1,6 +1,7 @@
 from decimal import Decimal
 from io import BytesIO
 from collections import defaultdict
+from datetime import date
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,7 @@ from entities.models import Entity
 from products.models import Product
 from purchase_orders.models import PurchaseOrder
 from purchase_orders.models import PurchaseOrderLine
+from purchase_orders.serializers import create_purchase_order_with_lines
 from dispatches.import_service import parse_workbook
 from purchase_orders.import_service import parse_workbook as parse_po_workbook
 
@@ -167,29 +169,35 @@ class DispatchImportApiTests(TestCase):
         brand_order_code=None,
         brand_id=None,
     ):
-        res = self.client.post(
-            "/api/purchase-orders/",
-            {
-                "po_number": po_number,
-                "brand_order_code": brand_order_code,
-                "entity_id": self.entity.id,
-                "customer_id": self.customer.id,
-                "brand_id": brand_id or self.brand.id,
-                "po_date": "2026-09-16",
-                "lines": [
-                    {
-                        "product_id": None,
-                        "product_description": description,
-                        "quantity": qty,
-                        "rate": "10.00",
-                    }
-                ],
-            },
-            format="json",
-            HTTP_HOST="localhost",
+        """Store an already-issued purchase order under the number the dispatch file will name.
+
+        The manual create API allocates its own number and ignores a client value.
+        These tests are about dispatch matching, so they use the same path as an
+        imported order, which keeps the supplied number.
+        """
+        brand = Brand.objects.get(pk=brand_id or self.brand.id)
+        po = create_purchase_order_with_lines(
+            user=self.admin,
+            assign_manual_number=False,
+            po_number=po_number,
+            brand_order_code=brand_order_code or None,
+            entity=self.entity,
+            customer=self.customer,
+            brand=brand,
+            po_date=date(2026, 9, 16),
+            order_type=(
+                PurchaseOrder.OrderType.MANUAL
+                if brand.order_method == Brand.OrderMethod.MANUAL_POR
+                else PurchaseOrder.OrderType.DIGITAL
+            ),
+            lines=[{
+                "product": None,
+                "product_description": description,
+                "quantity": Decimal(qty),
+                "rate": Decimal("10.00"),
+            }],
         )
-        self.assertEqual(res.status_code, 201, res.content)
-        po_id = res.json()["id"]
+        po_id = po.id
         if status != "Draft":
             self.client.post(f"/api/purchase-orders/{po_id}/submit/", HTTP_HOST="localhost")
             path = [
@@ -213,7 +221,7 @@ class DispatchImportApiTests(TestCase):
                 current = nxt
                 if current == status:
                     break
-        return res.json()["id"]
+        return po_id
 
     def test_client_fixture_has_expected_shape(self):
         with open(
@@ -539,7 +547,26 @@ class DispatchImportApiTests(TestCase):
             path.write_text(json.dumps(value, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
         self.assertTrue(path.exists(), f"Missing golden snapshot: {path}")
         expected = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(value, expected)
+        self.assertEqual(self._without_sequence_ids(value), self._without_sequence_ids(expected))
+
+    @staticmethod
+    def _without_sequence_ids(value):
+        """Database sequence numbers are not part of the dispatch contract."""
+        value = json.loads(json.dumps(value, default=str))
+
+        def normalize(node):
+            if isinstance(node, dict):
+                for key, item in list(node.items()):
+                    if key == "id" or key.endswith("_id") or key == "created_by":
+                        node[key] = "<id>"
+                    else:
+                        normalize(item)
+            elif isinstance(node, list):
+                for item in node:
+                    normalize(item)
+
+        normalize(value)
+        return value
 
     @staticmethod
     def _snapshot_response(response):
@@ -938,3 +965,70 @@ class DispatchImportApiTests(TestCase):
         self.assertEqual(commit.status_code, 201, commit.content)
         po = PurchaseOrder.objects.get(po_number="ATN-OP")
         self.assertEqual(po.status, PurchaseOrder.Status.FULLY_DISPATCHED)
+
+    def test_manual_api_allocates_a_number_and_dispatch_still_uses_an_issued_number(self):
+        created = self.client.post(
+            "/api/purchase-orders/",
+            {
+                "po_number": "CLIENT-SUPPLIED",
+                "entity_id": self.entity.id,
+                "customer_id": self.customer.id,
+                "brand_id": self.brand.id,
+                "po_date": "2026-09-16",
+                "lines": [{
+                    "product_id": None,
+                    "product_description": "A-B-C-T-S",
+                    "quantity": "10.00",
+                    "rate": "10.00",
+                }],
+            },
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+        issued = created.json()["po_number"]
+        self.assertNotEqual(issued, "CLIENT-SUPPLIED")
+        self.assertEqual(len(issued), 8)
+        self.assertTrue(issued.startswith("AO"))
+
+        self._create_po("HIST-100", status="Brand Accepted")
+        preview = self._preview([_row("HIST-100", "INV-HIST")])
+        self.assertEqual(preview.status_code, 200, preview.content)
+        self.assertEqual(preview.json()["importable"][0]["po_number"], "HIST-100")
+        self.assertFalse(
+            any(row.get("po_number") == issued for row in preview.json()["importable"])
+        )
+
+        digital = Brand.objects.create(
+            brand_code="DIG",
+            brand_name="Digital Mill",
+            order_method=Brand.OrderMethod.DIGITAL_PO,
+        )
+        self.entity.brands.add(digital)
+        product = Product.objects.create(
+            product_code="DIG-01",
+            product_name="Digital Cloth",
+            brand=digital,
+            category=self.product.category,
+            rate=Decimal("10.00"),
+            unit=Product.Unit.METER,
+        )
+        digital_po = self.client.post(
+            "/api/purchase-orders/",
+            {
+                "po_number": "DIG-KEEP",
+                "entity_id": self.entity.id,
+                "customer_id": self.customer.id,
+                "brand_id": digital.id,
+                "po_date": "2026-09-16",
+                "lines": [{
+                    "product_id": product.id,
+                    "quantity": "4.00",
+                    "rate": "10.00",
+                }],
+            },
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(digital_po.status_code, 201, digital_po.content)
+        self.assertEqual(digital_po.json()["po_number"], "DIG-KEEP")

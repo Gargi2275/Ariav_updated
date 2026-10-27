@@ -11,12 +11,18 @@ class PriceListEntrySerializer(serializers.ModelSerializer):
     product_code = serializers.CharField(source="product.product_code", read_only=True)
     product_name = serializers.CharField(source="product.product_name", read_only=True)
     brand_name = serializers.CharField(source="product.brand.brand_name", read_only=True)
-    category_name = serializers.CharField(source="product.category.category_name", read_only=True)
+    category_name = serializers.SerializerMethodField()
 
     class Meta:
         model = PriceListEntry
         fields = ("id", "product_id", "product_code", "product_name", "brand_name", "category_name", "taka_length_meters", "price_basis", "price_value", "price_per_meter", "price_per_taka", "taka_quantity", "status", "created_at", "updated_at")
         read_only_fields = ("id", "product_code", "product_name", "brand_name", "category_name", "price_per_meter", "price_per_taka", "created_at", "updated_at")
+
+    def get_category_name(self, obj):
+        product = obj.product
+        if not product or not product.category_id:
+            return ""
+        return product.category.category_name
 
     def validate(self, attrs):
         price_list = self.context["price_list"]
@@ -40,13 +46,23 @@ class PriceListSerializer(serializers.ModelSerializer):
     brand_name = serializers.CharField(source="brand.brand_name", read_only=True)
     entry_count = serializers.IntegerField(source="entries.count", read_only=True)
     quality_entry_count = serializers.IntegerField(source="quality_entries.count", read_only=True)
+    brand_quality_count = serializers.IntegerField(source="brand_quality_prices.count", read_only=True)
     entries = PriceListEntrySerializer(many=True, read_only=True)
     created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = PriceList
-        fields = ("id", "brand_id", "brand_name", "season_label", "valid_from", "valid_to", "status", "entry_count", "quality_entry_count", "entries", "created_at", "updated_at", "created_by", "created_by_name")
-        read_only_fields = ("id", "brand_name", "entry_count", "entries", "created_at", "updated_at", "created_by", "created_by_name")
+        fields = (
+            "id", "brand_id", "brand_name", "season_label", "valid_from", "valid_to", "status",
+            "revision_label", "season_name", "season_year", "source_filename", "tax_note", "unit_text", "packing_note",
+            "entry_count", "quality_entry_count", "brand_quality_count", "entries",
+            "created_at", "updated_at", "created_by", "created_by_name",
+        )
+        read_only_fields = (
+            "id", "brand_name", "entry_count", "quality_entry_count", "brand_quality_count", "entries",
+            "revision_label", "season_name", "season_year", "source_filename", "tax_note", "unit_text", "packing_note",
+            "created_at", "updated_at", "created_by", "created_by_name",
+        )
 
     def validate(self, attrs):
         start = attrs.get("valid_from", getattr(self.instance, "valid_from", None))

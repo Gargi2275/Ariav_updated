@@ -1,9 +1,15 @@
+from django.conf import settings
 from rest_framework import serializers
 
 from brands.models import Brand
 from categories.models import Category
+from price_lists.models import BrandQualityPrice
 
 from .models import Product
+
+
+def shade_tokens(raw: str) -> list[str]:
+    return [part.strip() for part in (raw or "").replace(";", ",").split(",") if part.strip()]
 
 
 class OptionalDecimalField(serializers.DecimalField):
@@ -15,17 +21,20 @@ class OptionalDecimalField(serializers.DecimalField):
 
 class ProductSerializer(serializers.ModelSerializer):
     brand_id = serializers.PrimaryKeyRelatedField(source="brand", queryset=Brand.objects.all())
-    category_id = serializers.PrimaryKeyRelatedField(source="category", queryset=Category.objects.all())
+    category_id = serializers.PrimaryKeyRelatedField(
+        source="category", queryset=Category.objects.all(), required=False, allow_null=True,
+    )
     brand_code = serializers.CharField(source="brand.brand_code", read_only=True)
     brand_name = serializers.CharField(source="brand.brand_name", read_only=True)
-    category_code = serializers.CharField(source="category.category_code", read_only=True)
-    category_name = serializers.CharField(source="category.category_name", read_only=True)
-    parent_category_id = serializers.IntegerField(source="category.parent_category_id", read_only=True, allow_null=True)
+    category_code = serializers.SerializerMethodField()
+    category_name = serializers.SerializerMethodField()
+    parent_category_id = serializers.SerializerMethodField()
     parent_category_code = serializers.SerializerMethodField()
     parent_category_name = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     usage_count = serializers.SerializerMethodField()
+    shades = serializers.SerializerMethodField()
     frate = OptionalDecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     trate = OptionalDecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
 
@@ -68,6 +77,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "created_by",
             "created_by_name",
             "usage_count",
+            "shades",
         )
         read_only_fields = (
             "id",
@@ -83,6 +93,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "parent_category_code",
             "parent_category_name",
             "image_url",
+            "shades",
         )
         extra_kwargs = {
             "product_code": {"validators": []},
@@ -97,6 +108,32 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def get_usage_count(self, obj):
         return getattr(obj, "usage_count", None)
+
+    def get_shades(self, obj):
+        prices = getattr(obj, "shade_prices", None)
+        if prices is None:
+            prices = BrandQualityPrice.objects.filter(product=obj).only(
+                "quality_prefix", "quality_number", "shades_raw",
+            ).order_by("quality_number", "id")
+        lines = []
+        for row in prices:
+            tokens = shade_tokens(row.shades_raw)
+            if not tokens:
+                continue
+            lines.append({
+                "quality": f"{row.quality_prefix}-{row.quality_number}".strip("-"),
+                "shades": tokens,
+            })
+        return lines
+
+    def get_category_code(self, obj):
+        return obj.category.category_code if obj.category_id else ""
+
+    def get_category_name(self, obj):
+        return obj.category.category_name if obj.category_id else ""
+
+    def get_parent_category_id(self, obj):
+        return obj.category.parent_category_id if obj.category_id else None
 
     def get_parent_category_code(self, obj):
         parent = obj.category.parent_category if obj.category_id else None
@@ -133,18 +170,19 @@ class ProductSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        category = attrs.get("category", getattr(self.instance, "category", None))
-        if category is None:
-            raise serializers.ValidationError({"category_id": "Category is required."})
-        if not category.parent_category_id:
-            raise serializers.ValidationError(
-                {
-                    "category_id": (
-                        "Product must be assigned to a subcategory, not a top-level category. "
-                        "Select Category → Subcategory."
-                    )
-                }
-            )
+        category = attrs["category"] if "category" in attrs else getattr(self.instance, "category", None)
+        if settings.PRODUCT_CATEGORY_ENABLED:
+            if category is None:
+                raise serializers.ValidationError({"category_id": "Category is required."})
+            if not category.parent_category_id:
+                raise serializers.ValidationError(
+                    {
+                        "category_id": (
+                            "Product must be assigned to a subcategory, not a top-level category. "
+                            "Select Category → Subcategory."
+                        )
+                    }
+                )
         brand = attrs.get("brand", getattr(self.instance, "brand", None))
         if brand is None:
             raise serializers.ValidationError({"brand_id": "Brand is required."})

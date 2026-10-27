@@ -38,8 +38,12 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           <span className="font-mono text-[var(--erp-muted)]">{modNum}</span>
           <span className="text-[var(--erp-hairline-strong)]">&middot;</span>
           <span>{secName}</span>
-          <span className="text-[var(--erp-hairline-strong)]">&middot;</span>
-          <span className="text-[var(--erp-text)] font-medium">{pageTitle}</span>
+          {compact ? null : (
+            <>
+              <span className="text-[var(--erp-hairline-strong)]">&middot;</span>
+              <span className="text-[var(--erp-text)] font-medium">{pageTitle}</span>
+            </>
+          )}
         </div>
 
         {/* 2. The H1 in --font-display, appears once */}

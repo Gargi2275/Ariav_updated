@@ -62,6 +62,8 @@ class EntitySerializer(serializers.ModelSerializer):
             "mobile",
             "fax",
             "email",
+            "reply_to",
+            "email_signature",
             "website",
             "std_code",
             "pan_no",

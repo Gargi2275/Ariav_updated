@@ -1,4 +1,5 @@
 import { toast } from 'react-toastify';
+import { notifyAuthChange } from './preferences';
 
 export const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Please sign in again.';
 
@@ -13,6 +14,7 @@ export function handleUnauthorizedResponse(): void {
   localStorage.removeItem('ariav_auth_name');
   localStorage.removeItem('ariav_selected_entity_id');
   sessionStorage.removeItem('ariav_current_screen');
+  notifyAuthChange();
 
   if (sessionExpiryHandled) return;
   sessionExpiryHandled = true;

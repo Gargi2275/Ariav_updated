@@ -28,6 +28,8 @@ async function request<T>(path: string): Promise<T> {
 
 export interface DashboardKpis {
   total_sales: string;
+  /** Purchase-order line value for the period, excluding cancelled and rejected orders. */
+  order_booking?: string;
   total_invoices: number;
   total_collections: string;
   total_outstanding: string;
@@ -45,6 +47,8 @@ export interface DashboardKpis {
   active_brands: number;
   active_products: number;
   active_entities: number;
+  /** Present on the admin snapshot. Count of purchase-order rows joined to lines with no rate. */
+  unpriced_po_lines?: number;
 }
 
 export interface EntityTurnoverRow {

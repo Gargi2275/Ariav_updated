@@ -111,7 +111,7 @@ export const IconRail: React.FC = () => {
       label: 'Admin',
       title: 'Governance & Year-End',
       icon: <SlidersHorizontal className="w-5 h-5 stroke-[1.75]" />,
-      screenIds: userRole === 'admin' ? [5, 7, 9, 10] : [],
+      screenIds: userRole === 'admin' ? [5, 7, 9, 10, 11] : [],
       primaryScreenId: 5
     }
   ];

@@ -10,7 +10,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from . import throttle
-from .models import AuditLog, AuthUser, AuthUserMstLogin, LoginRequest, UserToken
+from .models import AuditLog, AuthUser, AuthUserMstLogin, LoginRequest, UserPreference, UserToken
+from .preferences import PreferenceError, merge_preferences, public_preferences
 from .permissions import IsAdminRole
 
 TEMP_CACHE_PREFIX = "temp_cred:"
@@ -668,7 +669,12 @@ def session_me(request):
     role = "admin" if user.is_admin_role else "staff"
     if user.branch_id or user.entity_id:
         user = AuthUser.objects.select_related("branch", "entity").get(pk=user.pk)
-    return Response({"success": True, "role": role, "user": public_user(user)})
+    return Response({
+        "success": True,
+        "role": role,
+        "user": public_user(user),
+        "features": {"productCategory": settings.PRODUCT_CATEGORY_ENABLED},
+    })
 
 
 @api_view(["POST"])
@@ -678,6 +684,38 @@ def logout_view(request):
     if header.startswith("Bearer "):
         UserToken.objects.filter(token=header[7:].strip()).update(revoked=True)
     return Response({"success": True, "message": "Session terminated successfully"})
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def preferences_view(request):
+    user = request.user
+    if not isinstance(user, AuthUser):
+        return Response({"detail": "Not authenticated"}, status=401)
+    row = UserPreference.objects.filter(user=user).first()
+    if request.method == "GET":
+        stored = row.data if row else {}
+        return Response({"preferences": public_preferences(stored, user), "saved": row is not None})
+    try:
+        merged = merge_preferences(row.data if row else {}, request.data, user)
+    except PreferenceError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    if row is None:
+        UserPreference.objects.create(user=user, data=merged)
+    else:
+        row.data = merged
+        row.save(update_fields=["data", "updated_at"])
+    return Response({"preferences": public_preferences(merged, user), "saved": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def preferences_reset(request):
+    user = request.user
+    if not isinstance(user, AuthUser):
+        return Response({"detail": "Not authenticated"}, status=401)
+    UserPreference.objects.update_or_create(user=user, defaults={"data": {}})
+    return Response({"preferences": public_preferences({}, user), "saved": True})
 
 
 @api_view(["GET"])

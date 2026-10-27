@@ -2,7 +2,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import AuthUser
@@ -106,6 +106,7 @@ class OsmPdfImportApiTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
 
+    @override_settings(PRODUCT_CATEGORY_ENABLED=True)
     def test_commit_stores_every_summer_row_on_the_selected_brand(self):
         upload = SimpleUploadedFile("summer.pdf", SUMMER.read_bytes(), content_type="application/pdf")
         preview = self.client.post("/api/price-lists/import/preview/", {

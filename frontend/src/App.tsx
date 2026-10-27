@@ -2,6 +2,7 @@ import React from 'react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/ReactToastify.css';
 import { ThemeProvider } from './context/ThemeContext';
+import { LandingRedirect, PreferencesProvider } from './context/PreferencesContext';
 import { ErpProvider, useErp } from './context/ErpContext';
 import { TopBar } from './components/layout/TopBar';
 import { IconRail } from './components/layout/IconRail';
@@ -20,6 +21,7 @@ import { StaffManagementScreen } from './screens/admin/StaffManagementScreen';
 import { AuditLogScreen } from './screens/admin/AuditLogScreen';
 import { BackupScreen } from './screens/admin/BackupScreen';
 import { YearEndClosingScreen } from './screens/admin/YearEndClosingScreen';
+import { EmailSettingsScreen } from './screens/admin/EmailSettingsScreen';
 
 // Core Operations Screens
 import { BankReceiptVoucherScreen } from './screens/core/BankReceiptVoucherScreen';
@@ -88,6 +90,8 @@ const ScreenDispatcher: React.FC = () => {
       return <BackupScreen />;
     case 10:
       return <YearEndClosingScreen />;
+    case 11:
+      return <EmailSettingsScreen />;
 
     // Core Operations
     case 40:
@@ -209,19 +213,22 @@ export default function App() {
   return (
     <ThemeProvider>
       <ErpProvider>
-        <ToastContainer
-          position="top-right"
-          autoClose={4000}
-          hideProgressBar={false}
-          newestOnTop
-          closeOnClick
-          pauseOnHover
-          draggable={false}
-          className="ariav-toast-container"
-          toastClassName="ariav-toast"
-          aria-label="Notifications"
-        />
-        <ErpShell />
+        <PreferencesProvider>
+          <ToastContainer
+            position="top-right"
+            autoClose={4000}
+            hideProgressBar={false}
+            newestOnTop
+            closeOnClick
+            pauseOnHover
+            draggable={false}
+            className="ariav-toast-container"
+            toastClassName="ariav-toast"
+            aria-label="Notifications"
+          />
+          <LandingRedirect />
+          <ErpShell />
+        </PreferencesProvider>
       </ErpProvider>
     </ThemeProvider>
   );
