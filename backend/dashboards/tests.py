@@ -10,7 +10,7 @@ from accounts.models import AuthUser
 from brands.models import Brand
 from categories.models import Category
 from customers.models import Customer, CustomerEntity
-from entities.models import Entity
+from entities.models import Entity, EntityBrand
 from invoices.models import Invoice, InvoiceLine
 from payments.models import Payment
 from products.models import Product
@@ -290,3 +290,85 @@ class DashboardApiTests(TestCase):
         self.client.force_authenticate(self.admin)
         res = self.client.get("/api/dashboards/staff/", HTTP_HOST="localhost")
         self.assertEqual(res.status_code, 200, res.content)
+
+    def test_active_brands_follow_branch_assignment(self):
+        second = Brand.objects.create(
+            brand_code="DONE",
+            brand_name="Donear",
+            order_method=Brand.OrderMethod.MANUAL_POR,
+        )
+        inactive = Brand.objects.create(
+            brand_code="OLD",
+            brand_name="Retired Mill",
+            status=Brand.Status.INACTIVE,
+            order_method=Brand.OrderMethod.MANUAL_POR,
+        )
+        other = Brand.objects.create(
+            brand_code="ELSE",
+            brand_name="Unassigned Mill",
+            order_method=Brand.OrderMethod.MANUAL_POR,
+        )
+        EntityBrand.objects.create(entity=self.adt, brand=self.brand)
+        EntityBrand.objects.create(entity=self.adt, brand=second)
+        EntityBrand.objects.create(entity=self.adt, brand=inactive)
+        Product.objects.create(
+            product_code="DASH-02",
+            product_name="Donear Grey",
+            brand=second,
+            rate=Decimal("5.00"),
+            unit=Product.Unit.METER,
+        )
+        Product.objects.create(
+            product_code="DASH-03",
+            product_name="Other Mill Grey",
+            brand=other,
+            rate=Decimal("5.00"),
+            unit=Product.Unit.METER,
+        )
+        self._po(self.adt, "PO-ADT-ONLY")
+        response = self.client.get(
+            f"/api/dashboards/admin/?entity_id={self.adt.id}&from=2026-04-01&to=2027-03-31",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        kpis = response.json()["kpis"]
+        self.assertEqual(kpis["active_brands"], 2)
+        self.assertEqual(kpis["active_products"], 2)
+        guj = self.client.get(
+            f"/api/dashboards/admin/?entity_id={self.guj.id}&from=2026-04-01&to=2027-03-31",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(guj.json()["kpis"]["active_brands"], 0)
+
+    def test_order_booking_sums_lines_once_and_ignores_cancelled(self):
+        po = self._po(self.adt, "PO-BOOK")
+        po.po_date = date(2026, 4, 15)
+        po.save(update_fields=["po_date"])
+        PurchaseOrderLine.objects.create(
+            purchase_order=po, product=self.p1, quantity=Decimal("2.00"), rate=Decimal("10.00"), line_total=Decimal("20.00"),
+        )
+        PurchaseOrderLine.objects.create(
+            purchase_order=po, product=self.p1, quantity=Decimal("3.00"), rate=Decimal("10.00"), line_total=Decimal("30.00"),
+        )
+        cancelled = self._po(self.adt, "PO-CANCEL")
+        cancelled.po_date = date(2026, 4, 16)
+        cancelled.status = PurchaseOrder.Status.CANCELLED
+        cancelled.save(update_fields=["po_date", "status"])
+        PurchaseOrderLine.objects.create(
+            purchase_order=cancelled, product=self.p1, quantity=Decimal("9.00"), rate=Decimal("10.00"), line_total=Decimal("90.00"),
+        )
+        april = self.client.get(
+            f"/api/dashboards/admin/?entity_id={self.adt.id}&from=2026-04-01&to=2026-04-30",
+            HTTP_HOST="localhost",
+        )
+        may = self.client.get(
+            f"/api/dashboards/admin/?entity_id={self.adt.id}&from=2026-05-01&to=2026-05-31",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(april.json()["kpis"]["order_booking"], "50.00")
+        self.assertEqual(april.json()["kpis"]["total_sales"], "0.00")
+        self.assertEqual(april.json()["kpis"]["total_pos"], 2)
+        self.assertEqual(april.json()["kpis"]["dispatched_pos"], 0)
+        self.assertEqual(may.json()["kpis"]["order_booking"], "0.00")
+        self.assertEqual(may.json()["kpis"]["total_outstanding"], april.json()["kpis"]["total_outstanding"])
+

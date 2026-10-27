@@ -50,6 +50,7 @@ function QualityPicker({
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
+  const skipFocusOpen = useRef(false);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(block.quality);
   const [hits, setHits] = useState<FormQuality[]>([]);
@@ -122,13 +123,10 @@ function QualityPicker({
     onPick(label, hit.product_id, selectionFromHit(hit));
     setQuery(label);
     setOpen(false);
-    const swallow = (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      document.removeEventListener('click', swallow, true);
-    };
-    document.addEventListener('click', swallow, true);
-    searchRef.current?.focus();
+    if (document.activeElement !== searchRef.current) {
+      skipFocusOpen.current = true;
+      searchRef.current?.focus();
+    }
   };
 
   const onSearchKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -169,7 +167,13 @@ function QualityPicker({
           aria-activedescendant={open && hits[active] ? `${listId}-${active}` : undefined}
           placeholder="Search quality"
           value={query}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            if (skipFocusOpen.current) {
+              skipFocusOpen.current = false;
+              return;
+            }
+            setOpen(true);
+          }}
           onChange={event => {
             const next = event.target.value;
             setQuery(next);
@@ -247,7 +251,13 @@ export function OrderFormView({
   blocks,
   brandId,
   partyCode,
+  partyControl,
+  partyError,
   indent,
+  onIndent,
+  indentError,
+  indentReadOnly = false,
+  indentHint,
   date,
   place,
   footer,
@@ -259,7 +269,13 @@ export function OrderFormView({
   blocks: OrderBlock[];
   brandId?: number;
   partyCode: string;
+  partyControl?: React.ReactNode;
+  partyError?: string;
   indent: string;
+  onIndent?: (value: string) => void;
+  indentError?: string;
+  indentReadOnly?: boolean;
+  indentHint?: string;
   date: string;
   place: string;
   footer: { mode: string; destination: string; documents: string; instructions: string };
@@ -288,13 +304,38 @@ export function OrderFormView({
       <section>
         <h4 className="mb-2 text-xs font-medium text-[var(--erp-text)]">Order</h4>
         <div className="grid grid-cols-2 gap-2.5 @4xl:grid-cols-[1.2fr_1.2fr_1fr_1.2fr]">
-          <div className="min-w-0">
-            <span className={labelClass}>Party code</span>
-            <div className={`${readOnlyClass} font-mono tracking-wide`}>{partyCode || '—'}</div>
+          <div className="min-w-0" data-invalid={partyError ? 'true' : undefined} data-field="customer_id">
+            <span className={labelClass}>
+              Party code <span className="text-[var(--erp-negative)]">*</span>
+            </span>
+            {partyControl || <div className={`${readOnlyClass} font-mono tracking-wide`}>{partyCode || '—'}</div>}
+            <FieldError message={partyError} />
           </div>
-          <div className="min-w-0">
-            <span className={labelClass}>Indent number</span>
-            <div className={`${readOnlyClass} font-mono`}>{indent || 'Assigned on save'}</div>
+          <div className="min-w-0" data-invalid={indentError ? 'true' : undefined} data-field="po_number">
+            <label className={labelClass} htmlFor="order-form-indent">
+              Indent number
+            </label>
+            {indentReadOnly || !onIndent ? (
+              <input
+                id="order-form-indent"
+                readOnly
+                className={`${readOnlyClass} font-mono`}
+                aria-label="Indent number"
+                aria-invalid={indentError ? true : undefined}
+                value={indent}
+              />
+            ) : (
+              <input
+                id="order-form-indent"
+                className={`${controlClass} font-mono`}
+                aria-label="Indent number"
+                aria-invalid={indentError ? true : undefined}
+                value={indent}
+                onChange={event => onIndent(event.target.value)}
+              />
+            )}
+            {indentHint && !indentError ? <p className="mt-1 text-[11px] text-[var(--erp-muted)]">{indentHint}</p> : null}
+            <FieldError message={indentError} />
           </div>
           <div className="min-w-0">
             <span className={labelClass}>Date</span>
@@ -437,7 +478,9 @@ export function OrderFormView({
                     ) : null)}
                   </div>
                 ) : null}
-                <FieldError message={shadeError} />
+                <div data-invalid={shadeError ? 'true' : undefined} data-field={`${prefix}_shades`}>
+                  <FieldError message={shadeError} />
+                </div>
 
                 <div className="mt-2.5 grid grid-cols-2 gap-2.5 @3xl:grid-cols-3 @5xl:grid-cols-6">
                   <div className="min-w-0">
@@ -478,12 +521,12 @@ export function OrderFormView({
                     ) : null}
                   </div>
                   <div className="min-w-0">
-                    <label className={labelClass} htmlFor={`from-${block.key}`}>From</label>
-                    <input id={`from-${block.key}`} className={controlClass} type="date" aria-label={`Delivery from for row ${block.rowNo}`} value={block.deliveryFrom} onChange={event => update(block.key, { deliveryFrom: event.target.value })} />
+                    <label className={labelClass} htmlFor={`from-${block.key}`}>Delivery from</label>
+                    <input id={`from-${block.key}`} className={controlClass} type="date" aria-label={`Delivery period from for row ${block.rowNo}`} value={block.deliveryFrom} onChange={event => update(block.key, { deliveryFrom: event.target.value })} />
                   </div>
                   <div className="min-w-0">
-                    <label className={labelClass} htmlFor={`to-${block.key}`}>To</label>
-                    <input id={`to-${block.key}`} className={controlClass} type="date" aria-label={`Delivery to for row ${block.rowNo}`} value={block.deliveryTo} onChange={event => update(block.key, { deliveryTo: event.target.value })} />
+                    <label className={labelClass} htmlFor={`to-${block.key}`}>Delivery to</label>
+                    <input id={`to-${block.key}`} className={controlClass} type="date" aria-label={`Delivery period to for row ${block.rowNo}`} value={block.deliveryTo} onChange={event => update(block.key, { deliveryTo: event.target.value })} />
                   </div>
                 </div>
                 <FieldError message={messages[`${prefix}_delivery`]} />

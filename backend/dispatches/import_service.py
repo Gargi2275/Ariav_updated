@@ -300,6 +300,7 @@ def _parse_ocm_workbook(file_bytes: bytes) -> tuple[list[dict], list[str], list[
                     "shade": _cell_str(record["code6"]),
                     "quantity": str(_parse_qty(record["pcs"]) or qty),
                     "meters": str(qty),
+                    "invoice_line_no": _cell_str(record.get("invoice_line_no")),
                     "excel_row": excel_row,
                 }
             )
@@ -820,6 +821,7 @@ def match_lines_to_po(group_lines: list[dict], po: PurchaseOrder) -> tuple[list[
                 "client_item_key": file_line.get("client_item_key") or "",
                 "shade": file_line.get("shade") or "",
                 "quantity": str(qty),
+                "invoice_line_no": file_line.get("invoice_line_no") or "",
                 "purchase_order_line_id": po_line.id,
                 "po_line_description": po_line.product_description
                 or (po_line.product.product_name if po_line.product_id else ""),
@@ -902,6 +904,14 @@ def evaluate_group(group: dict, pos: dict[str, list[PurchaseOrder]], user) -> tu
     matched_by_customer_item = False
     if resolve_err:
         return None, {**base_excluded, "reason": resolve_err}
+    visible_ids = {item.id for matches in pos.values() for item in matches}
+    from purchase_orders.ocm_official import dispatch_target_for_order_code
+
+    official_po, official_err = dispatch_target_for_order_code(order_code, visible_ids)
+    if official_err:
+        return None, {**base_excluded, "reason": official_err}
+    if official_po is not None:
+        po = official_po
     if po is None:
         if _order_code_exists_outside_scope(order_code, pos):
             return None, {
@@ -949,6 +959,16 @@ def evaluate_group(group: dict, pos: dict[str, list[PurchaseOrder]], user) -> tu
 
     if Dispatch.objects.filter(purchase_order=po, challan_reference=invoice_no).exists():
         return None, {**base_excluded, "reason": f"Dispatch for {po.po_number} and invoice {invoice_no} is already imported"}
+
+    from dispatches.models import OcmDispatchSource
+
+    for source_line in group["lines"]:
+        invoice_line = _cell_str(source_line.get("invoice_line_no"))
+        if invoice_line and OcmDispatchSource.objects.filter(invoice_no=invoice_no, invoice_line=invoice_line).exists():
+            return None, {
+                **base_excluded,
+                "reason": f"Duplicate dispatch: invoice {invoice_no} line {invoice_line} is already imported.",
+            }
 
     status_err = _status_reason(po)
     if status_err:
@@ -1117,7 +1137,10 @@ def public_preview_payload(preview: dict, token: str) -> dict:
                 "line_count": row["line_count"],
                 "opening_pending_quantity": row["opening_pending_quantity"],
                 "closing_pending_quantity": row["closing_pending_quantity"],
-                "lines": row["lines"],
+                "lines": [
+                    {key: item for key, item in line.items() if key != "invoice_line_no"}
+                    for line in row["lines"]
+                ],
             }
         if row.get("format_id") == "arvind_dispatch":
             item["dispatch_date"] = row["dispatch_date"]
@@ -1313,7 +1336,15 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
                 po, resolve_err = _resolve_po(row["order_code"], pos)
             if resolve_err or po is None:
                 raise ValidationError({"detail": resolve_err or f"No matching Purchase Order found for Order Code {row['order_code']}"})
-            if row.get("matched_by_customer_item") and not po.brand_order_code:
+            from purchase_orders.ocm_official import dispatch_target_for_order_code
+
+            visible_ids = {item.id for matches in pos.values() for item in matches}
+            official_po, official_err = dispatch_target_for_order_code(row["order_code"], visible_ids)
+            if official_err:
+                raise ValidationError({"detail": official_err})
+            if official_po is not None:
+                po = official_po
+            if row.get("matched_by_customer_item") and not po.brand_order_code and official_po is None:
                 po.brand_order_code = row["order_code"].strip()
                 po.save(update_fields=["brand_order_code", "updated_at"])
             file_lines = [
@@ -1324,6 +1355,7 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
                     "client_item_key": line.get("client_item_key") or "",
                     "shade": line.get("shade") or "",
                     "quantity": line["quantity"],
+                    "invoice_line_no": line.get("invoice_line_no") or "",
                 }
                 for line in row["lines"]
             ]
@@ -1340,11 +1372,24 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
                 created_by=user if getattr(user, "is_authenticated", False) else None,
             )
             for line in matched:
-                DispatchLine.objects.create(
+                dispatch_line = DispatchLine.objects.create(
                     dispatch=dispatch,
                     purchase_order_line_id=line["purchase_order_line_id"],
                     dispatched_quantity=Decimal(str(line["quantity"])),
                 )
+                invoice_line = _cell_str(line.get("invoice_line_no"))
+                if invoice_line:
+                    from dispatches.models import OcmDispatchSource
+
+                    if OcmDispatchSource.objects.filter(invoice_no=row["invoice_no"], invoice_line=invoice_line).exists():
+                        raise ValidationError({
+                            "detail": f"Duplicate dispatch: invoice {row['invoice_no']} line {invoice_line} is already imported.",
+                        })
+                    OcmDispatchSource.objects.create(
+                        invoice_no=row["invoice_no"],
+                        invoice_line=invoice_line,
+                        dispatch_line=dispatch_line,
+                    )
             sync_purchase_order_dispatch_status(po, user=user, source=PurchaseOrderStatusChange.Source.IMPORT)
             po.refresh_from_db()
             from notifications.services import notify_dispatch_created

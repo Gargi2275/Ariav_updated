@@ -34,7 +34,7 @@ def _customer_address(customer) -> str:
     )
 
 
-def build_po_pdf(po: PurchaseOrder) -> bytes:
+def build_po_pdf(po: PurchaseOrder, include_rates: bool = True) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -218,11 +218,17 @@ def build_po_pdf(po: PurchaseOrder) -> bytes:
                 Paragraph(name, cell),
                 f"{row.quantity:.2f}",
                 unit,
-                f"{row.rate:.2f}" if row.rate is not None else "—",
-                f"{row.line_total:.2f}" if row.line_total is not None else "—",
+                f"{row.rate:.2f}" if include_rates and row.rate is not None else "—",
+                f"{row.line_total:.2f}" if include_rates and row.line_total is not None else "—",
             ]
         )
-    data.append(["", "", "Total", f"{qty_total:.2f}", "", "", "Rates not set" if any(row.rate is None for row in po.lines.all()) else f"{amt_total:.2f}"])
+    if not include_rates:
+        total_label = "Rates omitted"
+    elif any(row.rate is None for row in po.lines.all()):
+        total_label = "Rates not set"
+    else:
+        total_label = f"{amt_total:.2f}"
+    data.append(["", "", "Total", f"{qty_total:.2f}", "", "", total_label])
     col_w = [10 * mm, 28 * mm, 52 * mm, 20 * mm, 18 * mm, 22 * mm, 26 * mm]
     table = Table(data, colWidths=col_w, repeatRows=1)
     table.setStyle(

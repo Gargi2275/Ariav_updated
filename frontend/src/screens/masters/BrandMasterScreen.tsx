@@ -19,6 +19,7 @@ import {
   emptyBrand,
 } from '../../services/brandsApi';
 import { EntityRow, entitiesApi } from '../../services/entitiesApi';
+import { BrandEmailPanel } from './BrandEmailPanel';
 
 const sectionTitle = 'text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-3';
 
@@ -45,6 +46,7 @@ export const BrandMasterScreen: React.FC = () => {
   const [branchesLoading, setBranchesLoading] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
   const savingLock = useRef(false);
+  const [brandPane, setBrandPane] = useState<'details' | 'email'>('details');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,6 +85,7 @@ export const BrandMasterScreen: React.FC = () => {
     setFieldErrors([]);
     setFieldMessages({});
     setBranchSearch('');
+    setBrandPane('details');
     setModalOpen(true);
   };
 
@@ -150,7 +153,7 @@ export const BrandMasterScreen: React.FC = () => {
       width: '72px',
       render: r => canWrite ? (
         <div className="flex justify-end gap-1">
-          <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" onClick={() => { setForm(r); setFieldErrors([]); setFieldMessages({}); setBranchSearch(''); setModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /></button>
+          <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" onClick={() => { setForm(r); setFieldErrors([]); setFieldMessages({}); setBranchSearch(''); setBrandPane('details'); setModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /></button>
           {r.status === 'Active' && (
             <button
               type="button"
@@ -227,7 +230,15 @@ export const BrandMasterScreen: React.FC = () => {
               <h3 className="font-display text-lg font-bold flex items-center gap-2"><Tag className="w-4 h-4 text-[var(--erp-gold)]" />{form.id ? 'Edit Brand' : 'Add Brand'}</h3>
               <button type="button" onClick={() => setModalOpen(false)}><X className="w-4 h-4" /></button>
             </div>
-            <RequiredLegend />
+            {form.id ? (
+              <div className="flex gap-2 text-xs font-mono">
+                <button type="button" onClick={() => setBrandPane('details')} className={`h-8 px-3 border ${brandPane === 'details' ? 'border-[var(--erp-gold)] text-[var(--erp-gold)]' : 'border-[var(--erp-hairline)] text-[var(--erp-muted)]'}`}>Details</button>
+                <button type="button" onClick={() => setBrandPane('email')} className={`h-8 px-3 border ${brandPane === 'email' ? 'border-[var(--erp-gold)] text-[var(--erp-gold)]' : 'border-[var(--erp-hairline)] text-[var(--erp-muted)]'}`}>Email</button>
+              </div>
+            ) : null}
+            {brandPane === 'email' && form.id ? <BrandEmailPanel brandId={form.id} /> : null}
+            {brandPane !== 'email' ? <RequiredLegend /> : null}
+            {brandPane !== 'email' ? <>
             <section>
               <h4 className={sectionTitle}>Identity</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -360,11 +371,14 @@ export const BrandMasterScreen: React.FC = () => {
                   : 'No branches selected. This brand will not be available for purchase orders until it is mapped.'}
               </p>
             </section>
+            </> : null}
 
+            {brandPane !== 'email' ? (
             <div className="flex justify-end gap-3 pt-4 border-t border-[var(--erp-hairline)]">
               <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 border border-[var(--erp-hairline)] text-xs font-mono">Cancel</button>
               <button type="submit" disabled={saving} className="px-5 py-2 bg-[var(--erp-gold)] text-[#0F141B] text-xs font-semibold">{saving ? 'Saving…' : 'Save Brand'}</button>
             </div>
+            ) : null}
           </form>
         </div>
       )}

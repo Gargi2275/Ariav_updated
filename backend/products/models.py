@@ -1,4 +1,4 @@
-"""Product Catalogue — SKU under a Brand and a Category subcategory.
+"""Product Master — SKU under a Brand and a Category subcategory.
 
 Brand and Category 409 checks count Active products via this model's FKs.
 Purchase Orders (not built yet) will later FK here.

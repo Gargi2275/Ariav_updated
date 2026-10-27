@@ -62,6 +62,8 @@ export interface EntityRow {
   mobile: string;
   fax: string;
   email: string;
+  reply_to: string;
+  email_signature: string;
   website: string;
   std_code: string;
   pan_no: string;
@@ -123,6 +125,8 @@ export const emptyEntity = (): Partial<EntityRow> => ({
   mobile: '',
   fax: '',
   email: '',
+  reply_to: '',
+  email_signature: '',
   website: '',
   std_code: '',
   pan_no: '',

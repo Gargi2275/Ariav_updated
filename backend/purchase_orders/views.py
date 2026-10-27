@@ -26,6 +26,7 @@ from .form_pdf import build_order_form_pdf
 from .pdf import build_po_pdf
 from .print_profiles import profile_for_brand
 from .dispatch_export import build_dispatch_workbook
+from .numbering import ManualPoNumberError, preview_manual_po_number
 from .permissions import PurchaseOrderPermission
 from .serializers import PurchaseOrderSerializer
 from .transitions import (
@@ -258,6 +259,42 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         prefix = "POR" if po.order_type == PurchaseOrder.OrderType.MANUAL else "PO"
         response["Content-Disposition"] = f'{disposition}; filename="{prefix}-{safe_name}.pdf"'
         return response
+
+    @action(detail=False, methods=["get"], url_path="next-number")
+    def next_number(self, request):
+        entity_id = (request.query_params.get("entity_id") or "").strip()
+        brand_id = (request.query_params.get("brand_id") or "").strip()
+        if not entity_id.isdigit():
+            return Response({"entity_id": "Choose a branch."}, status=status.HTTP_400_BAD_REQUEST)
+        if not brand_id.isdigit():
+            return Response({"brand_id": "Choose a brand."}, status=status.HTTP_400_BAD_REQUEST)
+        entity = Entity.objects.filter(pk=int(entity_id)).first()
+        brand = Brand.objects.filter(pk=int(brand_id)).first()
+        if entity is None or entity.status != Entity.Status.ACTIVE:
+            return Response(
+                {"entity_id": "Choose an active branch."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if brand is None or brand.status != Brand.Status.ACTIVE:
+            return Response(
+                {"brand_id": "Choose an active brand."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if brand.order_method != Brand.OrderMethod.MANUAL_POR:
+            return Response(
+                {"brand_id": "Automatic numbers are only issued for manual purchase orders."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not entity.brands.filter(pk=brand.pk).exists():
+            return Response(
+                {"brand_id": f"Brand {brand.brand_name} is not mapped to branch {entity.entity_name}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            number = preview_manual_po_number(entity, brand)
+        except ManualPoNumberError as exc:
+            return Response({exc.field: exc.message}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"po_number": number})
 
     @action(detail=False, methods=["get"], url_path="form-qualities")
     def form_qualities(self, request):

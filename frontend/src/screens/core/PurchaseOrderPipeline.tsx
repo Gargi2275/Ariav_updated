@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
-import { Lock, MoreHorizontal } from 'lucide-react';
+import { Lock, Mail, MoreHorizontal } from 'lucide-react';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { num } from '../../services/mastersApi';
 import { notifyApiError } from '../../services/notify';
@@ -56,7 +56,7 @@ function Card({ row, orderTypeFilter, onOpen, onMove }: { row: PurchaseOrderRow;
         </select>
       </div>
       <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] font-mono text-[var(--erp-muted)]">
-        <span className="truncate">{row.po_date} · {row.brand_code} · {row.entity_code}</span>
+        <span className="truncate inline-flex items-center gap-1"><Mail className="w-3 h-3" aria-label="Email" />{row.po_date} · {row.brand_code} · {row.entity_code}</span>
         {row.unpriced_lines ? <span className="shrink-0 text-[10px] text-[var(--erp-muted)]">{row.unpriced_lines} unpriced</span> : null}
       </div>
     </article>

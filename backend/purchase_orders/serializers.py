@@ -1,7 +1,7 @@
 import json
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, OperationalError, transaction
 from rest_framework import serializers
 
 from brands.models import Brand
@@ -11,6 +11,7 @@ from invoices.services import money
 from products.models import Product
 
 from .models import PurchaseOrder, PurchaseOrderLine
+from .numbering import ManualPoNumberError, allocate_manual_po_number
 from .transitions import allowed_transitions_for_user
 
 
@@ -39,14 +40,47 @@ def _line_values(row: dict) -> dict:
     }
 
 
-def create_purchase_order_with_lines(*, user=None, lines, **validated_data):
+def _po_number_conflict(exc: IntegrityError) -> bool:
+    return "po_number" in str(exc).lower()
+
+
+def _transient_lock(exc: OperationalError) -> bool:
+    code = exc.args[0] if exc.args else None
+    return code in (1205, 1213)
+
+
+def create_purchase_order_with_lines(*, user=None, lines, assign_manual_number=False, **validated_data):
     if user is not None and getattr(user, "is_authenticated", False):
         validated_data["created_by"] = user
-    with transaction.atomic():
-        po = PurchaseOrder.objects.create(**validated_data)
-        for row in lines:
-            PurchaseOrderLine.objects.create(purchase_order=po, **_line_values(row))
-    return po
+    attempts = 5 if assign_manual_number else 1
+    for attempt in range(attempts):
+        try:
+            with transaction.atomic():
+                if assign_manual_number:
+                    try:
+                        validated_data["po_number"] = allocate_manual_po_number(
+                            validated_data["entity"],
+                            validated_data["brand"],
+                        )
+                    except ManualPoNumberError as exc:
+                        raise serializers.ValidationError({exc.field: exc.message}) from exc
+                po = PurchaseOrder.objects.create(**validated_data)
+                for row in lines:
+                    PurchaseOrderLine.objects.create(purchase_order=po, **_line_values(row))
+            return po
+        except OperationalError as exc:
+            if not assign_manual_number or not _transient_lock(exc) or attempt == attempts - 1:
+                raise
+        except IntegrityError as exc:
+            if not assign_manual_number or not _po_number_conflict(exc) or attempt == attempts - 1:
+                if assign_manual_number and _po_number_conflict(exc):
+                    raise serializers.ValidationError({
+                        "po_number": "Could not assign a unique purchase order number. Try again.",
+                    }) from exc
+                raise
+    raise serializers.ValidationError({
+        "po_number": "Could not assign a unique purchase order number. Try again.",
+    })
 
 
 class PurchaseOrderLineSerializer(serializers.ModelSerializer):
@@ -312,7 +346,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             "extra_data",
         )
         extra_kwargs = {
-            "po_number": {"validators": []},
+            "po_number": {"validators": [], "allow_blank": True},
             "brand_order_code": {"required": False, "allow_null": True, "allow_blank": True, "default": None},
             "order_type": {"required": False},
             "handy_form_upload": {"required": False, "allow_null": True, "write_only": True},
@@ -443,8 +477,26 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         return sorted(allowed_transitions_for_user(obj.status, request.user if request else None))
 
+    def _incoming_brand(self):
+        raw = getattr(self, "initial_data", {}) or {}
+        if not hasattr(raw, "get"):
+            return None
+        brand_id = raw.get("brand_id")
+        if brand_id in (None, ""):
+            return None
+        try:
+            return Brand.objects.filter(pk=int(brand_id)).first()
+        except (TypeError, ValueError):
+            return None
+
     def validate_po_number(self, value):
         value = (value or "").strip()
+        if self.instance is None:
+            brand = self._incoming_brand()
+            if brand is not None and _order_type_for_brand(brand) == PurchaseOrder.OrderType.MANUAL:
+                return ""
+        if self.instance is not None and _order_type_for_brand(self.instance.brand) == PurchaseOrder.OrderType.MANUAL:
+            return self.instance.po_number
         if not value:
             raise serializers.ValidationError("PO number is required.")
         qs = PurchaseOrder.objects.filter(po_number__iexact=value)
@@ -504,6 +556,8 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             attrs["brand_order_code"] = None
 
         derived = _order_type_for_brand(brand)
+        if self.instance is not None and derived == PurchaseOrder.OrderType.MANUAL:
+            attrs["po_number"] = self.instance.po_number
         if requested_type and requested_type != derived:
             if requested_type == PurchaseOrder.OrderType.MANUAL:
                 raise serializers.ValidationError(
@@ -608,7 +662,15 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         lines = validated_data.pop("lines")
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        return create_purchase_order_with_lines(user=user, lines=lines, **validated_data)
+        manual = _order_type_for_brand(validated_data["brand"]) == PurchaseOrder.OrderType.MANUAL
+        if manual:
+            validated_data.pop("po_number", None)
+        return create_purchase_order_with_lines(
+            user=user,
+            lines=lines,
+            assign_manual_number=manual,
+            **validated_data,
+        )
 
     def update(self, instance, validated_data):
         lines = validated_data.pop("lines", None)

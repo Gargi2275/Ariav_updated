@@ -51,6 +51,8 @@ class Entity(models.Model):
     mobile = models.CharField(max_length=30, blank=True)
     fax = models.CharField(max_length=30, blank=True)
     email = models.EmailField(blank=True)
+    reply_to = models.EmailField(blank=True)
+    email_signature = models.TextField(blank=True)
     website = models.CharField(max_length=200, blank=True)
     std_code = models.CharField(max_length=12, blank=True)
 

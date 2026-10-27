@@ -1,5 +1,5 @@
 /**
- * Product Catalogue API — /api/products/
+ * Product Master API — /api/products/
  * Multipart for image upload. Category is optional unless the session flag is on.
  */
 

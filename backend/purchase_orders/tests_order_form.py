@@ -207,7 +207,7 @@ class OrderFormPdfTests(TestCase):
         text, _response = self._text(po.id, form=1, copy="mill")
         self.assertEqual(text.count("CODE1-CODE5-CODE6-TEMPLATE-58"), 1)
         self.assertIn("4", text)
-        self.assertEqual(AuditLog.objects.filter(action="Purchase Order PDF", details__contains="IND-OLD").count(), 1)
+        self.assertEqual(AuditLog.objects.filter(action="Purchase Order PDF", details__contains=created.json()["po_number"]).count(), 1)
 
     def test_other_brand_pdf_is_unchanged(self):
         from categories.models import Category
@@ -254,7 +254,7 @@ class OrderFormPdfTests(TestCase):
     def test_blank_form_has_no_order_data(self):
         created = self._create(po_number="IND-BLANK")
         text, _response = self._text(created.json()["id"], form=1, copy="mill", blank=1)
-        self.assertNotIn("IND-BLANK", text)
+        self.assertNotIn(created.json()["po_number"], text)
         self.assertNotIn("SHADE-A", text)
         self.assertIn("Dear Sir(s)", text)
         self.assertIn("OCM Private Limited", text)

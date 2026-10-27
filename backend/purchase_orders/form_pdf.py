@@ -177,7 +177,13 @@ def _paginate(blocks: list[dict]) -> list[list[dict]]:
     return pages or [[]]
 
 
-def build_order_form_pdf(po: PurchaseOrder, profile: PrintProfile, copy: str, blank: bool = False) -> bytes:
+def build_order_form_pdf(
+    po: PurchaseOrder,
+    profile: PrintProfile,
+    copy: str,
+    blank: bool = False,
+    include_rates: bool = True,
+) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.pdfgen import canvas as pdf_canvas
@@ -210,6 +216,7 @@ def build_order_form_pdf(po: PurchaseOrder, profile: PrintProfile, copy: str, bl
             copy_label,
             lookup,
             blank,
+            include_rates,
             is_last=index == page_count,
         )
         canvas.showPage()
@@ -238,7 +245,7 @@ def _empty_row() -> dict:
     }
 
 
-def _form_rows(blocks, lookup, blank) -> list[dict]:
+def _form_rows(blocks, lookup, blank, include_rates: bool = True) -> list[dict]:
     rows = []
     for block in blocks:
         lines = block.get("lines") or []
@@ -247,7 +254,7 @@ def _form_rows(blocks, lookup, blank) -> list[dict]:
         short, full = _display_quality(sample, lookup) if sample and not blank else ("", "")
         size = "" if blank or sample is None else (sample.size or "")
         unit = "" if blank or sample is None else (sample.unit or PurchaseOrderLine.Unit.PIECES)
-        price = "" if blank or sample is None else format_price(sample.rate)
+        price = "" if blank or sample is None or not include_rates else format_price(sample.rate)
         delivery_from = "" if blank or sample is None or not sample.delivery_from else sample.delivery_from.strftime("%d/%m/%Y")
         delivery_to = "" if blank or sample is None or not sample.delivery_to else sample.delivery_to.strftime("%d/%m/%Y")
         remarks = "" if blank or sample is None else (sample.line_remarks or "")
@@ -281,7 +288,7 @@ def _char_boxes(canvas, text, x, y, width, height, font, slots):
             _center(canvas, chars[index], "Helvetica-Bold", 9, x + index * cell, y + max(3, (height - 9) / 2), cell)
 
 
-def _draw_page(canvas, po, profile, font, blocks, page_no, page_count, copy_label, lookup, blank, is_last):
+def _draw_page(canvas, po, profile, font, blocks, page_no, page_count, copy_label, lookup, blank, include_rates, is_last):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
 
@@ -291,7 +298,7 @@ def _draw_page(canvas, po, profile, font, blocks, page_no, page_count, copy_labe
     masthead_top = height - 6 * mm
     _draw_masthead(canvas, left, right, masthead_top, copy_label)
     _draw_stationery(
-        canvas, po, profile, font, blocks, page_no, page_count, lookup, blank,
+        canvas, po, profile, font, blocks, page_no, page_count, lookup, blank, include_rates,
         left, right, masthead_top - 58, 7 * mm,
     )
 
@@ -335,9 +342,9 @@ def _draw_masthead(canvas, left, right, top, copy_label):
         cursor += canvas.stringWidth(char, "Helvetica-Bold", 13) + gap
 
 
-def _draw_stationery(canvas, po, profile, font, blocks, page_no, page_count, lookup, blank, left, right, top, bottom):
+def _draw_stationery(canvas, po, profile, font, blocks, page_no, page_count, lookup, blank, include_rates, left, right, top, bottom):
     span = right - left
-    rows = _form_rows(blocks, lookup, blank)
+    rows = _form_rows(blocks, lookup, blank, include_rates)
     id_head, id_value, parties, salute = 14, 18, 78, 28
     col_head, dispatch_head, dispatch_value, sign = 22, 12, 26, 34
     fixed = id_head + id_value + parties + salute + col_head + dispatch_head + dispatch_value + sign

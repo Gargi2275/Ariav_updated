@@ -78,7 +78,7 @@ async function main() {
     screenshot: 'required-category-form.png',
   });
 
-  await openScreen(page, 'Product Catalogue');
+  await openScreen(page, 'Product Master');
   await assertForm(page, {
     addName: /Add Product|Add first/i,
     requiredLabels: ['Product code', 'Product name', 'Brand', 'Subcategory'],

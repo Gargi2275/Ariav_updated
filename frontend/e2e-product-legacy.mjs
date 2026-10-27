@@ -54,9 +54,9 @@ async function main() {
   if (!top || !sub) throw new Error(`need category + subcategory: ${JSON.stringify(cats)}`);
 
   await page.keyboard.press('Control+K');
-  await page.getByPlaceholder(/Search all/i).fill('Product Catalogue');
-  await page.getByText('Product Catalogue', { exact: true }).first().click();
-  await page.getByRole('heading', { name: 'Product Catalogue' }).waitFor();
+  await page.getByPlaceholder(/Search all/i).fill('Product Master');
+  await page.getByText('Product Master', { exact: true }).first().click();
+  await page.getByRole('heading', { name: 'Product Master' }).waitFor();
 
   await page.getByRole('button', { name: /Add Product|Add first/i }).first().click();
   const form = page.locator('form').filter({ hasText: 'Required field' });
