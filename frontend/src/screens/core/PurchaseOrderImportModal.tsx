@@ -244,6 +244,7 @@ export const PurchaseOrderImportModal: React.FC<PurchaseOrderImportModalProps> =
             </h3>
             <p className="text-xs font-mono text-[var(--erp-muted)] mt-1">
               {step === 'setup' ? (activeBrands.length === 1 ? 'Step 1 of 2 · Upload file' : 'Step 1 of 2 · Select brand and upload file') : 'Step 2 of 2 · Preview before commit'}
+              <span className="mt-1 block text-[var(--erp-text)]">Price basis: Ex-mill (exclusive of GST)</span>
             </p>
           </div>
           <ConfirmDialog

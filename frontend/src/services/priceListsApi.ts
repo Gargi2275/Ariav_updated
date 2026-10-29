@@ -204,6 +204,31 @@ export interface QualityPriceRow extends QualityPriceEntry {
   unit_text?: string;
 }
 
+export interface OrderPriceQuote {
+  po_price_tier: string;
+  price?: string | null;
+  list_name?: string;
+  effective_from?: string | null;
+  rate_source?: string;
+  reason?: string;
+}
+
+export function exMillListCaption(quote: OrderPriceQuote): { price: string; caption: string } {
+  if (!quote.price) {
+    return { price: '', caption: quote.reason || 'No Ex-mill price in an Active list' };
+  }
+  const amount = Number(quote.price);
+  const shown = Number.isFinite(amount) ? amount.toFixed(2) : quote.price;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(quote.effective_from || '');
+  const wef = match ? `${match[3]}.${match[2]}.${match[1]}` : '';
+  const name = quote.list_name || '';
+  const when = name && wef ? `${name}, w.e.f ${wef}` : name || (wef ? `w.e.f ${wef}` : '');
+  return {
+    price: quote.price,
+    caption: when ? `Ex-mill list price Rs${shown} (${when})` : `Ex-mill list price Rs${shown}`,
+  };
+}
+
 export const priceListsApi = {
   list: (params: { brand_id?: number; status?: string; season_label?: string; date_from?: string; date_to?: string } = {}) => request<PriceListRow[]>(`/api/price-lists/${qs(params)}`),
   retrieve: (id: number) => request<PriceListRow>(`/api/price-lists/${id}/`),
@@ -214,6 +239,12 @@ export const priceListsApi = {
   updateEntry: (id: number, entryId: number, body: unknown) => request<PriceListEntryRow>(`/api/price-lists/${id}/entries/${entryId}/`, { method: 'PUT', body: JSON.stringify(body) }),
   removeEntry: (id: number, entryId: number) => request<void>(`/api/price-lists/${id}/entries/${entryId}/`, { method: 'DELETE' }),
   currentPrice: (productId: number, date?: string) => request<CurrentPriceRow>(`/api/products/${productId}/current-price/${qs({ date })}`),
+  orderPrice: (params: { productId?: number; brandId?: number; quality?: string; date?: string } = {}) => request<OrderPriceQuote>(`/api/price-lists/order-price/${qs({
+    product_id: params.productId,
+    brand_id: params.brandId,
+    quality: params.quality,
+    date: params.date,
+  })}`),
   qualityEntries: (id: number, search?: string) => request<QualityPriceRow[]>(`/api/price-lists/${id}/quality-entries/${qs({ search })}`),
   downloadQualityEntries: async (id: number) => {
     const token = localStorage.getItem('ariav_auth_token');

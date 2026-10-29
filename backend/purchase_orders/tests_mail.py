@@ -242,10 +242,8 @@ class PurchaseOrderEmailTests(TestCase):
         with override_settings(EMAIL_MODE="test"):
             sent = self._send(self.po)
         self.assertEqual(sent.status_code, 200, sent.content)
-        self.assertEqual(mail.outbox[0].to, ["qa@example.com"])
-        self.assertEqual(mail.outbox[0].cc, [])
-        self.assertEqual(mail.outbox[0].bcc, [])
-        self.assertTrue(mail.outbox[0].subject.startswith("[TEST for mill@example.com]"))
+        self.assertEqual(mail.outbox[0].to, ["mill@example.com"])
+        self.assertFalse(mail.outbox[0].subject.startswith("[TEST for "))
         with override_settings(EMAIL_MODE="live"):
             EmailSettings.objects.filter(pk=1).update(enabled=False)
             blocked = self._send(self._po("PO-MAIL-2", self.customer, self.operator))
@@ -381,6 +379,18 @@ class PurchaseOrderEmailTests(TestCase):
         self.assertIn("daily_cap", entry.details)
         self.assertNotIn("Desk", entry.details)
         self.assertNotIn("mailbox-secret", entry.details)
+        replaced = self.client.put(
+            "/api/purchase-orders/email/settings/",
+            {"smtp_user": "orders@example.com", "smtp_password": "replacement-secret", "from_email": "orders@example.com"},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(replaced.status_code, 200, replaced.content)
+        body = replaced.content.decode()
+        self.assertNotIn("replacement-secret", body)
+        self.assertNotIn("smtp_password", replaced.json())
+        self.assertEqual(replaced.json()["smtp_user"], "orders@example.com")
+        self.assertEqual(EmailSettings.objects.get(pk=1).smtp_password, "replacement-secret")
 
 
 @override_settings(**MAIL)

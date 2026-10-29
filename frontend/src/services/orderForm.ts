@@ -10,8 +10,9 @@ export type QualitySelection = {
   productCode: string;
   collection: string;
   exMill: string;
-  wholesale: string;
-  retail: string;
+  listName: string;
+  effectiveFrom: string;
+  rateSource: string;
   shades: string[];
 };
 
@@ -53,6 +54,20 @@ function amount(value: unknown): string {
 function quantity(value: unknown): number {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+export const MAX_QUANTITY = 99999;
+export const MAX_PRICE = 999999;
+export const MAX_SIZE_LENGTH = 40;
+export const MAX_REMARKS_LENGTH = 240;
+
+/** Keeps only digits and one decimal point, with the given decimals and whole digits. */
+export function cleanAmount(value: string, decimals: number, wholeDigits: number): string {
+  const stripped = value.replace(/[^\d.]/g, '');
+  const [whole = '', ...rest] = stripped.split('.');
+  const head = whole.slice(0, wholeDigits);
+  if (decimals <= 0 || !stripped.includes('.')) return head;
+  return `${head}.${rest.join('').slice(0, decimals)}`;
 }
 
 export function isWholeQuantity(value: string): boolean {
@@ -172,7 +187,9 @@ export function validateBlocks(blocks: OrderBlock[]): Record<string, string> {
       if (shadesInBlock.has(shadeKey)) messages[`${prefix}_shade_${shadeIndex}`] = 'This shade is already in this quality.';
       shadesInBlock.add(shadeKey);
       if (!(quantity(cell.quantity) > 0)) {
-        messages[`${prefix}_qty_${shadeIndex}`] = 'Enter pieces greater than 0.';
+        messages[`${prefix}_qty_${shadeIndex}`] = block.unit === 'Meters' ? 'Enter meters greater than 0.' : 'Enter pieces greater than 0.';
+      } else if (quantity(cell.quantity) > MAX_QUANTITY) {
+        messages[`${prefix}_qty_${shadeIndex}`] = `Enter no more than ${MAX_QUANTITY.toLocaleString('en-IN')}.`;
       } else if (block.unit === 'Pieces' && !isWholeQuantity(cell.quantity)) {
         messages[`${prefix}_qty_${shadeIndex}`] = 'Pieces must be a whole number.';
       }
@@ -180,6 +197,19 @@ export function validateBlocks(blocks: OrderBlock[]): Record<string, string> {
       if (seen.has(pair)) messages[`${prefix}_shade_${shadeIndex}`] = 'This shade is already on this quality.';
       seen.set(pair, block.key);
     });
+    const price = block.price.trim();
+    if (price) {
+      const value = Number(price);
+      if (!/^\d+(\.\d{1,2})?$/.test(price) || !Number.isFinite(value)) {
+        messages[`${prefix}_price`] = 'Enter a price such as 879 or 879.50.';
+      } else if (value <= 0) {
+        messages[`${prefix}_price`] = 'Price must be greater than 0.';
+      } else if (value > MAX_PRICE) {
+        messages[`${prefix}_price`] = `Price cannot be more than ${MAX_PRICE.toLocaleString('en-IN')}.`;
+      }
+    }
+    if (block.size.trim().length > MAX_SIZE_LENGTH) messages[`${prefix}_size`] = `Size can be at most ${MAX_SIZE_LENGTH} characters.`;
+    if (block.remarks.trim().length > MAX_REMARKS_LENGTH) messages[`${prefix}_remarks`] = `Remarks can be at most ${MAX_REMARKS_LENGTH} characters.`;
     if (block.deliveryFrom && block.deliveryTo && block.deliveryTo < block.deliveryFrom) {
       messages[`${prefix}_delivery`] = 'Delivery To cannot be before Delivery From.';
     }

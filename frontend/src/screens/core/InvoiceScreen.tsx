@@ -8,6 +8,7 @@ import { TextInput, RequiredLegend } from '../../components/common/FormControls'
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { MasterError, MasterLoading, emptyTableProps } from '../masters/MasterStatus';
 import { num } from '../../services/mastersApi';
+import { priceListsApi } from '../../services/priceListsApi';
 import { notifyApiError, notifySuccess } from '../../services/notify';
 import { acquireSaveLock, releaseSaveLock } from '../../services/saveLock';
 import { clearFieldMessage, collectRequired } from '../../services/requiredFields';
@@ -164,7 +165,17 @@ export const InvoiceScreen: React.FC = () => {
       setDiscountAmount('0');
       setTaxPercent('0');
       setOtherCharges('0');
-      setLines(invoiceable.map(l => ({ poLine: l, quantity: '', rate: String(l.rate) })));
+      setLines(await Promise.all(invoiceable.map(async (line: PurchaseOrderLineRow) => {
+        if (line.rate != null && line.rate !== '') return { poLine: line, quantity: '', rate: String(line.rate) };
+        try {
+          const quote = line.product_id
+            ? await priceListsApi.orderPrice({ productId: line.product_id, date })
+            : await priceListsApi.orderPrice({ brandId: row.brand_id, quality: line.product_description, date });
+          return { poLine: line, quantity: '', rate: quote.price ?? '' };
+        } catch {
+          return { poLine: line, quantity: '', rate: '' };
+        }
+      })));
       setFieldMessages({});
       setMode('form');
     } catch (e) {

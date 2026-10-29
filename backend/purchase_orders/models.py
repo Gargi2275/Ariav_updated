@@ -392,7 +392,7 @@ class OfficialOcmAudit(models.Model):
 
 
 class EmailSettings(models.Model):
-    """One row. Transport credentials are never stored here."""
+    """One row. The mailbox can be changed here. The API never returns the password."""
 
     class AfterSend(models.TextChoices):
         NONE = "none", "None"
@@ -401,6 +401,11 @@ class EmailSettings(models.Model):
 
     enabled = models.BooleanField(default=False)
     from_name = models.CharField(max_length=120, blank=True)
+    smtp_host = models.CharField(max_length=200, blank=True)
+    smtp_port = models.PositiveIntegerField(default=587)
+    smtp_user = models.CharField(max_length=254, blank=True)
+    smtp_password = models.CharField(max_length=200, blank=True)
+    from_email = models.CharField(max_length=254, blank=True)
     reply_to_default = models.EmailField(blank=True)
     daily_cap = models.PositiveIntegerField(default=100)
     per_minute_cap = models.PositiveSmallIntegerField(default=10)

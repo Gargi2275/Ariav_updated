@@ -173,7 +173,7 @@ export const PoDispatchReconciliationScreen: React.FC = () => {
                       <td colSpan={13} className="px-4 py-3">
                         <p className="text-[var(--erp-muted)]">{row.rate_note} {row.delivery_note}</p>
                         {row.reasons.map(reason => <p key={reason}>{reason}</p>)}
-                        <p className="mt-2">Branch {row.branch_code} · {row.branch_name}. Internal PO {row.po_number}. PO value {row.po_value ?? '—'} · dispatched value {row.dispatched_value ?? '—'}.</p>
+                        <p className="mt-2">Branch {row.branch_code} · {row.branch_name}. Internal PO {row.po_number}. Ex-mill value {row.po_value ?? '—'} · dispatched value {row.dispatched_value ?? '—'}.</p>
                         {row.shipments.length ? (
                           <table className="mt-2 w-full">
                             <thead><tr className="font-mono text-[10px] uppercase text-[var(--erp-muted)]"><th className="py-1 text-left">Invoice</th><th className="text-left">Date</th><th className="text-left">Pieces</th><th className="text-left">Batch metres</th><th className="text-left">SO price</th><th className="text-left">Net rate / m</th><th className="text-left">Counted</th><th /></tr></thead>

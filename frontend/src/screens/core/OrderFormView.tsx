@@ -1,18 +1,45 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
-import { blockTotal, emptyBlock, OrderBlock, QualitySelection, QuantityUnit } from '../../services/orderForm';
+import {
+  blockTotal,
+  cleanAmount,
+  emptyBlock,
+  MAX_REMARKS_LENGTH,
+  MAX_SIZE_LENGTH,
+  OrderBlock,
+  QualitySelection,
+  QuantityUnit,
+} from '../../services/orderForm';
 import { purchaseOrdersApi, FormQuality } from '../../services/purchaseOrdersApi';
 
 const labelClass = 'mb-1 block text-xs text-[var(--erp-muted)]';
 const controlClass = 'h-9 w-full min-w-0 rounded-md border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] px-2.5 text-sm text-[var(--erp-text)] placeholder:text-[var(--erp-faint)] focus:border-[var(--erp-gold)] focus:outline-none focus:shadow-[0_0_0_3px_rgba(182,141,55,0.16)]';
 const readOnlyClass = 'flex h-9 min-w-0 items-center overflow-hidden whitespace-nowrap rounded-md border border-[var(--erp-hairline)] bg-[var(--erp-surface-2)] px-2.5 text-sm text-[var(--erp-text)]';
 
-function listMoney(value: string): string {
-  if (!value.trim()) return '—';
+function rupees(value: string): string {
   const number = Number(value);
-  if (!Number.isFinite(number)) return value;
-  return `₹${number.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (!value.trim() || !Number.isFinite(number)) return '';
+  return `Rs${number.toFixed(2)}`;
+}
+
+function formatWef(value?: string | null): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || '');
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : '';
+}
+
+function priceDiffers(entered: string, listed: string): boolean {
+  const left = Number(entered);
+  const right = Number(listed);
+  return entered.trim() !== '' && Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) > 0.001;
+}
+
+function listCaption(selection: QualitySelection): string {
+  if (!selection.exMill) return 'No Ex-mill price in an Active list';
+  const when = [selection.listName, selection.effectiveFrom ? `w.e.f ${formatWef(selection.effectiveFrom)}` : ''].filter(Boolean).join(', ');
+  return when
+    ? `Ex-mill list price ${rupees(selection.exMill)} (${when})`
+    : `Ex-mill list price ${rupees(selection.exMill)}`;
 }
 
 function selectionFromHit(hit: FormQuality): QualitySelection {
@@ -20,9 +47,10 @@ function selectionFromHit(hit: FormQuality): QualitySelection {
     productName: hit.product_name || hit.collection || '',
     productCode: hit.product_code || '',
     collection: hit.collection || '',
-    exMill: hit.ex_mill || '',
-    wholesale: hit.wholesale || '',
-    retail: hit.retail || '',
+    exMill: hit.ex_mill || hit.price || '',
+    listName: hit.list_name || '',
+    effectiveFrom: hit.effective_from || '',
+    rateSource: hit.rate_source || '',
     shades: hit.shades || [],
   };
 }
@@ -39,10 +67,12 @@ function FieldError({ message }: { message?: string }) {
 
 function QualityPicker({
   brandId,
+  poDate,
   block,
   onPick,
 }: {
   brandId?: number;
+  poDate?: string;
   block: OrderBlock;
   onPick: (quality: string, productId: number | null, selection: QualitySelection | null) => void;
 }) {
@@ -102,7 +132,7 @@ function QualityPicker({
     const id = ++requestId.current;
     setStatus('loading');
     const timer = window.setTimeout(() => {
-      void purchaseOrdersApi.formQualities(brandId, query.trim())
+      void purchaseOrdersApi.formQualities(brandId, query.trim(), poDate || '')
         .then(rows => {
           if (id !== requestId.current) return;
           setHits(rows);
@@ -116,7 +146,7 @@ function QualityPicker({
         });
     }, query.trim() ? 200 : 0);
     return () => window.clearTimeout(timer);
-  }, [open, brandId, query, retry]);
+  }, [open, brandId, poDate, query, retry]);
 
   const choose = (hit: FormQuality) => {
     const label = hit.quality_label || hit.quality_code;
@@ -234,7 +264,7 @@ function QualityPicker({
                   >
                     <span className="shrink-0 font-mono">{label}</span>
                     <span className="min-w-0 flex-1 truncate text-[var(--erp-muted)]">{secondary}</span>
-                    {hit.wholesale || hit.price ? <span className="shrink-0 font-mono text-xs text-[var(--erp-muted)]">{listMoney(hit.wholesale || hit.price || '')}</span> : null}
+                    <span className="min-w-0 flex-1 truncate text-[var(--erp-muted)]">{secondary}</span>
                   </button>
                 );
               })
@@ -364,10 +394,11 @@ export function OrderFormView({
                   </div>
                   <QualityPicker
                     brandId={brandId}
+                    poDate={date}
                     block={block}
                     onPick={(quality, productId, selection) => {
                       const same = productId != null && productId === block.productId && quality === block.quality;
-                      const listPrice = selection?.wholesale || selection?.exMill || '';
+                      const listPrice = selection?.exMill || '';
                       update(block.key, {
                         quality,
                         productId,
@@ -387,11 +418,7 @@ export function OrderFormView({
                         {block.selection.productCode && block.selection.productCode !== block.quality ? ` · Product ${block.selection.productCode}` : ''}
                         {block.selection.collection && block.selection.collection !== block.selection.productName ? ` · ${block.selection.collection}` : ''}
                       </p>
-                      <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[var(--erp-muted)]">
-                        <span>Ex-mill {listMoney(block.selection.exMill)}</span>
-                        <span>Wholesale {listMoney(block.selection.wholesale)}</span>
-                        <span>Retail {listMoney(block.selection.retail)}</span>
-                      </p>
+                      <p className="mt-1 text-[var(--erp-muted)]">{listCaption(block.selection)}</p>
                     </div>
                   ) : null}
                   <FieldError message={messages[`${prefix}_quality`]} />
@@ -406,7 +433,8 @@ export function OrderFormView({
                 </button>
               </div>
 
-              <div className="px-3 py-2.5">
+              <div className="grid gap-4 px-3 py-2.5 @3xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+                <div className="min-w-0">
                 <div className="mb-1.5">
                   <span className={labelClass}>
                     Shades <span className="text-[var(--erp-negative)]">*</span>
@@ -428,7 +456,6 @@ export function OrderFormView({
                               update(block.key, { shades: block.shades.filter((_, shadeIndex) => shadeIndex !== index) });
                               return;
                             }
-                            if (block.shades.length >= 7) return;
                             update(block.key, { shades: [...block.shades, { shade, quantity: '' }] });
                           }}
                         >
@@ -443,49 +470,60 @@ export function OrderFormView({
                   </p>
                 )}
                 {block.shades.some(cell => cell.shade.trim()) ? (
-                  <div className="overflow-hidden rounded-md border border-[var(--erp-hairline)]">
-                    <div className="grid grid-cols-[minmax(0,1fr)_7.5rem_2.25rem] gap-2 bg-[var(--erp-surface-2)] px-2 py-1.5 text-xs text-[var(--erp-muted)]">
-                      <span>Shade</span>
-                      <span>Pieces</span>
-                      <span className="sr-only">Remove</span>
-                    </div>
-                    {block.shades.map((cell, index) => cell.shade.trim() ? (
-                      <div key={`${block.key}-shade-${cell.shade}`} className="border-t border-[var(--erp-hairline)] px-2 py-1.5">
-                        <div className="grid grid-cols-[minmax(0,1fr)_7.5rem_2.25rem] items-center gap-2">
-                          <div className="text-sm text-[var(--erp-text)]" aria-label={`Shade ${cell.shade} for row ${block.rowNo}`}>{cell.shade}</div>
+                  <div className="grid w-full grid-cols-2 gap-1 @xl:grid-cols-3">
+                    {block.shades
+                      .map((cell, index) => ({ cell, index }))
+                      .filter(({ cell }) => cell.shade.trim())
+                      .sort((left, right) => {
+                        const listed = block.selection?.shades || [];
+                        const a = listed.findIndex(shade => shade.toLowerCase() === left.cell.shade.trim().toLowerCase());
+                        const b = listed.findIndex(shade => shade.toLowerCase() === right.cell.shade.trim().toLowerCase());
+                        if (a >= 0 && b >= 0) return a - b;
+                        if (a >= 0) return -1;
+                        if (b >= 0) return 1;
+                        return left.cell.shade.localeCompare(right.cell.shade, undefined, { numeric: true });
+                      })
+                      .map(({ cell, index }) => (
+                      <div key={`${block.key}-shade-${cell.shade}`} className="min-w-0 rounded border border-[var(--erp-hairline)] bg-[var(--erp-surface)] py-0.5 pl-2 pr-0.5">
+                        <div className="grid grid-cols-[minmax(1.25rem,auto)_minmax(0,1fr)_1.25rem] items-center gap-1">
+                          <div className="truncate text-xs font-medium text-[var(--erp-text)]" title={cell.shade} aria-label={`Shade ${cell.shade} for row ${block.rowNo}`}>{cell.shade}</div>
                           <input
-                            className={`${controlClass} text-right font-mono`}
+                            placeholder="Pcs"
+                            className="h-7 w-full min-w-0 rounded border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] px-1.5 text-right font-mono text-xs text-[var(--erp-text)] placeholder:text-[var(--erp-faint)] focus:border-[var(--erp-gold)] focus:outline-none"
                             aria-label={`Pieces for shade ${cell.shade} on row ${block.rowNo}`}
                             inputMode="decimal"
                             value={cell.quantity}
                             onChange={event => {
                               const shades = block.shades.slice();
-                              shades[index] = { ...cell, quantity: event.target.value };
+                              shades[index] = { ...cell, quantity: cleanAmount(event.target.value, block.unit === 'Meters' ? 2 : 0, 5) };
                               update(block.key, { shades });
                             }}
                           />
                           <button
                             type="button"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[var(--erp-faint)] hover:text-[var(--erp-negative)]"
+                            className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--erp-faint)] hover:text-[var(--erp-negative)]"
                             aria-label={`Remove shade ${cell.shade} for row ${block.rowNo}`}
                             onClick={() => update(block.key, { shades: block.shades.filter((_, shadeIndex) => shadeIndex !== index) })}
                           >
-                            <X className="h-3.5 w-3.5" />
+                            <X className="h-3 w-3" />
                           </button>
                         </div>
                         <FieldError message={messages[`${prefix}_qty_${index}`]} />
                       </div>
-                    ) : null)}
+                    ))}
                   </div>
                 ) : null}
                 <div data-invalid={shadeError ? 'true' : undefined} data-field={`${prefix}_shades`}>
                   <FieldError message={shadeError} />
                 </div>
+                </div>
 
-                <div className="mt-2.5 grid grid-cols-2 gap-2.5 @3xl:grid-cols-3 @5xl:grid-cols-6">
+                <div className="flex min-w-0 flex-col">
+                <div className="grid grid-cols-2 gap-2.5 @5xl:grid-cols-3">
                   <div className="min-w-0">
                     <label className={labelClass} htmlFor={`size-${block.key}`}>Size</label>
-                    <input id={`size-${block.key}`} className={controlClass} aria-label={`Size for row ${block.rowNo}`} value={block.size} onChange={event => update(block.key, { size: event.target.value })} />
+                    <input id={`size-${block.key}`} className={controlClass} aria-label={`Size for row ${block.rowNo}`} maxLength={MAX_SIZE_LENGTH} value={block.size} onChange={event => update(block.key, { size: event.target.value.slice(0, MAX_SIZE_LENGTH) })} />
+                    <FieldError message={messages[`${prefix}_size`]} />
                   </div>
                   <div className="min-w-0">
                     <span className={labelClass}>Pieces / Meters</span>
@@ -509,15 +547,13 @@ export function OrderFormView({
                   </div>
                   <div className="min-w-0">
                     <label className={labelClass} htmlFor={`price-${block.key}`}>Price</label>
-                    <input id={`price-${block.key}`} className={`${controlClass} font-mono`} aria-label={`Price for row ${block.rowNo}`} value={block.price} onChange={event => update(block.key, { price: event.target.value })} />
+                    <input id={`price-${block.key}`} className={`${controlClass} font-mono`} aria-label={`Price for row ${block.rowNo}`} inputMode="decimal" value={block.price} onChange={event => update(block.key, { price: cleanAmount(event.target.value, 2, 6) })} />
+                    <FieldError message={messages[`${prefix}_price`]} />
                     {block.selection ? (
-                      <p className="mt-1 text-[11px] text-[var(--erp-muted)]">
-                        {block.selection.wholesale
-                          ? `Wholesale ${listMoney(block.selection.wholesale)}`
-                          : block.selection.exMill
-                            ? `Ex-mill ${listMoney(block.selection.exMill)}`
-                            : 'No list price'}
-                      </p>
+                      <p className="mt-1 text-[11px] text-[var(--erp-muted)]">{listCaption(block.selection)}</p>
+                    ) : null}
+                    {block.selection?.exMill && priceDiffers(block.price, block.selection.exMill) ? (
+                      <p className="mt-0.5 text-[11px] text-[var(--erp-muted)]">Differs from Ex-mill list price</p>
                     ) : null}
                   </div>
                   <div className="min-w-0">
@@ -530,16 +566,22 @@ export function OrderFormView({
                   </div>
                 </div>
                 <FieldError message={messages[`${prefix}_delivery`]} />
-                <div className="mt-2.5">
+                <div className="mt-2.5 flex flex-1 flex-col">
                   <label className={labelClass} htmlFor={`remarks-${block.key}`}>Remarks</label>
                   <textarea
                     id={`remarks-${block.key}`}
                     rows={2}
-                    className={`${controlClass} h-auto resize-y py-1.5`}
+                    className={`${controlClass} h-auto min-h-[4rem] flex-1 resize-y py-1.5`}
                     aria-label={`Remarks for row ${block.rowNo}`}
                     value={block.remarks}
-                    onChange={event => update(block.key, { remarks: event.target.value })}
+                    maxLength={MAX_REMARKS_LENGTH}
+                    onChange={event => update(block.key, { remarks: event.target.value.slice(0, MAX_REMARKS_LENGTH) })}
                   />
+                  <div className="mt-0.5 flex items-start justify-between gap-2">
+                    <FieldError message={messages[`${prefix}_remarks`]} />
+                    <span className="ml-auto text-[11px] text-[var(--erp-faint)]">{block.remarks.length}/{MAX_REMARKS_LENGTH}</span>
+                  </div>
+                </div>
                 </div>
               </div>
             </article>

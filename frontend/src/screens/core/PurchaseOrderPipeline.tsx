@@ -47,7 +47,7 @@ function Card({ row, orderTypeFilter, onOpen, onMove }: { row: PurchaseOrderRow;
       {!orderTypeFilter ? <span title={`${row.order_type} purchase order`} aria-label={`${row.order_type} purchase order`} className={`absolute inset-y-0 left-0 w-[3px] ${row.order_type === 'Manual' ? 'bg-[var(--erp-gold)]' : 'bg-[var(--erp-positive)]'}`} /> : null}
       <div className="flex items-start gap-1">
         <button type="button" onClick={() => onOpen(row.id)} className="min-w-0 flex-1 text-left">
-          <span className="flex justify-between gap-2 font-mono text-[13px] text-[var(--erp-gold)]"><span className="truncate">{row.po_number}</span><span className="text-[var(--erp-text)]">{row.priced_lines ? money(row.total_amount) : '—'}</span></span>
+          <span className="flex justify-between gap-2 font-mono text-[13px] text-[var(--erp-gold)]"><span className="truncate">{row.po_number}</span><span className="text-[var(--erp-text)]" title="Ex-mill value">{row.priced_lines ? money(row.total_amount) : '—'}</span></span>
           <span className="mt-0.5 flex justify-between gap-2 text-[11px]"><span className="truncate" title={row.customer_name}>{row.customer_name}</span><span className="shrink-0">{row.lines.length} lines</span></span>
         </button>
         <select aria-label={`Move ${row.po_number}`} disabled={!movable} value="" onChange={event => { if (event.target.value) onMove(row, event.target.value); }} className="h-7 w-7 shrink-0 appearance-none bg-transparent text-[var(--erp-muted)]">
@@ -73,7 +73,7 @@ function Column({ status, rows, summary, loading, onLoadMore, onOpen, onMove, or
     <section className={`flex h-full ${rows.length ? 'w-[260px] min-w-[260px]' : 'w-[150px] min-w-[150px]'} shrink-0 flex-col border border-[var(--erp-hairline)] bg-[var(--erp-surface)]`}>
       <header className="flex h-9 shrink-0 items-center justify-between gap-1 border-b border-[var(--erp-hairline)] bg-[var(--erp-surface)]/95 px-2 backdrop-blur-sm">
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)]">{status} <span className="text-[var(--erp-muted)]">{meta.count} · {money(meta.total_amount)}</span></h3>
+            <h3 className="truncate text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)]">{status} <span className="text-[var(--erp-muted)]" title="Ex-mill value">{meta.count} · {money(meta.total_amount)}</span></h3>
           {locked ? <span title="Set automatically when a dispatch is recorded."><Lock className="w-3.5 h-3.5 text-[var(--erp-muted)]" aria-label="Set automatically when a dispatch is recorded." /></span> : null}
         </div>
       </header>

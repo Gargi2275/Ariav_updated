@@ -988,7 +988,7 @@ class DispatchImportApiTests(TestCase):
         self.assertEqual(created.status_code, 201, created.content)
         issued = created.json()["po_number"]
         self.assertNotEqual(issued, "CLIENT-SUPPLIED")
-        self.assertEqual(len(issued), 8)
+        self.assertEqual(len(issued), 9)
         self.assertTrue(issued.startswith("AO"))
 
         self._create_po("HIST-100", status="Brand Accepted")

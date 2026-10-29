@@ -77,10 +77,14 @@ class MailError(Exception):
 
 def public_error(exc: BaseException) -> str:
     text = " ".join(str(exc).split())
-    for secret in (
+    secrets = [
         getattr(settings, "EMAIL_HOST_PASSWORD", "") or "",
         getattr(settings, "EMAIL_HOST_USER", "") or "",
-    ):
+    ]
+    row = EmailSettings.objects.order_by("id").first()
+    if row is not None:
+        secrets.extend([row.smtp_password or "", row.smtp_user or ""])
+    for secret in secrets:
         if secret:
             text = text.replace(secret, "[redacted]")
     return (text or "The message could not be sent.")[:400]
@@ -93,13 +97,57 @@ def load_settings() -> EmailSettings:
     return row
 
 
+def mailbox(row: EmailSettings | None = None) -> dict:
+    """Saved mailbox wins. Environment values are only the fallback until one is saved."""
+    row = row or load_settings()
+    saved_user = (row.smtp_user or "").strip()
+    saved_password = row.smtp_password or ""
+    if saved_user and saved_password:
+        host = (row.smtp_host or "").strip() or "smtp.gmail.com"
+        port = row.smtp_port or 587
+        user = saved_user
+        password = saved_password
+        sender = (row.from_email or saved_user).strip()
+    else:
+        host = (settings.EMAIL_HOST or "").strip() or "smtp.gmail.com"
+        port = settings.EMAIL_PORT or 587
+        user = (settings.EMAIL_HOST_USER or "").strip()
+        password = settings.EMAIL_HOST_PASSWORD or ""
+        sender = (settings.DEFAULT_FROM_EMAIL or user).strip()
+    return {
+        "host": host,
+        "port": int(port or 587),
+        "user": user,
+        "password": password,
+        "from_email": sender,
+    }
+
+
+def mail_connection():
+    box = mailbox()
+    return get_connection(
+        host=box["host"],
+        port=box["port"],
+        username=box["user"],
+        password=box["password"],
+        use_tls=True,
+        timeout=settings.EMAIL_TIMEOUT,
+    )
+
+
 def transport_public() -> dict:
-    mode = settings.EMAIL_MODE if settings.EMAIL_MODE in {"off", "test", "live"} else "off"
+    row = load_settings()
+    box = mailbox(row)
+    mode = "off" if settings.EMAIL_MODE == "off" or not row.enabled else "live"
     return {
         "mode": mode,
-        "configured": bool(settings.EMAIL_HOST_PASSWORD),
-        "test_recipient": settings.EMAIL_TEST_RECIPIENT if mode == "test" else "",
-        "from_configured": bool(settings.DEFAULT_FROM_EMAIL),
+        "configured": bool(box["password"]),
+        "test_recipient": "",
+        "from_configured": bool(box["from_email"]),
+        "smtp_host": box["host"],
+        "smtp_port": box["port"],
+        "smtp_user": box["user"],
+        "from_email": box["from_email"],
     }
 
 
@@ -272,13 +320,13 @@ def _latest_sent(po: PurchaseOrder):
 
 def _warnings(po, config, settings_row, attachment_size: int, user) -> list[str]:
     warnings = []
-    mode = settings.EMAIL_MODE
-    if mode == "off":
+    box = mailbox(settings_row)
+    if settings.EMAIL_MODE == "off":
         warnings.append("Email sending is off.")
-    elif mode == "test":
-        warnings.append("Test mode: this message will go to the test recipient.")
-    elif mode == "live" and not settings_row.enabled:
+    elif not settings_row.enabled:
         warnings.append("Live email is switched off.")
+    if not box["user"] or not box["password"]:
+        warnings.append("The mailbox email and app password are not saved.")
     recipients = (config.to_addresses if config else []) or []
     if not recipients:
         warnings.append("No recipients are configured for this brand.")
@@ -383,18 +431,14 @@ def _cap_remaining(settings_row: EmailSettings, incoming: int) -> None:
 
 
 def _sending_allowed() -> None:
-    mode = settings.EMAIL_MODE
-    if mode == "off":
+    if settings.EMAIL_MODE == "off":
         raise MailError(400, {"detail": "Email sending is off."})
-    if mode == "test" and not settings.EMAIL_TEST_RECIPIENT:
-        raise MailError(400, {"detail": "The test recipient is not configured."})
-    if mode == "live" and not load_settings().enabled:
+    if not load_settings().enabled:
         raise MailError(400, {"detail": "Live email is switched off."})
-    if mode not in {"test", "live"}:
-        raise MailError(400, {"detail": "Email sending is off."})
-    if not (settings.EMAIL_USE_TLS or settings.EMAIL_USE_SSL):
-        raise MailError(400, {"detail": "TLS is required."})
-    if not settings.DEFAULT_FROM_EMAIL:
+    box = mailbox()
+    if not box["user"] or not box["password"]:
+        raise MailError(400, {"detail": "The mailbox email and app password are not saved."})
+    if not box["from_email"]:
         raise MailError(400, {"detail": "The from address is not configured."})
 
 
@@ -546,10 +590,6 @@ def send_items(items, user) -> dict:
 
 
 def _transmitted_subject(subject: str, to_addresses: list[str]) -> str:
-    if settings.EMAIL_MODE == "test" and not subject.startswith("[TEST for "):
-        original = ", ".join(to_addresses) or "-"
-        prefixed = f"[TEST for {original}] {subject}"
-        return prefixed[:MAX_SUBJECT]
     return subject
 
 
@@ -604,13 +644,7 @@ def models_f_attempts():
 
 
 def _envelope(row: EmailOutbox) -> tuple[str, list[str], list[str], list[str]]:
-    subject = row.subject
-    to_list = list(row.to_addresses or [])
-    cc_list = list(row.cc_addresses or [])
-    bcc_list = list(row.bcc_addresses or [])
-    if settings.EMAIL_MODE == "test":
-        return subject, [settings.EMAIL_TEST_RECIPIENT], [], []
-    return subject, to_list, cc_list, bcc_list
+    return row.subject, list(row.to_addresses or []), list(row.cc_addresses or []), list(row.bcc_addresses or [])
 
 
 def _reply_to(row: EmailOutbox, settings_row: EmailSettings) -> list[str]:
@@ -621,9 +655,7 @@ def _reply_to(row: EmailOutbox, settings_row: EmailSettings) -> list[str]:
 def process_outbox(ids: list[int] | None = None, limit: int = 10) -> int:
     """Send queued rows. A row already claimed by another worker is left alone."""
     sweep_unknown()
-    if settings.EMAIL_MODE == "off":
-        return 0
-    if settings.EMAIL_MODE == "live" and not load_settings().enabled:
+    if settings.EMAIL_MODE == "off" or not load_settings().enabled:
         return 0
     if ids is None:
         ids = list(
@@ -667,10 +699,12 @@ def _deliver(pk: int) -> bool:
         row.refresh_from_db()
         subject, to_list, cc_list, bcc_list = _envelope(row)
         message_id = make_msgid(domain="ariav.local")
-        from_name = (load_settings().from_name or "").strip()
-        from_email = settings.DEFAULT_FROM_EMAIL
-        if from_name:
-            from_email = f"{from_name} <{settings.DEFAULT_FROM_EMAIL}>"
+        settings_row = load_settings()
+        box = mailbox(settings_row)
+        from_email = box["from_email"]
+        from_name = (settings_row.from_name or "").strip()
+        if from_name and from_email:
+            from_email = f"{from_name} <{from_email}>"
         message = EmailMessage(
             subject=subject,
             body=row.body,
@@ -678,8 +712,8 @@ def _deliver(pk: int) -> bool:
             to=to_list,
             cc=cc_list,
             bcc=bcc_list,
-            reply_to=_reply_to(row, load_settings()),
-            connection=get_connection(timeout=settings.EMAIL_TIMEOUT),
+            reply_to=_reply_to(row, settings_row),
+            connection=mail_connection(),
         )
         if payload:
             message.attach(filename, payload, "application/pdf")
@@ -827,6 +861,8 @@ def save_settings(data: dict, user, request) -> dict:
         if action != row.after_send_status_action:
             row.after_send_status_action = action
             changed.append("after_send_status_action")
+    if any(key in data for key in ("smtp_host", "smtp_port", "smtp_user", "smtp_password", "from_email")):
+        _save_mailbox(row, data, changed)
     row.updated_by = user
     row.save()
     _audit(user, request, "Email settings updated", changed)
@@ -849,16 +885,62 @@ def settings_payload(row: EmailSettings | None = None) -> dict:
     }
 
 
+def _mailbox_address(value, label: str) -> str:
+    text = _no_header_break(str(value or ""), label).strip().lower()
+    if not text:
+        return ""
+    try:
+        validate_email(text)
+    except DjangoValidationError as exc:
+        raise MailError(400, {"detail": f"Enter a valid {label.lower()}."}) from exc
+    return text
+
+
+def _save_mailbox(row: EmailSettings, data: dict, changed: list[str]) -> None:
+    current = mailbox(row)
+    host = _no_header_break(str(data.get("smtp_host", current["host"]) or ""), "Mail host").strip() or "smtp.gmail.com"
+    if len(host) > 200:
+        raise MailError(400, {"detail": "Mail host is too long."})
+    try:
+        port = int(data.get("smtp_port", current["port"] or 587))
+    except (TypeError, ValueError) as exc:
+        raise MailError(400, {"detail": "Enter a port number."}) from exc
+    if port < 1 or port > 65535:
+        raise MailError(400, {"detail": "Enter a port from 1 to 65535."})
+    user = _mailbox_address(data.get("smtp_user", current["user"]), "Mailbox") or current["user"]
+    sender = _mailbox_address(data.get("from_email", current["from_email"]) or user, "From address") or user
+    password = str(data.get("smtp_password") or "")
+    if any(char in password for char in "\r\n"):
+        raise MailError(400, {"detail": "The app password cannot contain a line break."})
+    saved = bool((row.smtp_user or "").strip() and row.smtp_password)
+    if not password and (user != current["user"] or not saved):
+        if user != current["user"]:
+            raise MailError(400, {"detail": "Enter the app password for this mailbox."})
+        return
+    if password and password != row.smtp_password:
+        row.smtp_password = password
+        changed.append("smtp_password")
+    if host != row.smtp_host:
+        row.smtp_host = host
+        changed.append("smtp_host")
+    if port != row.smtp_port:
+        row.smtp_port = port
+        changed.append("smtp_port")
+    if user != (row.smtp_user or ""):
+        row.smtp_user = user
+        changed.append("smtp_user")
+    if sender != (row.from_email or ""):
+        row.from_email = sender
+        changed.append("from_email")
+
+
 def check_connection() -> dict:
     public = transport_public()
-    if settings.EMAIL_MODE == "off":
-        return {**public, "ok": False, "detail": "Email sending is off."}
-    if not settings.EMAIL_HOST:
-        return {**public, "ok": False, "detail": "The mail host is not configured."}
-    if not (settings.EMAIL_USE_TLS or settings.EMAIL_USE_SSL):
-        return {**public, "ok": False, "detail": "TLS is required."}
+    box = mailbox()
+    if not box["user"] or not box["password"]:
+        return {**public, "ok": False, "detail": "The mailbox email and app password are not saved."}
     try:
-        connection = get_connection(timeout=settings.EMAIL_TIMEOUT)
+        connection = mail_connection()
         connection.open()
         connection.close()
     except Exception as exc:
@@ -870,35 +952,21 @@ def check_connection() -> dict:
 
 def send_test_message(user) -> dict:
     _sending_allowed()
-    address = (getattr(user, "email", "") or "").strip().lower()
-    if not address:
-        raise MailError(400, {"detail": "Your account has no email address."})
-    try:
-        validate_email(address)
-    except DjangoValidationError as exc:
-        raise MailError(400, {"detail": "Your account email address is not valid."}) from exc
+    box = mailbox()
+    address = box["from_email"]
     subject = "Ariav purchase-order email test"
     body = "This is a test message from purchase-order email settings."
-    to_list = [address]
-    subject = _transmitted_subject(subject, to_list)
-    envelope_subject, envelope_to, envelope_cc, envelope_bcc = (
-        (subject, [settings.EMAIL_TEST_RECIPIENT], [], [])
-        if settings.EMAIL_MODE == "test"
-        else (subject, to_list, [], [])
-    )
+    from_email = address
     from_name = (load_settings().from_name or "").strip()
-    from_email = settings.DEFAULT_FROM_EMAIL
     if from_name:
-        from_email = f"{from_name} <{settings.DEFAULT_FROM_EMAIL}>"
+        from_email = f"{from_name} <{address}>"
     try:
         message = EmailMessage(
-            subject=envelope_subject,
+            subject=subject,
             body=body,
             from_email=from_email,
-            to=envelope_to,
-            cc=envelope_cc,
-            bcc=envelope_bcc,
-            connection=get_connection(timeout=settings.EMAIL_TIMEOUT),
+            to=[address],
+            connection=mail_connection(),
         )
         message.send(fail_silently=False)
     except Exception as exc:

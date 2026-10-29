@@ -17,7 +17,7 @@ from invoices.serializers import InvoiceSerializer
 from purchase_orders.models import PurchaseOrder, PurchaseOrderLine
 from products.models import Product
 
-from .models import PriceList, PriceListEntry
+from .models import BrandQualityPrice, PriceList, PriceListEntry
 from .serializers import CurrentPriceSerializer
 from .services import get_current_price
 
@@ -344,4 +344,25 @@ class PriceListCompatibilitySnapshotTests(TestCase):
             "lines": [{"purchase_order_line": po_line, "quantity": Decimal("2"), "rate": None}],
         }
         validated = InvoiceSerializer().validate(attrs)
-        self.assertEqual(validated["lines"][0]["rate"], Decimal("50.00"))
+        self.assertIsNone(validated["lines"][0]["rate"])
+        BrandQualityPrice.objects.create(
+            price_list=price_list,
+            product=self.product,
+            sr_no=1,
+            source_page=1,
+            quality_code="COMPAT-001",
+            quality_prefix="COMPAT",
+            seg_a="0",
+            seg_b="0",
+            seg_c="0",
+            quality_number="0000001",
+            ex_mill=Decimal("825.00"),
+            wholesale=Decimal("1081.00"),
+            retail=Decimal("1455.00"),
+        )
+        again = InvoiceSerializer().validate({
+            "purchase_order": purchase_order,
+            "invoice_date": date(2026, 10, 14),
+            "lines": [{"purchase_order_line": po_line, "quantity": Decimal("2"), "rate": None}],
+        })
+        self.assertEqual(again["lines"][0]["rate"], Decimal("825.00"))

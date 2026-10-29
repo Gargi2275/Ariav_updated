@@ -103,7 +103,6 @@ export const PoEmailComposer: React.FC<{
   const [activeId, setActiveId] = useState<number | null>(poIds[0] ?? null);
   const [opened, setOpened] = useState<number[]>([]);
   const [mode, setMode] = useState('');
-  const [testRecipient, setTestRecipient] = useState('');
   const [pdfUrl, setPdfUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmLive, setConfirmLive] = useState(false);
@@ -117,7 +116,6 @@ export const PoEmailComposer: React.FC<{
       setDrafts(next);
       setTemplates(Object.fromEntries(next.map(item => [item.po_id, item])));
       setMode(result.mode);
-      setTestRecipient(result.test_recipient);
       setActiveId(next[0]?.po_id ?? null);
     }).catch(err => notifyApiError(err, 'Could not prepare the emails.'));
     return () => { live = false; };
@@ -185,7 +183,7 @@ export const PoEmailComposer: React.FC<{
           <button type="button" onClick={onClose} aria-label="Close email"><X className="w-4 h-4" /></button>
         </div>
         <div className="space-y-3 overflow-y-auto p-4">
-          <EmailModeBanner mode={mode} testRecipient={testRecipient} />
+          <EmailModeBanner mode={mode} />
           <div className="grid min-h-[28rem] grid-cols-1 gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
             <div className="space-y-1">
               {drafts.map(item => (

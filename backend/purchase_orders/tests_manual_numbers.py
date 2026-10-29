@@ -94,23 +94,23 @@ class ManualNumberTests(TestCase):
         third = allocate_manual_po_number(self.aditi, self.ocm, self.on)
         other_brand = allocate_manual_po_number(self.aditi, self.donear, self.on)
         other_branch = allocate_manual_po_number(self.gujarat, self.ocm, self.on)
-        self.assertEqual([first, second, third], ["AO102601", "AO102602", "AO102603"])
-        self.assertEqual(other_brand, "AD102601")
-        self.assertEqual(other_branch, "GO102601")
+        self.assertEqual([first, second, third], ["AO1026001", "AO1026002", "AO1026003"])
+        self.assertEqual(other_brand, "AD1026001")
+        self.assertEqual(other_branch, "GO1026001")
 
     def test_month_and_year_rollover_are_separate_counters(self):
         october = allocate_manual_po_number(self.aditi, self.ocm, date(2026, 10, 31))
         november = allocate_manual_po_number(self.aditi, self.ocm, date(2026, 11, 1))
         next_year = allocate_manual_po_number(self.aditi, self.ocm, date(2027, 10, 1))
-        self.assertEqual(october, "AO102601")
-        self.assertEqual(november, "AO112601")
-        self.assertEqual(next_year, "AO102701")
+        self.assertEqual(october, "AO1026001")
+        self.assertEqual(november, "AO1126001")
+        self.assertEqual(next_year, "AO1027001")
 
     def test_name_fallback_and_invalid_codes(self):
         branch = _branch("12", "Surat")
         brand = _brand("9", "Arvind")
         branch.brands.add(brand)
-        self.assertEqual(allocate_manual_po_number(branch, brand, self.on), "SA102601")
+        self.assertEqual(allocate_manual_po_number(branch, brand, self.on), "SA1026001")
         empty = _branch("44", "77")
         with self.assertRaises(ManualPoNumberError) as branch_error:
             allocate_manual_po_number(empty, self.ocm, self.on)
@@ -120,13 +120,25 @@ class ManualNumberTests(TestCase):
             allocate_manual_po_number(self.aditi, nameless, self.on)
         self.assertEqual(brand_error.exception.field, "brand_id")
 
-    def test_sequence_stops_at_99(self):
-        ManualPoNumberSequence.objects.create(scope="AO1026", last_value=98)
-        self.assertEqual(allocate_manual_po_number(self.aditi, self.ocm, self.on), "AO102699")
+    def test_sequence_stops_at_999(self):
+        ManualPoNumberSequence.objects.create(scope="AO1026", last_value=998)
+        self.assertEqual(allocate_manual_po_number(self.aditi, self.ocm, self.on), "AO1026999")
         with self.assertRaises(ManualPoNumberError) as raised:
             allocate_manual_po_number(self.aditi, self.ocm, self.on)
-        self.assertIn("99", raised.exception.message)
-        self.assertEqual(ManualPoNumberSequence.objects.get(scope="AO1026").last_value, 99)
+        self.assertIn("999", raised.exception.message)
+        self.assertEqual(ManualPoNumberSequence.objects.get(scope="AO1026").last_value, 999)
+
+    def test_continues_after_older_eight_character_numbers(self):
+        PurchaseOrder.objects.create(
+            po_number="AO102603",
+            order_type=PurchaseOrder.OrderType.MANUAL,
+            entity=self.aditi,
+            customer=self.customer,
+            brand=self.ocm,
+            po_date=self.on,
+        )
+        self.assertEqual(preview_manual_po_number(self.aditi, self.ocm, self.on), "AO1026004")
+        self.assertEqual(allocate_manual_po_number(self.aditi, self.ocm, self.on), "AO1026004")
 
     def test_existing_number_is_not_reused_and_delete_does_not_rewind(self):
         PurchaseOrder.objects.create(
@@ -138,7 +150,7 @@ class ManualNumberTests(TestCase):
             po_date=self.on,
         )
         issued = allocate_manual_po_number(self.aditi, self.ocm, self.on)
-        self.assertEqual(issued, "AO102602")
+        self.assertEqual(issued, "AO1026002")
         PurchaseOrder.objects.create(
             po_number=issued,
             order_type=PurchaseOrder.OrderType.MANUAL,
@@ -148,15 +160,15 @@ class ManualNumberTests(TestCase):
             po_date=self.on,
         )
         PurchaseOrder.objects.filter(po_number=issued).delete()
-        self.assertEqual(allocate_manual_po_number(self.aditi, self.ocm, self.on), "AO102603")
+        self.assertEqual(allocate_manual_po_number(self.aditi, self.ocm, self.on), "AO1026003")
 
     def test_rolled_back_allocation_is_not_an_issued_number(self):
         with self.assertRaises(RuntimeError):
             with transaction.atomic():
                 first = allocate_manual_po_number(self.aditi, self.ocm, self.on)
-                self.assertEqual(first, "AO102601")
+                self.assertEqual(first, "AO1026001")
                 raise RuntimeError("create failed")
-        self.assertEqual(allocate_manual_po_number(self.aditi, self.ocm, self.on), "AO102601")
+        self.assertEqual(allocate_manual_po_number(self.aditi, self.ocm, self.on), "AO1026001")
 
     def test_import_keeps_its_number_and_digital_create_is_unchanged(self):
         imported = create_purchase_order_with_lines(
@@ -198,7 +210,7 @@ class ManualNumberTests(TestCase):
         created = self._manual(self.aditi, self.ocm, "")
         self.assertEqual(created.status_code, 201, created.content)
         today = timezone.localdate()
-        self.assertEqual(created.json()["po_number"], f"AO{today.month:02d}{today.year % 100:02d}01")
+        self.assertEqual(created.json()["po_number"], f"AO{today.month:02d}{today.year % 100:02d}001")
         digital = self.client.post(
             "/api/purchase-orders/",
             {
@@ -220,7 +232,7 @@ class ManualNumberTests(TestCase):
         self.assertEqual(created.status_code, 201, created.content)
         body = created.json()
         today = timezone.localdate()
-        expected = f"AO{today.month:02d}{today.year % 100:02d}01"
+        expected = f"AO{today.month:02d}{today.year % 100:02d}001"
         self.assertEqual(body["po_number"], expected)
         self.assertNotEqual(body["po_number"], "HACKED01")
         edited = self.client.put(
@@ -309,14 +321,14 @@ class ManualNumberTests(TestCase):
         )
         self.assertEqual(digital.status_code, 400)
         self.assertIn("manual", str(digital.json()["brand_id"]).lower())
-        ManualPoNumberSequence.objects.create(scope=f"AO{timezone.localdate().month:02d}{timezone.localdate().year % 100:02d}", last_value=99)
+        ManualPoNumberSequence.objects.create(scope=f"AO{timezone.localdate().month:02d}{timezone.localdate().year % 100:02d}", last_value=999)
         exhausted = self.client.get(
             "/api/purchase-orders/next-number/",
             {"entity_id": self.aditi.id, "brand_id": self.ocm.id},
             HTTP_HOST="localhost",
         )
         self.assertEqual(exhausted.status_code, 400)
-        self.assertIn("99", exhausted.json()["po_number"])
+        self.assertIn("999", exhausted.json()["po_number"])
 
 
 class ManualNumberConcurrencyTests(TransactionTestCase):
@@ -353,7 +365,7 @@ class ManualNumberConcurrencyTests(TransactionTestCase):
         self.assertEqual(errors, [])
         self.assertEqual(len(numbers), 6)
         self.assertEqual(len(set(numbers)), 6)
-        self.assertEqual(sorted(numbers), [f"AO1026{value:02d}" for value in range(1, 7)])
+        self.assertEqual(sorted(numbers), [f"AO1026{value:03d}" for value in range(1, 7)])
         self.assertEqual(ManualPoNumberSequence.objects.get(scope="AO1026").last_value, 6)
         preview = preview_manual_po_number(aditi, ocm, date(2026, 10, 23))
-        self.assertEqual(preview, "AO102607")
+        self.assertEqual(preview, "AO1026007")

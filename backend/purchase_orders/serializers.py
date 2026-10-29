@@ -27,6 +27,7 @@ def _line_values(row: dict) -> dict:
         "product_description": (row.get("product_description") or "").strip(),
         "quantity": row["quantity"],
         "rate": row.get("rate"),
+        "rate_source": row.get("rate_source") or "",
         "shade": (row.get("shade") or "").strip(),
         "size": (row.get("size") or "").strip(),
         "unit": row.get("unit") or PurchaseOrderLine.Unit.PIECES,

@@ -323,13 +323,9 @@ class InvoiceSerializer(serializers.ModelSerializer):
                     }
                 )
             if row.get("rate") is None:
-                row["rate"] = po_line.rate
-            if row.get("rate") is None and po_line.product_id:
-                from price_lists.services import get_current_price
+                from price_lists.order_price import resolve_invoice_rate
 
-                entry = get_current_price(po_line.product_id, invoice_date)
-                if entry is not None:
-                    row["rate"] = entry.price_per_meter
+                row["rate"] = resolve_invoice_rate(po_line, invoice_date, None)
             if not row.get("product") and not (row.get("product_description") or "").strip():
                 row["product"] = po_line.product
                 row["product_description"] = po_line.product_description

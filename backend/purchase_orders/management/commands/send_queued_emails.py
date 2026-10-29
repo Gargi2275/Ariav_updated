@@ -12,11 +12,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         sweep_unknown()
-        if settings.EMAIL_MODE == "off":
+        if settings.EMAIL_MODE == "off" or not load_settings().enabled:
             self.stdout.write("Email sending is off. Queued rows were left queued.")
-            return
-        if settings.EMAIL_MODE == "live" and not load_settings().enabled:
-            self.stdout.write("Live email is switched off. Queued rows were left queued.")
             return
         batches = 0
         while True:

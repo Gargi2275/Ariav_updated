@@ -162,7 +162,7 @@ export const Customer360Screen: React.FC = () => {
     { header: 'Date', accessorKey: 'po_date', mono: true, width: '110px' },
     { header: 'Status', width: '150px', render: r => <StatusChip status={r.status === 'Cancelled' || r.status === 'Rejected' ? 'rejected' : 'pending'} label={r.status.toUpperCase()} /> },
     { header: 'Brand', accessorKey: 'brand_name' },
-    { header: 'Amount', align: 'right', mono: true, width: '120px', render: r => money(r.total_amount) },
+    { header: 'Ex-mill value', align: 'right', mono: true, width: '130px', render: r => money(r.total_amount) },
   ];
 
   const dispatchCols: Column<Customer360DispatchRow>[] = [

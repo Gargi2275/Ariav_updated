@@ -398,7 +398,7 @@ def commit_import(*, user, token: str, group_keys: list[str], year: int, season:
     created = []
     with transaction.atomic():
         for group in to_create:
-            price_list = PriceList.objects.create(brand_id=group["brand_id"], season_label=group["season_label"], valid_from=group["valid_from"], valid_to=group["valid_to"], status=PriceList.Status.DRAFT, created_by=user)
+            price_list = PriceList.objects.create(brand_id=group["brand_id"], season_label=group["season_label"], valid_from=group["valid_from"], valid_to=group["valid_to"], status=PriceList.Status.ACTIVE, created_by=user)
             for item in group["entries"]:
                 PriceListEntry.objects.create(price_list=price_list, product_id=item["product_id"], taka_length_meters=Decimal(item["taka_length_meters"]), price_basis=item["price_basis"], price_value=Decimal(item["price_value"]), taka_quantity=item["taka_quantity"], status=PriceListEntry.Status.ACTIVE)
             created.append({"id": price_list.id, "season_label": price_list.season_label, "entry_count": len(group["entries"])})

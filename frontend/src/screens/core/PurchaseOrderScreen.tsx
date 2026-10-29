@@ -21,7 +21,7 @@ import { BrandRow, brandsApi } from '../../services/brandsApi';
 import { CustomerRow, CustomerStatementSummary, customersApi, readCustomerListFilter } from '../../services/customersApi';
 import { EntityRow, entitiesApi } from '../../services/entitiesApi';
 import { ProductRow, productsApi } from '../../services/productsApi';
-import { priceListsApi } from '../../services/priceListsApi';
+import { exMillListCaption, priceListsApi } from '../../services/priceListsApi';
 import {
   PO_STATUSES,
   OPEN_PO_KEY,
@@ -390,7 +390,6 @@ export const PurchaseOrderScreen: React.FC = () => {
   const [emailFilter, setEmailFilter] = useState('');
   const [emailBadges, setEmailBadges] = useState<Record<string, EmailBadge>>({});
   const [emailMode, setEmailMode] = useState('');
-  const [emailTestRecipient, setEmailTestRecipient] = useState('');
   const [selectedPoIds, setSelectedPoIds] = useState<number[]>([]);
   const [emailComposerOpen, setEmailComposerOpen] = useState(false);
   const [orderTypeFilter, setOrderTypeFilter] = useState(() => (
@@ -566,7 +565,6 @@ export const PurchaseOrderScreen: React.FC = () => {
     poEmailApi.badges().then(result => {
       setEmailBadges(result.statuses);
       setEmailMode(result.mode);
-      setEmailTestRecipient(result.test_recipient);
     }).catch(() => undefined);
   }, [rows]);
   useEffect(() => {
@@ -1010,6 +1008,8 @@ export const PurchaseOrderScreen: React.FC = () => {
         product_id: undefined,
         product_description: '',
         rate: '',
+        listPrice: '',
+        listCaption: '',
       }
       : l));
     setFieldMessages(prev => clearFieldMessage(
@@ -1020,14 +1020,21 @@ export const PurchaseOrderScreen: React.FC = () => {
 
   const setLineProduct = async (key: string, productId: number, index: number, picked?: { id: number; product_code: string; product_name: string; rate: string | number; category_id?: number | null }) => {
     const product = picked ?? products.find(p => p.id === productId);
-    let rate = product ? String(product.rate) : '';
+    let rate = '';
+    let listPrice = '';
+    let listCaption = 'No Ex-mill price in an Active list';
     try {
       if (product) {
-        const current = await priceListsApi.currentPrice(product.id, form.po_date || undefined);
-        rate = String(current.price);
+        const quote = await priceListsApi.orderPrice({ productId: product.id, date: form.po_date || undefined });
+        const filled = exMillListCaption(quote);
+        rate = filled.price;
+        listPrice = filled.price;
+        listCaption = filled.caption;
       }
     } catch {
-      // Product rate remains the fallback when the optional price lookup is unavailable.
+      rate = '';
+      listPrice = '';
+      listCaption = 'No Ex-mill price in an Active list';
     }
     setLines(prev => prev.map(l => l.key === key
       ? {
@@ -1038,6 +1045,8 @@ export const PurchaseOrderScreen: React.FC = () => {
         category_id: product ? (product.category_id ?? undefined) : l.category_id,
         product_description: '',
         rate: product ? rate : l.rate,
+        listPrice: product ? listPrice : l.listPrice,
+        listCaption: product ? listCaption : l.listCaption,
       }
       : l));
     setFieldMessages(prev => clearFieldMessage(prev, `line_${index}_product`));
@@ -1159,7 +1168,7 @@ export const PurchaseOrderScreen: React.FC = () => {
     { header: 'Party', render: r => <span>{r.customer_name}</span> },
     { header: 'Brand', render: r => <span>{r.brand_name}</span> },
     { header: 'PO Date', accessorKey: 'po_date', sortable: true, mono: true, width: '110px' },
-    { header: 'Total', align: 'right', mono: true, width: '110px', render: r => money(r.total_amount) },
+    { header: 'Ex-mill value', align: 'right', mono: true, width: '130px', render: r => money(r.total_amount) },
     {
       header: 'Status',
       accessorKey: 'status',
@@ -1252,7 +1261,7 @@ export const PurchaseOrderScreen: React.FC = () => {
         }
       />
       {error && <MasterError message={error} onRetry={load} />}
-      <EmailModeBanner mode={emailMode} testRecipient={emailTestRecipient} />
+      <EmailModeBanner mode={emailMode} />
       {importReport && importReport.excluded.length > 0 && mode === 'list' && (
         <ImportExcludedReport excluded={importReport.excluded} onDismiss={() => setImportReport(null)} />
       )}
@@ -1741,7 +1750,7 @@ export const PurchaseOrderScreen: React.FC = () => {
                     <th className="px-3 py-2">Product</th>
                     <th className="px-3 py-2">Qty</th>
                     <th className="px-3 py-2">Unit</th>
-                    <th className="px-3 py-2 text-right">Rate</th>
+                    <th className="px-3 py-2 text-right">Price (Ex-mill)</th>
                     <th className="px-3 py-2 text-right">Line total</th>
                   </tr>
                 </thead>
@@ -1771,7 +1780,7 @@ export const PurchaseOrderScreen: React.FC = () => {
             <div className="flex justify-end gap-8 font-mono text-sm">
               <div>Qty {num(detail.total_quantity).toFixed(2)}</div>
               <div className="text-[var(--erp-gold)]">
-                {detail.priced_lines ? money(detail.total_amount) : '—'}
+                Ex-mill value {detail.priced_lines ? money(detail.total_amount) : '—'}
                 {detail.unpriced_lines ? <span className="ml-2 text-xs text-[var(--erp-muted)]">({detail.unpriced_lines} unpriced)</span> : null}
               </div>
             </div>

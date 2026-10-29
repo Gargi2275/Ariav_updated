@@ -17,6 +17,8 @@ export type LineDraft = {
   manualEntry: boolean;
   quantity: string;
   rate: string;
+  listPrice?: string;
+  listCaption?: string;
   shade?: string;
   size?: string;
   quantity_unit?: 'Pieces' | 'Meters';
@@ -151,7 +153,7 @@ export const PurchaseOrderLineItems: React.FC<PurchaseOrderLineItemsProps> = ({
               {productCategory ? <div role="columnheader" className="px-1.5"><span className="block px-3">Category<RequiredMark /></span></div> : null}
               <div role="columnheader" className="px-1.5"><span className="block px-3">Product<RequiredMark /></span></div>
               <div role="columnheader" className="px-1.5 text-right"><span className="block px-3">Qty<RequiredMark /></span></div>
-              <div role="columnheader" className="px-1.5 text-right"><span className="block px-3">Rate</span></div>
+              <div role="columnheader" className="px-1.5 text-right"><span className="block px-3">Price (Ex-mill)</span></div>
               <div role="columnheader" className="px-1.5 text-right"><span className="block px-3">Line total</span></div>
               <div role="columnheader"><span className="sr-only">Remove</span></div>
             </div>
@@ -349,7 +351,7 @@ export const PurchaseOrderLineItems: React.FC<PurchaseOrderLineItemsProps> = ({
 
                   <div role="cell" className="@2xl:px-1.5 min-w-0">
                     <label htmlFor={ids.rate} className={`${mobileLabel} @2xl:hidden`}>
-                      Rate
+                      Price (Ex-mill)
                     </label>
                     {readOnly ? (
                       <div className="h-12 flex items-center justify-end px-3 rounded-md border border-[var(--erp-hairline-strong)] text-[15px] text-[var(--erp-text)] font-mono tabular-nums">
@@ -368,7 +370,13 @@ export const PurchaseOrderLineItems: React.FC<PurchaseOrderLineItemsProps> = ({
                       className={`${inputBase} ${borderFor(!!msg.rate)} text-right font-mono tabular-nums`}
                     />}
                     <FieldError id={`${ids.rate}-error`} message={msg.rate} numeric />
-                    {showRateUnset ? (
+                    {line.listCaption ? (
+                      <p className="mt-1.5 text-right text-[12px] text-[var(--erp-muted)]">{line.listCaption}</p>
+                    ) : null}
+                    {line.listPrice && line.rate.trim() && Math.abs(num(line.rate) - num(line.listPrice)) > 0.001 ? (
+                      <p className="mt-0.5 text-right text-[12px] text-[var(--erp-muted)]">Differs from Ex-mill list price</p>
+                    ) : null}
+                    {showRateUnset && !line.listCaption ? (
                       <p id={`${ids.rate}-unset`} className="mt-1.5 flex items-center justify-end gap-1 text-[12.5px] text-[var(--erp-muted)]">
                         Optional
                       </p>

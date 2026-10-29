@@ -2,13 +2,16 @@ from __future__ import annotations
 
 """Manual purchase-order numbers.
 
-Format is BBMMYYNN (8 characters):
+Format is BBMMYYNNN (9 characters):
 
 - B: first letter of the branch code, or the branch name when the code has no letter
 - B: first letter of the brand code, or the brand name when the code has no letter
 - MM: month from the business timezone (Asia/Kolkata), 01-12
 - YY: last two digits of that year
-- NN: sequence 01-99 for that prefix, month, and year
+- NNN: sequence 001-999 for that prefix, month, and year
+
+Numbers issued earlier in the 8-character form (two-digit sequence) still count as
+taken, so the sequence continues after them.
 
 The sequence is the counter row, not the count of purchase orders still in the
 database. A number is issued only when the purchase-order insert commits in the
@@ -25,7 +28,9 @@ from django.utils import timezone
 
 from .models import ManualPoNumberSequence, PurchaseOrder
 
-SEQUENCE_LIMIT = 99
+SEQUENCE_LIMIT = 999
+SEQUENCE_DIGITS = 3
+LIMIT_MESSAGE = "All 999 purchase order numbers for this branch, brand, and month have been issued."
 
 
 class ManualPoNumberError(Exception):
@@ -62,7 +67,7 @@ def _issued_sequences(scope: str) -> set[int]:
     found = set()
     for number in PurchaseOrder.objects.filter(po_number__istartswith=scope).values_list("po_number", flat=True):
         normalized = (number or "").strip().upper()
-        if len(normalized) == 8 and normalized.startswith(scope) and normalized[6:].isdigit():
+        if len(normalized) in (8, 9) and normalized.startswith(scope) and normalized[6:].isdigit():
             found.add(int(normalized[6:]))
     return found
 
@@ -89,7 +94,7 @@ def _next_free(scope: str, start: int) -> str | None:
     candidate = start
     while candidate <= SEQUENCE_LIMIT:
         if candidate not in taken:
-            return f"{scope}{candidate:02d}"
+            return f"{scope}{candidate:0{SEQUENCE_DIGITS}d}"
         candidate += 1
     return None
 
@@ -102,10 +107,7 @@ def preview_manual_po_number(entity, brand, on: date | None = None) -> str:
     start = (row.last_value if row is not None else _highest_issued(scope)) + 1
     number = _next_free(scope, start)
     if number is None:
-        raise ManualPoNumberError(
-            "po_number",
-            "All 99 purchase order numbers for this branch, brand, and month have been issued.",
-        )
+        raise ManualPoNumberError("po_number", LIMIT_MESSAGE)
     return number
 
 
@@ -122,10 +124,7 @@ def allocate_manual_po_number(entity, brand, on: date | None = None) -> str:
             continue
         row.last_value = candidate
         row.save(update_fields=["last_value", "updated_at"])
-        return f"{scope}{candidate:02d}"
+        return f"{scope}{candidate:0{SEQUENCE_DIGITS}d}"
     row.last_value = SEQUENCE_LIMIT
     row.save(update_fields=["last_value", "updated_at"])
-    raise ManualPoNumberError(
-        "po_number",
-        "All 99 purchase order numbers for this branch, brand, and month have been issued.",
-    )
+    raise ManualPoNumberError("po_number", LIMIT_MESSAGE)

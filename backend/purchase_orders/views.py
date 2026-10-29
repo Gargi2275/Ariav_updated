@@ -300,14 +300,22 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     def form_qualities(self, request):
         from price_lists.models import BrandQualityPrice, PriceList
 
+        from datetime import date
+
+        from django.utils.dateparse import parse_date
+
+        from price_lists.order_price import MISSING_EX_MILL, quote_for_product
+
         brand_id = (request.query_params.get("brand_id") or "").strip()
         if not brand_id.isdigit():
             return Response({"brand_id": "Choose a brand."}, status=status.HTTP_400_BAD_REQUEST)
         query = (request.query_params.get("q") or "").strip()
+        on = parse_date(request.query_params.get("date") or "") or date.today()
         rows = BrandQualityPrice.objects.select_related("product", "price_list").filter(
             price_list__brand_id=brand_id,
             price_list__status__in=[PriceList.Status.ACTIVE, PriceList.Status.DRAFT],
-        )
+            price_list__valid_from__lte=on,
+        ).filter(Q(price_list__valid_to__isnull=True) | Q(price_list__valid_to__gte=on))
         if query:
             rows = rows.annotate(
                 short_code=Concat(
@@ -332,15 +340,21 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         for row in rows.order_by("quality_code")[:50]:
             short = "-".join(part for part in (row.quality_prefix, row.quality_number) if part)
             shades = [part.strip() for part in (row.shades_raw or "").replace(";", ",").split(",") if part.strip()]
-            price = row.wholesale if row.wholesale is not None else row.ex_mill
+            active_ex_mill = row.price_list.status == PriceList.Status.ACTIVE and row.ex_mill is not None
+            listed = money(row.ex_mill) if active_ex_mill else None
             payload.append({
                 "quality_code": row.quality_code,
                 "quality_label": short or row.quality_code,
                 "shades": shades,
-                "price": money(price),
-                "ex_mill": money(row.ex_mill),
-                "wholesale": money(row.wholesale),
-                "retail": money(row.retail),
+                "price": listed,
+                "ex_mill": listed,
+                "list_name": row.price_list.season_label if listed else "",
+                "effective_from": row.price_list.valid_from.isoformat() if listed else None,
+                "rate_source": (
+                    f"Ex-mill, {row.price_list.season_label}, w.e.f {row.price_list.valid_from.strftime('%d.%m.%Y')}"
+                    if listed else ""
+                ),
+                "price_reason": "" if listed else MISSING_EX_MILL,
                 "collection": row.collection_name or "",
                 "product_id": row.product_id,
                 "product_code": row.product.product_code if row.product_id else "",
@@ -355,21 +369,51 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         for product in products.order_by("product_code")[:30]:
             if product.id in linked:
                 continue
-            wholesale = product.frate if product.frate is not None else None
+            quote = quote_for_product(product.id, on)
+            listed = None if quote is None else money(quote["price"])
             payload.append({
                 "quality_code": product.product_code,
                 "quality_label": product.product_code,
                 "shades": [],
-                "price": money(wholesale if wholesale is not None else product.rate),
-                "ex_mill": money(product.rate),
-                "wholesale": money(wholesale),
-                "retail": money(product.trate),
+                "price": listed,
+                "ex_mill": listed,
+                "list_name": "" if quote is None else quote["list_name"],
+                "effective_from": None if quote is None else quote["effective_from"].isoformat(),
+                "rate_source": "" if quote is None else quote["rate_source"],
+                "price_reason": "" if quote else MISSING_EX_MILL,
                 "collection": product.collection or "",
                 "product_id": product.id,
                 "product_code": product.product_code,
                 "product_name": product.product_name,
             })
-        return Response(payload)
+        grouped = {}
+        order = []
+        for item in payload:
+            key = item["quality_label"]
+            if key not in grouped:
+                grouped[key] = []
+                order.append(key)
+            grouped[key].append(item)
+        merged = []
+        for key in order:
+            bucket = grouped[key]
+            priced = [item for item in bucket if item["price"]]
+            base = dict(priced[0] if len(priced) == 1 else bucket[0])
+            shades = []
+            for item in bucket:
+                for shade in item["shades"]:
+                    if shade not in shades:
+                        shades.append(shade)
+            if len(priced) != 1:
+                base["price"] = None
+                base["ex_mill"] = None
+                base["list_name"] = ""
+                base["effective_from"] = None
+                base["rate_source"] = ""
+                base["price_reason"] = MISSING_EX_MILL
+            base["shades"] = shades
+            merged.append(base)
+        return Response(merged)
 
     @action(detail=True, methods=["get"], url_path="dispatch-excel")
     def dispatch_excel(self, request, pk=None):
@@ -395,6 +439,9 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             format_id = (request.data.get("format_id") or "").strip() or None
             preview = build_preview(upload.read(), entity, brand, format_id)
             preview["file_name"] = getattr(upload, "name", "")
+            from price_lists.order_price import stamp_preview
+
+            stamp_preview(preview, brand.id)
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
         token = store_preview(request.user.id, preview)

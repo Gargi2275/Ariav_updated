@@ -15,6 +15,7 @@ export const EmailSettingsScreen: React.FC = () => {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmEnable, setConfirmEnable] = useState(false);
+  const [appPassword, setAppPassword] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -27,7 +28,8 @@ export const EmailSettingsScreen: React.FC = () => {
           return { ok: false, detail: message, mode: 'off' as const, configured: false, test_recipient: '' };
         }),
       ]);
-      setSettings(row);
+      setSettings({ ...row, smtp_password: '' });
+      setAppPassword('');
       setConnection(link.ok ? 'Connection OK.' : link.detail || 'Connection failed.');
     } catch (err) {
       setError(notifyApiError(err, 'Could not load email settings.').message);
@@ -41,8 +43,11 @@ export const EmailSettingsScreen: React.FC = () => {
   const save = async (next: EmailSettings) => {
     setSaving(true);
     try {
-      const saved = await poEmailApi.saveSettings(next);
-      setSettings(saved);
+      const saved = await poEmailApi.saveSettings({ ...next, smtp_password: appPassword });
+      setSettings({ ...saved, smtp_password: '' });
+      setAppPassword('');
+      const link = await poEmailApi.connection().catch(() => null);
+      if (link) setConnection(link.ok ? 'Connection OK.' : link.detail || 'Connection failed.');
       notifySuccess('Email settings saved.');
     } catch (err) {
       notifyApiError(err, 'Could not save email settings.');
@@ -70,10 +75,10 @@ export const EmailSettingsScreen: React.FC = () => {
       <section className="border border-[var(--erp-hairline-strong)] bg-[var(--erp-surface)] p-4 space-y-3">
         <h2 className="font-display text-base font-bold flex items-center gap-2"><Mail className="w-4 h-4 text-[var(--erp-gold)]" />Transport</h2>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-          <div><dt className="font-mono uppercase text-[10px] text-[var(--erp-muted)]">Mode</dt><dd className="mt-1 text-[var(--erp-text)]">{settings.mode}</dd></div>
+          <div><dt className="font-mono uppercase text-[10px] text-[var(--erp-muted)]">Mailbox</dt><dd className="mt-1 text-[var(--erp-text)]">{settings.smtp_user || 'Not saved'}</dd></div>
           <div><dt className="font-mono uppercase text-[10px] text-[var(--erp-muted)]">Connection</dt><dd className="mt-1 text-[var(--erp-text)]">{connection}</dd></div>
-          <div><dt className="font-mono uppercase text-[10px] text-[var(--erp-muted)]">Password configured</dt><dd className="mt-1 text-[var(--erp-text)]">{settings.configured ? 'Yes' : 'No'}</dd></div>
-          <div><dt className="font-mono uppercase text-[10px] text-[var(--erp-muted)]">From address configured</dt><dd className="mt-1 text-[var(--erp-text)]">{settings.from_configured ? 'Yes' : 'No'}</dd></div>
+          <div><dt className="font-mono uppercase text-[10px] text-[var(--erp-muted)]">App password saved</dt><dd className="mt-1 text-[var(--erp-text)]">{settings.configured ? 'Yes' : 'No'}</dd></div>
+          <div><dt className="font-mono uppercase text-[10px] text-[var(--erp-muted)]">From address</dt><dd className="mt-1 text-[var(--erp-text)]">{settings.from_email || 'Not saved'}</dd></div>
         </dl>
       </section>
       <form
@@ -92,6 +97,11 @@ export const EmailSettingsScreen: React.FC = () => {
           Live sending enabled
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <TextInput label="Mailbox email" value={settings.smtp_user || ''} onChange={event => setSettings({ ...settings, smtp_user: event.target.value })} />
+          <TextInput label="App password" type="password" autoComplete="new-password" value={appPassword} placeholder={settings.configured ? 'Leave blank to keep the saved password' : 'Paste the app password'} onChange={event => setAppPassword(event.target.value)} />
+          <TextInput label="Mail host" value={settings.smtp_host || ''} onChange={event => setSettings({ ...settings, smtp_host: event.target.value })} />
+          <TextInput label="Port" mono value={String(settings.smtp_port || 587)} onChange={event => setSettings({ ...settings, smtp_port: Number(event.target.value) || 587 })} />
+          <TextInput label="From address" value={settings.from_email || ''} onChange={event => setSettings({ ...settings, from_email: event.target.value })} />
           <TextInput label="From name" value={settings.from_name} onChange={event => setSettings({ ...settings, from_name: event.target.value })} />
           <TextInput label="Default reply-to" value={settings.reply_to_default} onChange={event => setSettings({ ...settings, reply_to_default: event.target.value })} />
           <TextInput label="Daily cap" mono value={String(settings.daily_cap)} onChange={event => setSettings({ ...settings, daily_cap: Number(event.target.value) || 0 })} />
@@ -115,7 +125,7 @@ export const EmailSettingsScreen: React.FC = () => {
         </label>
         <div className="flex gap-2">
           <button type="submit" disabled={saving} className="h-9 px-3 bg-[var(--erp-gold)] text-[#1B2430] text-xs font-semibold disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
-          <button type="button" onClick={() => void sendTest()} className="h-9 px-3 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold">Send test email to me</button>
+          <button type="button" onClick={() => void sendTest()} className="h-9 px-3 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold">Send test email to this mailbox</button>
         </div>
       </form>
       <ConfirmDialog
@@ -123,7 +133,7 @@ export const EmailSettingsScreen: React.FC = () => {
         entityType="email"
         entityLabel="live sending"
         title="Enable live email?"
-        message="Live mode will deliver purchase-order emails to the brand recipients when the server mode is live."
+        message="Purchase-order emails will go to the brand recipients saved on each brand."
         confirmLabel="Enable"
         confirmTone="gold"
         onCancel={() => setConfirmEnable(false)}

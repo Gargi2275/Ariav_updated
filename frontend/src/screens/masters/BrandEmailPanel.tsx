@@ -56,13 +56,12 @@ const AddressField: React.FC<{ label: string; values: string[]; onChange: (next:
 export const BrandEmailPanel: React.FC<{ brandId: number }> = ({ brandId }) => {
   const [form, setForm] = useState<BrandEmailConfig | null>(null);
   const [mode, setMode] = useState('');
-  const [testRecipient, setTestRecipient] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let live = true;
     poEmailApi.brand(brandId).then(row => { if (live) setForm(row); }).catch(err => notifyApiError(err, 'Could not load brand email.'));
-    poEmailApi.badges().then(row => { if (live) { setMode(row.mode); setTestRecipient(row.test_recipient); } }).catch(() => undefined);
+    poEmailApi.badges().then(row => { if (live) setMode(row.mode); }).catch(() => undefined);
     return () => { live = false; };
   }, [brandId]);
 
@@ -72,7 +71,7 @@ export const BrandEmailPanel: React.FC<{ brandId: number }> = ({ brandId }) => {
 
   return (
     <div className="space-y-4">
-      <EmailModeBanner mode={mode} testRecipient={testRecipient} />
+      <EmailModeBanner mode={mode} />
       {chips('To', form.to_addresses, values => setForm({ ...form, to_addresses: values }))}
       {chips('CC', form.cc_addresses, values => setForm({ ...form, cc_addresses: values }))}
       {chips('BCC', form.bcc_addresses, values => setForm({ ...form, bcc_addresses: values }))}

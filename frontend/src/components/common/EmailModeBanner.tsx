@@ -1,14 +1,10 @@
 import React from 'react';
-import type { EmailMode } from '../../services/poEmailApi';
 
-export const EmailModeBanner: React.FC<{ mode?: EmailMode | string; testRecipient?: string }> = ({ mode, testRecipient }) => {
+export const EmailModeBanner: React.FC<{ mode?: string; testRecipient?: string }> = ({ mode }) => {
   if (!mode || mode === 'live') return null;
-  const text = mode === 'test'
-    ? `Test mode: emails go to ${testRecipient || 'the test recipient'}.`
-    : 'Email sending is off.';
   return (
     <p className="border border-[var(--erp-gold)] bg-[var(--erp-gold)]/10 px-3 py-2 text-xs text-[var(--erp-text)]">
-      {text}
+      Email sending is off. Save the mailbox, then turn on live sending.
     </p>
   );
 };

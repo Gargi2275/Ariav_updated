@@ -243,7 +243,7 @@ function AdminPosition({
   return (
     <>
       <section aria-label="Primary position" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <Kpi icon={<IndianRupee className="h-4 w-4" />} label="Total order booking" value={k.order_booking == null ? '—' : money(k.order_booking)} detail={k.order_booking == null ? 'Not available from this response' : 'Purchase-order line value in this period, excluding cancelled and rejected orders'} onClick={() => navigateTo(40)} action="Purchase orders" />
+        <Kpi icon={<IndianRupee className="h-4 w-4" />} label="Ex-mill value" value={k.order_booking == null ? '—' : money(k.order_booking)} detail={k.order_booking == null ? 'Not available from this response' : 'Purchase-order line value in this period, excluding cancelled and rejected orders'} onClick={() => navigateTo(40)} action="Purchase orders" />
         <Kpi icon={<Wallet className="h-4 w-4" />} label="Collections" value={money(k.total_collections)} detail="Payment receipts in this period" onClick={() => navigateTo(43)} action="Payments" />
         <Kpi icon={<Users className="h-4 w-4" />} label="Outstanding receivables" value={money(k.total_outstanding)} detail="Live unpaid invoice balance" onClick={() => navigateTo(44)} action="Party ledger" />
         <Kpi icon={<AlertCircle className="h-4 w-4" />} label="Overdue receivables" value={money(k.total_overdue)} detail="Live balance past the due date" onClick={() => navigateTo(44)} action="Party ledger" warn={num(k.total_overdue) > 0} />
@@ -261,10 +261,10 @@ function AdminPosition({
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Panel title="Period flows" note="Order booking is purchase-order line value. Collections are payment receipts. Issued invoice value is shown separately and is not added into booking.">
+        <Panel title="Period flows" note="Ex-mill value is purchase-order line value. Collections are payment receipts. Issued invoice value is shown separately and is not added into that value.">
           <BarList
             rows={[
-              ...(k.order_booking == null ? [] : [{ key: 'booking', label: 'Order booking', value: num(k.order_booking), display: money(k.order_booking), color: 'var(--erp-gold)', onClick: () => navigateTo(40) }]),
+              ...(k.order_booking == null ? [] : [{ key: 'booking', label: 'Ex-mill value', value: num(k.order_booking), display: money(k.order_booking), color: 'var(--erp-gold)', onClick: () => navigateTo(40) }]),
               { key: 'collections', label: 'Collections', value: num(k.total_collections), display: money(k.total_collections), color: 'var(--erp-positive)', onClick: () => navigateTo(43) },
             ]}
             empty="No data for this period."

@@ -30,6 +30,10 @@ export interface EmailTransport {
   configured: boolean;
   test_recipient: string;
   from_configured?: boolean;
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_user?: string;
+  from_email?: string;
 }
 
 export interface EmailSettings extends EmailTransport {
@@ -40,6 +44,7 @@ export interface EmailSettings extends EmailTransport {
   per_minute_cap: number;
   require_preview: boolean;
   after_send_status_action: 'none' | 'ask' | 'mark_sent_to_brand';
+  smtp_password?: string;
 }
 
 export interface BrandEmailConfig {

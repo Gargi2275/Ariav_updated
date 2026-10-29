@@ -195,7 +195,7 @@ def build_po_pdf(po: PurchaseOrder, include_rates: bool = True) -> bytes:
     story.append(party_table)
     story.append(Spacer(1, 10))
 
-    header = ["#", "Product Code", "Product Name", "Qty", "Unit", "Rate", "Line Total"]
+    header = ["#", "Product Code", "Product Name", "Qty", "Unit", "Price (Ex-mill)", "Line Total"]
     data = [header]
     qty_total = 0
     amt_total = 0

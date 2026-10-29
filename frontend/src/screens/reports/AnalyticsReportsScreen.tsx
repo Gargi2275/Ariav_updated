@@ -146,7 +146,7 @@ function ReportBody({ tab, payload }: { tab: ReportTab; payload: unknown }) {
           kind="bar"
           labels={rows.map(r => r.month)}
           series={[
-            { key: 'po', label: 'PO value', color: COLORS[0], values: po },
+            { key: 'po', label: 'Ex-mill value', color: COLORS[0], values: po },
             { key: 'sales', label: 'Sales (invoiced)', color: COLORS[1], values: sales },
           ]}
           empty={allZero(po) && allZero(sales)}

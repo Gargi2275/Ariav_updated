@@ -684,7 +684,7 @@ def commit_osm_pdf_import(*, user, token, branch_id, brand_id, year, season):
             tax_note=preview["tax_note"],
             unit_text=preview["unit_text"],
             packing_note=preview["packing_note"],
-            status=PriceList.Status.DRAFT,
+            status=PriceList.Status.ACTIVE,
             created_by=user,
         )
         batch = PriceListImportBatch.objects.create(

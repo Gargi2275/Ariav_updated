@@ -453,7 +453,7 @@ def _draw_stationery(canvas, po, profile, font, blocks, page_no, page_count, loo
         ("ASSORTMENT", ""),
         ("Size", ""),
         ("PIECES/", "METERS"),
-        ("Price", ""),
+        ("Price", "(Ex-mill)"),
         ("", ""),
         ("", ""),
         ("Remarks", ""),

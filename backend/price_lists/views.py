@@ -79,6 +79,12 @@ class PriceListViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    @action(detail=False, methods=["get"], url_path="order-price")
+    def order_price(self, request):
+        from .order_price import public_order_price
+
+        return Response(public_order_price(request.query_params))
+
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         price_list = self.get_queryset().get(pk=response.data["id"])

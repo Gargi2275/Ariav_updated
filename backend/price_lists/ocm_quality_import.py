@@ -529,7 +529,7 @@ def build_quality_preview(file_bytes, *, file_name, branch_id, brand_id, year=No
             preview["warnings"].append({"code": code, "message": f"{message} ({', '.join(map(str, preview['hidden_data'][kind]))}).", "count": len(preview["hidden_data"][kind]), "examples": preview["hidden_data"][kind][:3]})
     active = PriceList.objects.filter(brand=brand, status=PriceList.Status.ACTIVE, valid_from__lte=preview["valid_to"], valid_to__gte=preview["valid_from"]).first()
     if active:
-        preview["warnings"].append({"code": "PL_ACTIVE_OVERLAP", "message": f"This {brand.brand_name} import ({preview['title']}, {preview['valid_from']} to {preview['valid_to']}) overlaps the Active list {active.season_label} ({active.valid_from} to {active.valid_to}, status Active). Importing creates a Draft and does not change the Active list until it is activated.", "count": 1, "examples": []})
+        preview["warnings"].append({"code": "PL_ACTIVE_OVERLAP", "message": f"This {brand.brand_name} import ({preview['title']}, {preview['valid_from']} to {preview['valid_to']}) overlaps the Active list {active.season_label} ({active.valid_from} to {active.valid_to}, status Active). The uploaded list is saved as Active and does not change the other list.", "count": 1, "examples": []})
     preview["warning_summary"] = _reason_summary(preview["entries"], "warning")
     preview["error_summary"] = _reason_summary(preview["entries"], "error")
     preview["info_summary"] = _reason_summary(preview["entries"], "info")
@@ -572,7 +572,7 @@ def commit_quality_import(*, user, token, branch_id, brand_id, confirmed_warning
     with transaction.atomic():
         price_list = PriceList.objects.create(
             brand=brand, season_label=preview["title"], valid_from=date.fromisoformat(preview["valid_from"]),
-            valid_to=date.fromisoformat(preview["valid_to"]), status=PriceList.Status.DRAFT, created_by=user,
+            valid_to=date.fromisoformat(preview["valid_to"]), status=PriceList.Status.ACTIVE, created_by=user,
         )
         batch = PriceListImportBatch.objects.create(
             price_list=price_list, brand=brand, format_id=FORMAT_ID, file_name=preview["file_name"],

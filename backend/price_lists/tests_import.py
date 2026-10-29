@@ -109,16 +109,16 @@ class PriceListImportApiTests(TestCase):
         self.assertTrue(any("exists under Brand Brand Two, not Brand Brand One" in reason for reason in reasons))
         self.assertTrue(any("Invalid Price Basis" in reason for reason in reasons))
 
-    def test_commit_creates_draft_and_rerun_excludes_existing(self):
+    def test_commit_creates_active_and_rerun_excludes_existing(self):
         preview = self.preview([self.valid_row()]).json()
         commit = self.client.post("/api/price-lists/import/commit/", {"preview_token": preview["preview_token"], "group_keys": [preview["importable"][0]["import_key"]], "year": 2026, "season": "Winter", "branch_id": self.branch.id, "brand_id": self.brand.id}, format="json")
         self.assertEqual(commit.status_code, 201, commit.content)
         self.assertEqual(PriceList.objects.count(), 1)
-        self.assertEqual(PriceList.objects.first().status, PriceList.Status.DRAFT)
+        self.assertEqual(PriceList.objects.first().status, PriceList.Status.ACTIVE)
         self.assertEqual(PriceListEntry.objects.count(), 1)
         rerun = self.preview([self.valid_row()]).json()
         self.assertEqual(rerun["importable"], [])
-        self.assertIn("A Winter 2026 list for Brand One already exists (Draft)", rerun["excluded"][0]["reason"])
+        self.assertIn("A Winter 2026 list for Brand One already exists (Active)", rerun["excluded"][0]["reason"])
 
     def test_selected_season_ranges_and_optional_file_columns(self):
         summer = self.preview([self.valid_row(season="", **{"from": None, "to": None})], season="Summer").json()

@@ -232,6 +232,8 @@ class OrderFormPdfTests(TestCase):
         plain, _response = self._text(po_id)
         formed, _response = self._text(po_id, form=1, copy="mill")
         self.assertIn("PURCHASE ORDER", plain)
+        self.assertIn("Price (Ex-mill)", plain)
+        self.assertIn("Ex-mill", formed)
         self.assertIn("Digital Cloth", plain)
         self.assertNotIn("Dear Sir(s)", plain)
         self.assertNotIn("Dear Sir(s)", formed)
@@ -259,6 +261,7 @@ class OrderFormPdfTests(TestCase):
         self.assertIn("Dear Sir(s)", text)
         self.assertIn("OCM Private Limited", text)
         self.assertIn("MILL'S COPY", text)
+        self.assertIn("Ex-mill", text)
 
     def test_form_qualities_for_active_price_list(self):
         response = self.client.get(
@@ -299,10 +302,11 @@ class OrderFormPdfTests(TestCase):
         )
         self.assertEqual(ambassador.status_code, 200, ambassador.content)
         chosen = next(row for row in ambassador.json() if row["quality_label"] == "AMB-0055104")
-        self.assertEqual(chosen["price"], "1319.00")
-        self.assertEqual(chosen["wholesale"], "1319.00")
+        self.assertEqual(chosen["price"], "999.00")
         self.assertEqual(chosen["ex_mill"], "999.00")
-        self.assertEqual(chosen["retail"], "1888.00")
+        self.assertNotIn("wholesale", chosen)
+        self.assertNotIn("retail", chosen)
+        self.assertIn("Ex-mill", chosen["rate_source"])
 
     def test_duplicate_shade_rejected_and_reopen_matches(self):
         lines = self._lines(1, ["RED", "BLUE"])

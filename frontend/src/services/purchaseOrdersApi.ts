@@ -286,8 +286,10 @@ export interface FormQuality {
   shades: string[];
   price: string | null;
   ex_mill?: string | null;
-  wholesale?: string | null;
-  retail?: string | null;
+  list_name?: string;
+  effective_from?: string | null;
+  rate_source?: string;
+  price_reason?: string;
   collection?: string;
   product_id: number | null;
   product_code: string;
@@ -382,8 +384,8 @@ export const purchaseOrdersApi = {
     }),
   nextNumber: (entityId: number, brandId: number) =>
     request<{ po_number: string }>(`/api/purchase-orders/next-number/${qs({ entity_id: entityId, brand_id: brandId })}`),
-  formQualities: (brandId: number, q = '') =>
-    request<FormQuality[]>(`/api/purchase-orders/form-qualities/${qs({ brand_id: brandId, q })}`),
+  formQualities: (brandId: number, q = '', date = '') =>
+    request<FormQuality[]>(`/api/purchase-orders/form-qualities/${qs({ brand_id: brandId, q, date: date || undefined })}`),
   pdf: async (id: number, params: { form?: boolean; copy?: string; blank?: boolean } = {}): Promise<Blob> => {
     const token = localStorage.getItem('ariav_auth_token');
     const res = await fetch(apiUrl(`/api/purchase-orders/${id}/pdf/${qs({

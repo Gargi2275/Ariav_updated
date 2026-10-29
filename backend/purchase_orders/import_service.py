@@ -450,6 +450,9 @@ def commit_import(*, user, token: str, entity_id: int, brand_id: int, order_nos:
         raise ValidationError({"detail": "Preview has expired or was not found. Run preview again before committing."})
     if int(cached["entity_id"]) != int(entity_id) or int(cached["brand_id"]) != int(brand_id):
         raise ValidationError({"detail": "Import context does not match the preview."})
+    from price_lists.order_price import stamp_preview
+
+    stamp_preview(cached, brand_id)
     legacy_commit = decisions is None
     decisions = decisions or {}
     stored_parties = {item["code"]: item for item in cached.get("unmatched_parties", [])}
@@ -577,7 +580,8 @@ def commit_import(*, user, token: str, entity_id: int, brand_id: int, order_nos:
                 "product": None,
                 "product_description": line["description"],
                 "quantity": Decimal(line["quantity"]),
-                "rate": Decimal(line["rate"]) if line.get("rate") is not None else None,
+                "rate": Decimal(line["rate"]) if line.get("rate") not in (None, "") else None,
+                "rate_source": line.get("rate_source") or "",
                 "expected_delivery_period": line.get("expected_delivery_period", ""),
                 "customer_delivery_date": line.get("customer_delivery_date"),
                 "extra_data": line.get("extra_data", {}),
