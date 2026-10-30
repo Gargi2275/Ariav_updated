@@ -64,6 +64,11 @@ export interface DispatchLineRow {
   total_dispatched: string | number;
   pending_quantity: string | number;
   dispatched_meters?: string | number | null;
+  quality?: string;
+  shade?: string;
+  size?: string;
+  quantity_unit?: string;
+  rate?: string | number | null;
 }
 
 export interface DispatchRow {
@@ -73,6 +78,12 @@ export interface DispatchRow {
   po_entity_code: string;
   po_entity_name: string;
   purchase_order_status: string;
+  brand_order_code?: string | null;
+  customer_code?: string;
+  customer_name?: string;
+  entity_code?: string;
+  entity_name?: string;
+  brand_name?: string;
   dispatch_date: string;
   lr_number: string;
   transporter: string;

@@ -22,7 +22,13 @@ from .services import sync_purchase_order_dispatch_status
 
 class DispatchViewSet(viewsets.ModelViewSet):
     queryset = (
-        Dispatch.objects.select_related("purchase_order", "created_by")
+        Dispatch.objects.select_related(
+            "purchase_order",
+            "purchase_order__customer",
+            "purchase_order__entity",
+            "purchase_order__brand",
+            "created_by",
+        )
         .prefetch_related(
             "lines__purchase_order_line__product",
             "lines__purchase_order_line__dispatch_lines",

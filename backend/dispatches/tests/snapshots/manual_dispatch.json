@@ -1,10 +1,16 @@
 {
   "body": {
+    "brand_name": "OCM",
+    "brand_order_code": null,
     "challan_reference": "MANUAL-INV",
     "created_at": "<timestamp>",
     "created_by": "<id>",
     "created_by_name": "dsp-imp-admin",
+    "customer_code": "DSP-C1",
+    "customer_name": "Dispatch Trading",
     "dispatch_date": "2026-09-17",
+    "entity_code": "ADT",
+    "entity_name": "Aditi",
     "id": "<id>",
     "lines": [
       {
@@ -16,6 +22,11 @@
         "product_code": "",
         "product_name": "A-B-C-T-S",
         "purchase_order_line_id": "<id>",
+        "quality": "A-B-C-T-S",
+        "quantity_unit": "Pieces",
+        "rate": "10.00",
+        "shade": "",
+        "size": "",
         "total_dispatched": "1.00",
         "unit": ""
       }

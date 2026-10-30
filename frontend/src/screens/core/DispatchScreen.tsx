@@ -82,7 +82,12 @@ export const DispatchScreen: React.FC = () => {
       width: '88px',
       render: r => (
         <div className="flex justify-end gap-1">
-          <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" title="View" onClick={() => setDetail(r)}><Eye className="w-3.5 h-3.5" /></button>
+          <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-gold)] cursor-pointer" title="View" onClick={() => {
+            setDetail(r);
+            void dispatchesApi.retrieve(r.id)
+              .then(fresh => setDetail(current => (current && current.id === fresh.id ? fresh : current)))
+              .catch(() => undefined);
+          }}><Eye className="w-3.5 h-3.5" /></button>
           {canDelete && (
             <button type="button" className="p-1 text-[var(--erp-muted)] hover:text-[var(--erp-negative)] cursor-pointer" title="Delete dispatch" onClick={() => setPendingDelete(r)}><Trash2 className="w-3.5 h-3.5" /></button>
           )}
@@ -160,7 +165,7 @@ export const DispatchScreen: React.FC = () => {
 
       {detail && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-4">
+          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)] p-6 space-y-4">
             <div className="flex justify-between items-start border-b border-[var(--erp-hairline)] pb-3">
               <div>
                 <h3 className="font-display text-lg font-bold flex items-center gap-2"><Truck className="w-4 h-4 text-[var(--erp-gold)]" />{detail.lr_number}</h3>
@@ -181,22 +186,60 @@ export const DispatchScreen: React.FC = () => {
               </div>
               <button type="button" onClick={() => setDetail(null)}><X className="w-4 h-4" /></button>
             </div>
-            <table className="w-full text-left text-xs border border-[var(--erp-hairline)]">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
+              {[
+                ['Party', detail.customer_name ? `${detail.customer_code} · ${detail.customer_name}` : ''],
+                ['Branch', detail.entity_code ? `${detail.entity_code} · ${detail.entity_name}` : ''],
+                ['Brand', detail.brand_name || ''],
+                ['PO status', detail.purchase_order_status],
+                ['Official order', detail.brand_order_code || ''],
+                ['Mill invoice / challan', detail.challan_reference],
+                ['LR number', detail.lr_number],
+                ['LR date', detail.dispatch_date],
+                ['Transporter', detail.transporter],
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <dt className="font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">{label}</dt>
+                  <dd className="mt-0.5 truncate text-[var(--erp-text)]" title={value || undefined}>{value || '—'}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-xs border border-[var(--erp-hairline)]">
               <thead className="bg-[var(--erp-surface-2)] font-mono text-[10px] uppercase tracking-wider text-[var(--erp-muted)]">
                 <tr>
-                  <th className="px-3 py-2">Product</th>
+                  <th className="px-3 py-2">Quality</th>
+                  <th className="px-3 py-2">Shade</th>
+                  <th className="px-3 py-2">Size</th>
+                  <th className="px-3 py-2 text-right">Ordered</th>
                   <th className="px-3 py-2 text-right">This dispatch</th>
+                  <th className="px-3 py-2 text-right">Dispatched so far</th>
+                  <th className="px-3 py-2 text-right">Pending</th>
+                  <th className="px-3 py-2 text-right">Price (Ex-mill)</th>
                 </tr>
               </thead>
               <tbody>
-                {detail.lines.map(line => (
-                  <tr key={line.id} className="border-t border-[var(--erp-hairline)]">
-                    <td className="px-3 py-2">{line.product_code ? `${line.product_code} · ${line.product_name}` : line.product_name}</td>
-                    <td className="px-3 py-2 text-right font-mono">{num(line.dispatched_quantity).toFixed(2)} {line.unit}</td>
-                  </tr>
-                ))}
+                {detail.lines.map(line => {
+                  const unit = line.quantity_unit || line.unit;
+                  return (
+                    <tr key={line.id} className="border-t border-[var(--erp-hairline)]">
+                      <td className="px-3 py-2">
+                        <div className="font-mono">{line.quality || line.product_code || '—'}</div>
+                        {line.product_name && line.product_name !== line.quality ? <div className="text-[var(--erp-muted)]">{line.product_name}</div> : null}
+                      </td>
+                      <td className="px-3 py-2 font-mono">{line.shade || '—'}</td>
+                      <td className="px-3 py-2 font-mono">{line.size || '—'}</td>
+                      <td className="px-3 py-2 text-right font-mono">{num(line.ordered_quantity).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold">{num(line.dispatched_quantity).toFixed(2)} {unit}</td>
+                      <td className="px-3 py-2 text-right font-mono">{num(line.total_dispatched).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{num(line.pending_quantity).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{line.rate == null || line.rate === '' ? '—' : `₹${num(line.rate).toFixed(2)}`}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            </div>
             <section>
               <h4 className="text-[11px] font-mono uppercase tracking-wider text-[var(--erp-gold)] border-b border-[var(--erp-hairline)] pb-1 mb-2">Invoices on {detail.po_number}</h4>
               <p className="text-xs font-mono text-[var(--erp-muted)] mb-2">Invoices are raised against the PO, not against a specific dispatch.</p>

@@ -34,6 +34,11 @@ class DispatchLineSerializer(serializers.ModelSerializer):
     ordered_quantity = serializers.SerializerMethodField()
     total_dispatched = serializers.SerializerMethodField()
     pending_quantity = serializers.SerializerMethodField()
+    quality = serializers.CharField(source="purchase_order_line.product_description", read_only=True)
+    shade = serializers.CharField(source="purchase_order_line.shade", read_only=True)
+    size = serializers.CharField(source="purchase_order_line.size", read_only=True)
+    quantity_unit = serializers.CharField(source="purchase_order_line.unit", read_only=True)
+    rate = serializers.DecimalField(source="purchase_order_line.rate", max_digits=12, decimal_places=2, read_only=True)
 
     class Meta:
         model = DispatchLine
@@ -45,6 +50,11 @@ class DispatchLineSerializer(serializers.ModelSerializer):
             "product_code",
             "product_name",
             "unit",
+            "quality",
+            "shade",
+            "size",
+            "quantity_unit",
+            "rate",
             "ordered_quantity",
             "total_dispatched",
             "pending_quantity",
@@ -54,6 +64,11 @@ class DispatchLineSerializer(serializers.ModelSerializer):
             "product_code",
             "product_name",
             "unit",
+            "quality",
+            "shade",
+            "size",
+            "quantity_unit",
+            "rate",
             "ordered_quantity",
             "total_dispatched",
             "pending_quantity",
@@ -95,6 +110,12 @@ class DispatchSerializer(serializers.ModelSerializer):
     )
     po_number = serializers.CharField(source="purchase_order.po_number", read_only=True)
     purchase_order_status = serializers.CharField(source="purchase_order.status", read_only=True)
+    brand_order_code = serializers.CharField(source="purchase_order.brand_order_code", read_only=True, default="")
+    customer_code = serializers.CharField(source="purchase_order.customer.customer_code", read_only=True)
+    customer_name = serializers.CharField(source="purchase_order.customer.customer_name", read_only=True)
+    entity_code = serializers.CharField(source="purchase_order.entity.short_code", read_only=True)
+    entity_name = serializers.CharField(source="purchase_order.entity.entity_name", read_only=True)
+    brand_name = serializers.CharField(source="purchase_order.brand.brand_name", read_only=True)
     created_by_name = serializers.SerializerMethodField()
     lines = DispatchLineSerializer(many=True, required=False)
 
@@ -105,6 +126,12 @@ class DispatchSerializer(serializers.ModelSerializer):
             "purchase_order_id",
             "po_number",
             "purchase_order_status",
+            "brand_order_code",
+            "customer_code",
+            "customer_name",
+            "entity_code",
+            "entity_name",
+            "brand_name",
             "dispatch_date",
             "lr_number",
             "transporter",
@@ -119,6 +146,12 @@ class DispatchSerializer(serializers.ModelSerializer):
             "id",
             "po_number",
             "purchase_order_status",
+            "brand_order_code",
+            "customer_code",
+            "customer_name",
+            "entity_code",
+            "entity_name",
+            "brand_name",
             "created_at",
             "updated_at",
             "created_by",
