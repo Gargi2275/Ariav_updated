@@ -148,6 +148,10 @@ export interface DispatchImportCreated {
   invoice_no: string;
   customer_name: string;
   line_count: number;
+  invoice_id?: number | null;
+  invoice_number?: string;
+  invoice_status?: string;
+  invoice_message?: string;
 }
 
 export interface DispatchImportCommitResult {

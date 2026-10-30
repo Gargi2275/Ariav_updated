@@ -98,6 +98,7 @@ HEADER_ALIASES = {
     "item type": "item_type",
     "price": "price",
     "no of pcs": "pcs",
+    "total gst %": "gst_percent",
     "invoicelineno": "invoice_line_no",
     "qty": "qty",
     "quantity": "qty",
@@ -140,6 +141,7 @@ RECORD_FIELDS = (
     "qty",
     "product_code",
     "description",
+    "gst_percent",
 )
 
 
@@ -262,6 +264,7 @@ def _parse_ocm_workbook(file_bytes: bytes) -> tuple[list[dict], list[str], list[
                     "lr_number": _cell_str(record["lr_number"]),
                     "lr_date": record["lr_date"],
                     "invoice_date": record["invoice_date"],
+                    "gst_percent": _cell_str(record.get("gst_percent")),
                     "lines": [],
                     "source_rows": [],
                 }
@@ -281,6 +284,8 @@ def _parse_ocm_workbook(file_bytes: bytes) -> tuple[list[dict], list[str], list[
                 group["lr_date"] = record["lr_date"]
             if group["invoice_date"] in (None, "") and record["invoice_date"] not in (None, ""):
                 group["invoice_date"] = record["invoice_date"]
+            if not group.get("gst_percent") and _cell_str(record.get("gst_percent")):
+                group["gst_percent"] = _cell_str(record.get("gst_percent"))
 
             if qty is None:
                 reason = "Qty is missing or invalid"
@@ -1011,6 +1016,8 @@ def evaluate_group(group: dict, pos: dict[str, list[PurchaseOrder]], user) -> tu
             "lr_date": lr_date.isoformat(),
             "transporter": group["transporter"],
             "challan_reference": invoice_no,
+            "invoice_date": (_parse_date(group["invoice_date"]) or lr_date).isoformat(),
+            "gst_percent": group.get("gst_percent") or "",
             "line_count": len(group["lines"]),
             "opening_pending_quantity": str(opening_quantity),
             "closing_pending_quantity": str(opening_quantity - imported_quantity),
@@ -1204,6 +1211,35 @@ def _revalidate_importable(row: dict, pos: dict[str, list[PurchaseOrder]]) -> st
     return match_err
 
 
+def _auto_invoice(po: PurchaseOrder, user, row: dict) -> dict:
+    if po.status != PurchaseOrder.Status.FULLY_DISPATCHED:
+        return {"invoice_id": None, "invoice_number": "", "invoice_status": "", "invoice_message": ""}
+    from invoices.auto import invoice_fully_dispatched
+
+    tax = None
+    raw_tax = _cell_str(row.get("gst_percent"))
+    if raw_tax:
+        try:
+            tax = Decimal(raw_tax)
+        except Exception:
+            tax = None
+    when = _parse_date(row.get("invoice_date")) or _parse_date(row.get("dispatch_date")) or _parse_date(row.get("lr_date"))
+    result = invoice_fully_dispatched(
+        po,
+        user=user,
+        mill_number=row.get("invoice_no") or row.get("challan_reference") or "",
+        invoice_date=when,
+        tax_percent=tax,
+    )
+    invoice = result["invoice"]
+    return {
+        "invoice_id": invoice.id if invoice else None,
+        "invoice_number": invoice.invoice_number if invoice else "",
+        "invoice_status": invoice.status if invoice else "",
+        "invoice_message": result["message"],
+    }
+
+
 def _commit_arvind_import(*, user, token: str, cached: dict, to_create: list[dict], skipped_excluded: list[dict]) -> dict:
     created: list[dict] = []
     with transaction.atomic():
@@ -1238,6 +1274,7 @@ def _commit_arvind_import(*, user, token: str, cached: dict, to_create: list[dic
             from notifications.services import notify_dispatch_created
 
             notify_dispatch_created(dispatch)
+            auto_invoice = _auto_invoice(po, user, row)
             created.append(
                 {
                     "id": dispatch.id,
@@ -1248,6 +1285,7 @@ def _commit_arvind_import(*, user, token: str, cached: dict, to_create: list[dic
                     "invoice_no": row["invoice_no"],
                     "customer_name": po.customer.customer_name,
                     "line_count": len(row["lines"]),
+                    **auto_invoice,
                 }
             )
     drop_preview(token)
@@ -1395,6 +1433,7 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
             from notifications.services import notify_dispatch_created
 
             notify_dispatch_created(dispatch)
+            auto_invoice = _auto_invoice(po, user, row)
             created.append(
                 {
                     "id": dispatch.id,
@@ -1405,6 +1444,7 @@ def commit_import(*, user, token: str, group_keys: list[str]) -> dict:
                     "invoice_no": row["invoice_no"],
                     "customer_name": po.customer.customer_name,
                     "line_count": len(matched),
+                    **auto_invoice,
                 }
             )
             pos = _po_by_number(user)

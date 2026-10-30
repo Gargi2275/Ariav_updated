@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Mail, X } from 'lucide-react';
+import { Loader2, Mail, X } from 'lucide-react';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { EmailModeBanner } from '../../components/common/EmailModeBanner';
 import { notifyApiError, notifySuccess } from '../../services/notify';
-import { purchaseOrdersApi } from '../../services/purchaseOrdersApi';
 import {
   ComposeItem,
   EmailHistoryRow,
@@ -85,7 +84,10 @@ export const PoEmailHistory: React.FC<{ poId: number; isAdmin: boolean; onChange
       {rows.some(row => row.status === 'sent') ? (
         <div className="flex gap-2">
           <input value={reason} onChange={event => setReason(event.target.value)} placeholder="Reason for resend" className="h-8 flex-1 bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] px-2 text-xs" />
-          <button type="button" disabled={busy || reason.trim().length < 5} onClick={() => void resend()} className="h-8 px-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs disabled:opacity-40">Resend</button>
+          <button type="button" disabled={busy || reason.trim().length < 5} onClick={() => void resend()} className="inline-flex h-8 items-center gap-1.5 px-2 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs disabled:opacity-40">
+            {busy ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> : null}
+            {busy ? 'Sending…' : 'Resend'}
+          </button>
         </div>
       ) : null}
     </section>
@@ -106,7 +108,6 @@ export const PoEmailComposer: React.FC<{
   const [pdfUrl, setPdfUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmLive, setConfirmLive] = useState(false);
-  const [confirmStatus, setConfirmStatus] = useState<number[]>([]);
 
   useEffect(() => {
     let live = true;
@@ -122,6 +123,11 @@ export const PoEmailComposer: React.FC<{
   }, [poIds]);
 
   const active = drafts.find(item => item.po_id === activeId) || null;
+
+  useEffect(() => {
+    if (activeId == null || !drafts.some(item => item.po_id === activeId)) return;
+    setOpened(current => current.includes(activeId) ? current : [...current, activeId]);
+  }, [activeId, drafts]);
 
   useEffect(() => {
     if (!activeId) return undefined;
@@ -148,10 +154,25 @@ export const PoEmailComposer: React.FC<{
   };
 
   const needsReason = drafts.some(item => item.warnings.some(warning => warning.startsWith('Already emailed')) && item.resendReason.trim().length < 5);
-  const ready = drafts.length > 0 && drafts.every(item => opened.includes(item.po_id) && item.sendable) && !needsReason;
+  const unopened = drafts.filter(item => !opened.includes(item.po_id));
+  const unsendable = drafts.filter(item => !item.sendable);
+  const noRecipients = drafts.filter(item => !item.to.length);
+  const ready = drafts.length > 0 && !unopened.length && !unsendable.length && !noRecipients.length && !needsReason;
+  const blockedReason = !drafts.length
+    ? ''
+    : unsendable.length
+      ? `${unsendable.map(item => item.po_number).join(', ')} cannot be emailed in its current status.`
+      : noRecipients.length
+        ? `Add a To address for ${noRecipients.map(item => item.po_number).join(', ')}.`
+        : unopened.length
+          ? `Open ${unopened.map(item => item.po_number).join(', ')} on the left to review before sending.`
+          : needsReason
+            ? 'Enter a resend reason of at least 5 characters.'
+            : '';
   const recipientText = useMemo(() => drafts.map(item => `${item.po_number}: ${item.to.join(', ') || 'no recipients'}`).join('\n'), [drafts]);
 
   const send = async () => {
+    setConfirmLive(false);
     setBusy(true);
     try {
       const result = await poEmailApi.send(drafts.map(item => ({
@@ -161,26 +182,51 @@ export const PoEmailComposer: React.FC<{
         ...(isAdmin ? { to: item.to, cc: item.cc, bcc: item.bcc || [] } : {}),
         ...(item.resendReason.trim() ? { resend_reason: item.resendReason.trim() } : {}),
       })));
-      notifySuccess(`Sent ${result.rows.length} purchase order email${result.rows.length === 1 ? '' : 's'}.`);
-      if (result.ask_status_update && isAdmin) {
-        setConfirmStatus(result.rows.filter(row => row.status === 'sent').map(row => row.po_id));
-      } else {
-        onSent();
+      const sent = result.rows.filter(row => row.status === 'sent');
+      const failed = result.rows.filter(row => row.status === 'failed' || row.status === 'unknown');
+      const marked = result.marked_sent_to_brand?.length || 0;
+      if (sent.length) {
+        const plural = sent.length === 1 ? '' : 's';
+        notifySuccess(
+          marked
+            ? `Sent ${sent.length} purchase order email${plural}. ${marked} marked Sent to Brand.`
+            : `Sent ${sent.length} purchase order email${plural}.`,
+        );
       }
+      if (failed.length) {
+        notifyApiError(
+          new Error(`${failed.map(row => row.po_number).join(', ')} could not be sent. Open the email history to retry.`),
+          'Some emails were not sent.',
+        );
+      }
+      onSent();
     } catch (err) {
       notifyApiError(err, 'Could not send the emails.');
     } finally {
       setBusy(false);
-      setConfirmLive(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-3">
-      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)]">
+      <div className="relative flex max-h-[92vh] w-full max-w-6xl flex-col bg-[var(--erp-surface)] border border-[var(--erp-hairline-strong)]" aria-busy={busy}>
+        {busy ? (
+          <div role="status" aria-live="polite" className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[var(--erp-surface)]/90 backdrop-blur-[2px]">
+            <span className="relative flex h-14 w-14 items-center justify-center">
+              <Loader2 className="absolute h-14 w-14 animate-spin text-[var(--erp-gold)] motion-reduce:animate-none" strokeWidth={1.5} />
+              <Mail className="h-5 w-5 text-[var(--erp-gold)]" />
+            </span>
+            <p className="font-display text-base font-semibold text-[var(--erp-text)]">
+              Sending {drafts.length} email{drafts.length === 1 ? '' : 's'} to the brand…
+            </p>
+            <p className="max-w-sm text-center text-xs text-[var(--erp-muted)]">
+              Attaching the purchase order PDF and delivering it. Please keep this window open.
+            </p>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between border-b border-[var(--erp-hairline)] px-4 py-3">
           <h2 className="font-display text-lg font-bold flex items-center gap-2"><Mail className="w-4 h-4 text-[var(--erp-gold)]" />Send email ({drafts.length})</h2>
-          <button type="button" onClick={onClose} aria-label="Close email"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} disabled={busy} aria-label="Close email" className="disabled:opacity-40"><X className="w-4 h-4" /></button>
         </div>
         <div className="space-y-3 overflow-y-auto p-4">
           <EmailModeBanner mode={mode} />
@@ -236,15 +282,17 @@ export const PoEmailComposer: React.FC<{
             ) : <p className="text-xs text-[var(--erp-muted)]">Preparing the selected purchase orders…</p>}
           </div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-[var(--erp-hairline)] px-4 py-3">
-          <button type="button" onClick={onClose} className="h-9 px-3 text-xs text-[var(--erp-muted)]">Cancel</button>
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--erp-hairline)] px-4 py-3">
+          {blockedReason && !busy ? <p className="mr-auto text-xs text-[var(--erp-muted)]">{blockedReason}</p> : null}
+          <button type="button" onClick={onClose} disabled={busy} className="h-9 px-3 text-xs text-[var(--erp-muted)] disabled:opacity-40">Cancel</button>
           <button
             type="button"
             disabled={!ready || busy}
             onClick={() => { if (mode === 'live') setConfirmLive(true); else void send(); }}
-            className="h-9 bg-[var(--erp-gold)] px-3 text-xs font-semibold text-[#1B2430] disabled:opacity-40"
+            className="inline-flex h-9 items-center gap-2 bg-[var(--erp-gold)] px-3 text-xs font-semibold text-[#1B2430] disabled:opacity-40"
           >
-            Send {drafts.length} email{drafts.length === 1 ? '' : 's'}
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
+            {busy ? 'Sending…' : `Send ${drafts.length} email${drafts.length === 1 ? '' : 's'}`}
           </button>
         </div>
       </div>
@@ -258,23 +306,6 @@ export const PoEmailComposer: React.FC<{
         confirmTone="gold"
         onCancel={() => setConfirmLive(false)}
         onConfirm={() => void send()}
-      />
-      <ConfirmDialog
-        open={confirmStatus.length > 0}
-        entityType="purchase order"
-        entityLabel="Sent to Brand"
-        title="Mark Sent to Brand?"
-        message="The emails were sent. Mark the submitted purchase orders as Sent to Brand?"
-        confirmLabel="Mark Sent to Brand"
-        confirmTone="gold"
-        onCancel={() => { setConfirmStatus([]); onSent(); }}
-        onConfirm={async () => {
-          for (const id of confirmStatus) {
-            try { await purchaseOrdersApi.changeStatus(id, 'Sent to Brand'); } catch (err) { notifyApiError(err, 'Could not update the purchase order status.'); }
-          }
-          setConfirmStatus([]);
-          onSent();
-        }}
       />
     </div>
   );

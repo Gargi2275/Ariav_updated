@@ -322,13 +322,7 @@ class PurchaseOrderEmailTests(TestCase):
             HTTP_HOST="localhost",
         )
         self.assertEqual(allowed.status_code, 200, allowed.content)
-        self.po.refresh_from_db()
-        self.assertEqual(self.po.status, PurchaseOrder.Status.SUBMITTED)
-        EmailOutbox.objects.all().delete()
-        mail.outbox.clear()
-        EmailSettings.objects.filter(pk=1).update(after_send_status_action=EmailSettings.AfterSend.MARK_SENT_TO_BRAND)
-        marked = self._send(self.po)
-        self.assertEqual(marked.status_code, 200, marked.content)
+        self.assertEqual(allowed.json()["marked_sent_to_brand"], [self.po.id])
         self.po.refresh_from_db()
         self.assertEqual(self.po.status, PurchaseOrder.Status.SENT_TO_BRAND)
         self.assertTrue(

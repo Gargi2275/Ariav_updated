@@ -574,7 +574,7 @@ def send_items(items, user) -> dict:
     by_pk = {row.id: row for row in fresh}
     return {
         **transport_public(),
-        "ask_status_update": settings_row.after_send_status_action == EmailSettings.AfterSend.ASK and bool(marked["eligible"]),
+        "ask_status_update": False,
         "marked_sent_to_brand": marked["marked"],
         "rows": [
             {
@@ -594,9 +594,9 @@ def _transmitted_subject(subject: str, to_addresses: list[str]) -> str:
 
 
 def _after_send(settings_row, user, rows: list[EmailOutbox]) -> dict:
+    """A delivered email moves a Submitted purchase order to Sent to Brand."""
     eligible = []
     marked = []
-    action = settings_row.after_send_status_action
     from .transitions import apply_status_change, validate_transition
 
     for row in rows:
@@ -607,8 +607,6 @@ def _after_send(settings_row, user, rows: list[EmailOutbox]) -> dict:
         if po.status != PurchaseOrder.Status.SUBMITTED:
             continue
         eligible.append(po.id)
-        if action != EmailSettings.AfterSend.MARK_SENT_TO_BRAND or not is_admin_user(user):
-            continue
         error = validate_transition(po.status, PurchaseOrder.Status.SENT_TO_BRAND)
         if error:
             continue

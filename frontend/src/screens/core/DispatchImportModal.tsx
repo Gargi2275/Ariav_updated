@@ -94,9 +94,19 @@ export const DispatchImportModal: React.FC<DispatchImportModalProps> = ({ onClos
         previewToken: preview.preview_token,
         groupKeys: preview.importable.map(row => row.group_key),
       });
+      const issued = result.created.filter(row => row.invoice_status === 'Issued').length;
+      const drafts = result.created.filter(row => row.invoice_status === 'Draft').length;
+      const invoiceNote = [
+        issued ? `${issued} invoice${issued === 1 ? '' : 's'} issued` : '',
+        drafts ? `${drafts} invoice${drafts === 1 ? '' : 's'} saved as Draft (rate missing)` : '',
+      ].filter(Boolean).join(', ');
       notifySuccess(
-        `${result.created_count} dispatch${result.created_count === 1 ? '' : 'es'} imported. ${result.excluded_count} excluded.`,
+        `${result.created_count} dispatch${result.created_count === 1 ? '' : 'es'} imported. ${result.excluded_count} excluded.${invoiceNote ? ` ${invoiceNote}.` : ''}`,
       );
+      const problems = result.created.filter(row => row.invoice_message && !row.invoice_id);
+      if (problems.length) {
+        notifyApiError(new Error(problems.map(row => row.invoice_message).join(' ')), 'Some invoices were not raised.');
+      }
       onImported(result);
     } catch (err) {
       notifyApiError(err, 'Import was not committed.');

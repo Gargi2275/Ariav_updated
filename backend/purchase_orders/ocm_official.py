@@ -795,10 +795,27 @@ def approve_order(order_id: int, reason: str, user) -> dict:
         module="Purchase Orders",
         details=f"Official OCM order {order.order_number} linked to {po.po_number}.",
     )
+    _mark_brand_accepted(po, order, order.approved_by)
     po.refresh_from_db()
     if po.po_number != original_number:
         raise ValidationError({"detail": "Approval must not change the internal purchase order number."})
     return compare_order(order)
+
+
+def _mark_brand_accepted(po, order, user) -> None:
+    """The approved official order is the brand's acceptance, so move the PO forward."""
+    from .transitions import apply_status_change, validate_transition
+
+    reason = f"Official OCM order {order.order_number} approved."
+    steps = {
+        PurchaseOrder.Status.SUBMITTED: [PurchaseOrder.Status.SENT_TO_BRAND, PurchaseOrder.Status.BRAND_ACCEPTED],
+        PurchaseOrder.Status.SENT_TO_BRAND: [PurchaseOrder.Status.BRAND_ACCEPTED],
+        PurchaseOrder.Status.ON_HOLD: [PurchaseOrder.Status.BRAND_ACCEPTED],
+    }.get(po.status, [])
+    for target in steps:
+        if validate_transition(po.status, target):
+            return
+        apply_status_change(po, target, user=user, reason=reason)
 
 
 def _drop_empty_import_batches(batch_ids) -> None:

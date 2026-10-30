@@ -935,6 +935,39 @@ class DispatchImportApiTests(TestCase):
         statuses = {row["po_status"] for row in body["created"]}
         self.assertIn(PurchaseOrder.Status.FULLY_DISPATCHED, statuses)
 
+    def test_full_dispatch_issues_an_invoice_with_the_mill_number(self):
+        from invoices.models import Invoice
+
+        first = self._create_po("ATN-AUTO-1", status="Brand Accepted", qty="4.00")
+        second = self._create_po("ATN-AUTO-2", status="Brand Accepted", qty="4.00")
+        partial = self._create_po("ATN-AUTO-3", status="Brand Accepted", qty="9.00")
+        preview = self._preview([
+            _row("ATN-AUTO-1", "DOM-AUTO", qty=4),
+            _row("ATN-AUTO-2", "DOM-AUTO", qty=4),
+            _row("ATN-AUTO-3", "DOM-AUTO", qty=4),
+        ])
+        self.assertEqual(preview.status_code, 200, preview.content)
+        body = preview.json()
+        commit = self.client.post(
+            "/api/dispatches/import/commit/",
+            {"preview_token": body["preview_token"], "group_keys": [row["group_key"] for row in body["importable"]]},
+            format="json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(commit.status_code, 201, commit.content)
+        invoice = Invoice.objects.get(purchase_order_id=first)
+        self.assertEqual(invoice.invoice_number, "DOM-AUTO")
+        self.assertEqual(invoice.status, Invoice.Status.ISSUED)
+        self.assertEqual(invoice.invoice_date, date(2026, 9, 17))
+        self.assertEqual(invoice.customer_id, self.customer.id)
+        self.assertEqual(invoice.net_amount, Decimal("40.00"))
+        self.assertEqual(invoice.lines.get().quantity, Decimal("4.00"))
+        self.assertEqual(Invoice.objects.get(purchase_order_id=second).invoice_number, "DOM-AUTO/ATN-AUTO-2")
+        self.assertFalse(Invoice.objects.filter(purchase_order_id=partial).exists())
+        created = {row["po_number"]: row for row in commit.json()["created"]}
+        self.assertEqual(created["ATN-AUTO-1"]["invoice_status"], "Issued")
+        self.assertEqual(created["ATN-AUTO-3"]["invoice_number"], "")
+
     def test_commit_requires_preview_and_does_not_write_on_preview(self):
         self._create_po("ATN-PREV", status="Brand Accepted")
         preview = self._preview([_row("ATN-PREV", "INV-1", qty=2)])

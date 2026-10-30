@@ -111,18 +111,7 @@ export const EmailSettingsScreen: React.FC = () => {
           <input type="checkbox" checked={settings.require_preview} onChange={event => setSettings({ ...settings, require_preview: event.target.checked })} />
           Require preview before send
         </label>
-        <label className="block text-xs text-[var(--erp-muted)]">
-          After a successful send
-          <select
-            value={settings.after_send_status_action}
-            onChange={event => setSettings({ ...settings, after_send_status_action: event.target.value as EmailSettings['after_send_status_action'] })}
-            className="mt-1 box-border h-9 w-full bg-[var(--erp-surface-2)] border border-[var(--erp-hairline)] px-2 text-[var(--erp-text)]"
-          >
-            <option value="none">Leave the purchase order status unchanged</option>
-            <option value="ask">Ask before marking Sent to Brand</option>
-            <option value="mark_sent_to_brand">Mark Sent to Brand</option>
-          </select>
-        </label>
+        <p className="text-xs text-[var(--erp-muted)]">After a successful send, a Submitted purchase order moves to Sent to Brand automatically.</p>
         <div className="flex gap-2">
           <button type="submit" disabled={saving} className="h-9 px-3 bg-[var(--erp-gold)] text-[#1B2430] text-xs font-semibold disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
           <button type="button" onClick={() => void sendTest()} className="h-9 px-3 border border-[var(--erp-gold)] text-[var(--erp-gold)] text-xs font-semibold">Send test email to this mailbox</button>

@@ -512,6 +512,20 @@ class OfficialOcmTests(TestCase):
         self.assertEqual(po.lines.get().quantity, Decimal("10.00"))
         self.assertEqual(OfficialOcmOrder.objects.get().status, "Approved")
 
+    def test_approval_moves_a_sent_po_to_brand_accepted(self):
+        po = self._po()
+        PurchaseOrder.objects.filter(pk=po.pk).update(status=PurchaseOrder.Status.SENT_TO_BRAND)
+        imported = self._import(self._file())
+        order_id = imported.json()["orders"][0]["id"]
+        response = self.client.post(f"/api/purchase-orders/ocm-official/{order_id}/approve/", {"reason": ""}, format="json", HTTP_HOST="localhost")
+        self.assertEqual(response.status_code, 200, response.content)
+        po.refresh_from_db()
+        self.assertEqual(po.status, PurchaseOrder.Status.BRAND_ACCEPTED)
+        self.assertEqual(po.po_number, "AO102601")
+        self.assertTrue(
+            po.status_changes.filter(to_status=PurchaseOrder.Status.BRAND_ACCEPTED, reason__icontains="OCM-100").exists()
+        )
+
     def test_staff_without_edit_cannot_approve(self):
         self._po()
         imported = self._import(self._file())

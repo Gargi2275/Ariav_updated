@@ -216,6 +216,16 @@ class DispatchSerializer(serializers.ModelSerializer):
             from notifications.services import notify_dispatch_created
 
             notify_dispatch_created(dispatch)
+            po = dispatch.purchase_order
+            if po.status == po.Status.FULLY_DISPATCHED and (dispatch.challan_reference or "").strip():
+                from invoices.auto import invoice_fully_dispatched
+
+                invoice_fully_dispatched(
+                    po,
+                    user=user,
+                    mill_number=dispatch.challan_reference,
+                    invoice_date=dispatch.dispatch_date,
+                )
         return dispatch
 
     def update(self, instance, validated_data):
