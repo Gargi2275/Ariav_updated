@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useErp } from '../../context/ErpContext';
 import { ERP_SCREENS, ScreenCategory } from '../../types/erp';
 import { Search, X, ChevronRight, Check } from 'lucide-react';
+import { APP_CONFIG } from '../../config/branding';
 
 export const QuickJumpModal: React.FC = () => {
   const { quickJumpOpen, setQuickJumpOpen, currentScreenId, navigateTo, userRole } = useErp();
@@ -136,7 +137,7 @@ export const QuickJumpModal: React.FC = () => {
         {/* Footer info */}
         <div className="p-2.5 border-t border-[var(--erp-hairline)] bg-[var(--erp-surface)] flex items-center justify-between text-[11px] font-mono text-[var(--erp-muted)]">
           <span>Tip: Press [Esc] to exit • Click any module to inspect screen</span>
-          <span>Ariav Gujarat Branch ERP v4.2</span>
+          <span>{APP_CONFIG.fullName} Gujarat Branch v4.2</span>
         </div>
       </div>
     </div>

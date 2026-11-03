@@ -1,4 +1,4 @@
-# Ariav ERP backend (Django 4.2 + DRF)
+# FABSETU ERP backend (Django 4.2 + DRF)
 
 MySQL env vars read by `config/settings.py` (names must match): `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
 
@@ -45,4 +45,3 @@ Production (Windows Task Scheduler): run `backend\.venv\Scripts\python.exe manag
 Payment Confirmation, PO Notification, and Dispatch Notification are event-driven
 (created immediately; no command needed). Email/SMS/WhatsApp channels are schema
 only — no external delivery.
-

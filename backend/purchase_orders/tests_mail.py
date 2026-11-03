@@ -72,7 +72,7 @@ class PurchaseOrderEmailTests(TestCase):
             order_method=Brand.OrderMethod.DIGITAL_PO,
         )
         self.entity.brands.add(self.brand)
-        EmailSettings.objects.create(pk=1, enabled=True, from_name="Ariav", daily_cap=100, per_minute_cap=10)
+        EmailSettings.objects.create(pk=1, enabled=True, from_name="FABSETU", daily_cap=100, per_minute_cap=10)
         BrandEmailConfig.objects.create(
             brand=self.brand,
             to_addresses=["mill@example.com"],

@@ -29,7 +29,7 @@ from transactions.models import (
 
 
 class Command(BaseCommand):
-    help = "Idempotent demo seed for Ariav ERP (local development)."
+    help = "Idempotent demo seed for FABSETU ERP (local development)."
 
     def handle(self, *args, **options):
         for code, name in [

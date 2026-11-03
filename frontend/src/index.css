@@ -343,7 +343,7 @@ html, body, div, aside, header, nav, main, section, table, tr, td, th, input, se
   border-radius: 3px;
 }
 
-/* Ariav toast — restyle react-toastify to ledger terminal, no rounded default theme */
+/* FABSETU toast — restyle react-toastify to ledger terminal, no rounded default theme */
 .ariav-toast-container {
   z-index: 90 !important;
 }

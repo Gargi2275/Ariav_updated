@@ -1,5 +1,5 @@
 /**
- * Ariav toast helpers. Use these (or parseApiError) in every new module —
+ * FABSETU toast helpers. Use these (or parseApiError) in every new module —
  * never dump DRF JSON into a modal banner.
  *
  * Success: notifySuccess(`Branch '${name}' created successfully.`)

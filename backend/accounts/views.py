@@ -127,7 +127,7 @@ def serialize_request(req: LoginRequest) -> dict:
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
-    return Response({"status": "healthy", "service": "Ariav ERP API", "timestamp": timezone.now().isoformat()})
+    return Response({"status": "healthy", "service": f"{settings.APP_FULL_NAME} API", "timestamp": timezone.now().isoformat()})
 
 
 @api_view(["POST"])

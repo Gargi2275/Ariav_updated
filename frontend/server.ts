@@ -145,7 +145,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Ariav ERP] Unified server listening on http://0.0.0.0:${PORT}`);
+    console.log(`[FABSETU ERP] Unified server listening on http://0.0.0.0:${PORT}`);
   });
 }
 

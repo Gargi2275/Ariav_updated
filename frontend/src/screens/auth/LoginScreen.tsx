@@ -21,6 +21,8 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { authApi } from '../../services/authApi';
+import { APP_CONFIG } from '../../config/branding';
+import { FabsetuLogo } from '../../components/common/FabsetuLogo';
 
 export const LoginScreen: React.FC = () => {
   const { setUserRole, navigateTo, showFlash, setPendingLoginRequest, pendingLoginRequest, approvalQueue } = useErp();
@@ -458,19 +460,14 @@ export const LoginScreen: React.FC = () => {
 
       {/* Top Floating Utility Bar */}
       <header className="relative z-20 w-full px-6 sm:px-12 pt-6 pb-2 flex items-center justify-between">
-        {/* Brand Monogram */}
+        {/* Official brand logo */}
         <motion.div 
           initial={{ opacity: 0, x: -15 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6 }}
-          className="flex items-center gap-2.5"
+          className="flex items-center"
         >
-          <div className="w-6 h-6 bg-[var(--erp-text)] flex items-center justify-center text-[var(--erp-base)] font-mono text-xs font-bold shadow-sm">
-            A
-          </div>
-          <span className="font-serif text-lg font-bold tracking-tight text-[var(--erp-text)]">
-            Ariav
-          </span>
+          <FabsetuLogo variant="dark" width={190} alt={APP_CONFIG.fullName} className="w-[150px] sm:w-[190px]" />
         </motion.div>
 
         {/* Action Controls */}
@@ -702,7 +699,7 @@ export const LoginScreen: React.FC = () => {
                   {/* Card Titles with Animated Transition */}
                   <div className="relative z-10 mb-6">
                     <h2 className="font-serif text-2xl sm:text-[1.85rem] font-bold text-[var(--erp-text)] tracking-tight">
-                      {authStatus === 'pin' ? 'Master PIN verification' : 'Sign in to Ariav ERP'}
+                      {authStatus === 'pin' ? 'Master PIN verification' : `Sign in to ${APP_CONFIG.fullName}`}
                     </h2>
                   </div>
 

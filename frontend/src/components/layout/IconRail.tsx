@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useErp } from '../../context/ErpContext';
 import { ERP_SCREENS } from '../../types/erp';
+import { APP_CONFIG } from '../../config/branding';
+import { FabsetuLogo } from '../common/FabsetuLogo';
 import { 
   Home,
   ShoppingBag,
@@ -250,17 +252,12 @@ export const IconRail: React.FC = () => {
     >
       {/* Brand Identity / Nameplate */}
       <div className="flex flex-col items-center gap-2 w-full px-2">
-        <div 
+        <div
           onClick={() => navigateTo(6)}
-          className="w-12 h-12 border border-[var(--erp-gold)] bg-[var(--erp-surface-2)] flex flex-col items-center justify-center cursor-pointer transition-all hover:border-[var(--erp-gold-soft)] group"
-          title="Ariav ERP Home (Dashboard)"
+          className="w-16 h-12 flex items-center justify-center cursor-pointer transition-transform hover:scale-105 group"
+          title={`${APP_CONFIG.fullName} Home (Dashboard)`}
         >
-          <span className="font-display text-lg font-bold text-[var(--erp-gold)] tracking-tighter leading-none group-hover:scale-105 transition-transform">
-            AE
-          </span>
-          <span className="font-mono text-[8px] text-[var(--erp-muted)] tracking-widest leading-none mt-0.5 font-medium">
-            1984
-          </span>
+          <FabsetuLogo width={64} alt={`${APP_CONFIG.fullName} home`} />
         </div>
         <div className="w-8 h-[1px] bg-[var(--erp-hairline)]" />
       </div>

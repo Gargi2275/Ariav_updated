@@ -3,9 +3,18 @@ from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
+from .branding import (
+    APP_FULL_NAME as BRAND_FULL_NAME,
+    APP_NAME as BRAND_NAME,
+    APP_SHORT_NAME as BRAND_SHORT_NAME,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+
+APP_NAME = BRAND_NAME
+APP_FULL_NAME = BRAND_FULL_NAME
+APP_SHORT_NAME = BRAND_SHORT_NAME
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in ("1", "true", "yes")
 

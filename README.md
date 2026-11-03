@@ -1,4 +1,4 @@
-# Ariav ERP — two independent services
+# FABSETU ERP — two independent services
 
 This repository is a **Django + MySQL API** and a **React + TypeScript Vite app**. They run separately.
 
@@ -9,4 +9,4 @@ Local URLs after start:
 
 - API: `http://localhost:8000`
 - UI: `http://localhost:5173`
-# Ariav_updated
+# FABSETU ERP

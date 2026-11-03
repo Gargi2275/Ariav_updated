@@ -952,7 +952,7 @@ def send_test_message(user) -> dict:
     _sending_allowed()
     box = mailbox()
     address = box["from_email"]
-    subject = "Ariav purchase-order email test"
+    subject = f"{settings.APP_NAME} purchase-order email test"
     body = "This is a test message from purchase-order email settings."
     from_email = address
     from_name = (load_settings().from_name or "").strip()

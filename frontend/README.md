@@ -1,4 +1,4 @@
-# Ariav ERP frontend (React + TypeScript)
+# FABSETU ERP frontend (React + TypeScript)
 
 ```bash
 npm install

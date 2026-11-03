@@ -18,8 +18,10 @@ import '@fontsource/jetbrains-mono/latin-600.css';
 import '@fontsource/jetbrains-mono/latin-700.css';
 import './index.css';
 import { installAuthInterceptor } from './services/apiBase';
+import { APP_CONFIG } from './config/branding';
 
 installAuthInterceptor();
+document.title = APP_CONFIG.fullName;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

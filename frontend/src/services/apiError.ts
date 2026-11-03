@@ -1,5 +1,5 @@
 /**
- * Shared DRF error parser for Ariav ERP.
+ * Shared DRF error parser for FABSETU ERP.
  *
  * Future modules (Staff, Client, Purchase Orders, …) must use parseApiError /
  * notifyApiError from `notify.ts` instead of inline modal banners or raw JSON.
