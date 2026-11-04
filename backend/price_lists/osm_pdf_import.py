@@ -42,9 +42,10 @@ COLLECTION_RE = re.compile(r"^(?P<name>.+?)\s*\((?P<code>[^)]+)\)\s*(?P<rest>.*)
 CODE_ONLY_RE = re.compile(r"^\(([A-Z0-9]+)\)$")
 ROW_RE = re.compile(r"^(\d+) (.+) (-|\d+(?:\.\d{1,2})?) (-|\d+(?:\.\d{1,2})?) (-|\d+(?:\.\d{1,2})?)$")
 TITLE_RE = re.compile(
-    r"^(?P<kind>Regular|Value For Money) Price List-"
+    r"^(?P<kind>Regular|Value\s+For\s+Money) Price List-"
     r"(?P<season>Summer|Winter)['’\s]*(?P<year>\d{4})"
-    r"(?: \((?P<revision>Revised)\))?\.?$"
+    r"(?: \((?P<revision>Revised)\))?\.?$",
+    re.IGNORECASE,
 )
 WEF_RE = re.compile(r"^w\.e\.f (\d{2})\.(\d{2})\.(\d{4})$")
 PAGE_RE = re.compile(r"^Page (\d+) of (\d+)$")
@@ -68,12 +69,11 @@ def _parse_title(line: str):
     match = TITLE_RE.match(_normalize_line(line))
     if not match:
         return None
-    return (
-        match.group("kind"),
-        match.group("season"),
-        int(match.group("year")),
-        match.group("revision") or "",
-    )
+    raw_kind = match.group("kind")
+    kind = "Regular" if raw_kind.lower() == "regular" else "Value For Money"
+    season = match.group("season").title()
+    revision = (match.group("revision") or "").title()
+    return (kind, season, int(match.group("year")), revision)
 
 
 def is_osm_brand(brand: Brand) -> bool:

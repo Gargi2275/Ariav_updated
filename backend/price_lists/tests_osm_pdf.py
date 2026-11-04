@@ -27,6 +27,7 @@ class OsmPdfParseTests(TestCase):
             ("Value For Money Price List-Winter'2026", "Value For Money", "Winter", 2026, ""),
             ("Value For Money Price List-Winter 2026.", "Value For Money", "Winter", 2026, ""),
             ("Value For Money Price List-Winter’2026.", "Value For Money", "Winter", 2026, ""),
+            ("Value for money Price List-Summer'2026 (Revised)", "Value For Money", "Summer", 2026, "Revised"),
         ]
         for line, kind, season, year, revision in cases:
             self.assertEqual(_parse_title(line), (kind, season, year, revision), line)
