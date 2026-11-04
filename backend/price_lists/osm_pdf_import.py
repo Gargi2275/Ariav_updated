@@ -1,7 +1,8 @@
-"""OSM regular price-list PDF import.
+"""OSM price-list PDF import.
 
-Numbers are taken only from the PDF text. A dash stays empty. A line that
-does not match the known OSM layout fails the file instead of being skipped.
+Regular and Value For Money booklets share the same table. Only the heading
+differs. Numbers are taken only from the PDF text. A dash stays empty. A line
+that does not match the known OSM layout fails the file instead of being skipped.
 """
 from __future__ import annotations
 
@@ -40,7 +41,11 @@ HYPHEN_CODE_RE = re.compile(r"^([A-Z0-9]+)-([A-Z0-9]+)-([A-Z0-9]+)-([A-Z0-9]+)-(
 COLLECTION_RE = re.compile(r"^(?P<name>.+?)\s*\((?P<code>[^)]+)\)\s*(?P<rest>.*)$")
 CODE_ONLY_RE = re.compile(r"^\(([A-Z0-9]+)\)$")
 ROW_RE = re.compile(r"^(\d+) (.+) (-|\d+(?:\.\d{1,2})?) (-|\d+(?:\.\d{1,2})?) (-|\d+(?:\.\d{1,2})?)$")
-TITLE_RE = re.compile(r"^Regular Price List-(Summer|Winter)'(\d{4})(?: \((Revised)\))?$")
+TITLE_RE = re.compile(
+    r"^(?P<kind>Regular|Value For Money) Price List-"
+    r"(?P<season>Summer|Winter)['’\s]*(?P<year>\d{4})"
+    r"(?: \((?P<revision>Revised)\))?\.?$"
+)
 WEF_RE = re.compile(r"^w\.e\.f (\d{2})\.(\d{2})\.(\d{4})$")
 PAGE_RE = re.compile(r"^Page (\d+) of (\d+)$")
 DISCOUNT_RE = re.compile(r"^(\d+(?:\.\d+)?)% Discount will be given on than of (\d+\.\d+) mts & above$")
@@ -53,6 +58,22 @@ GST_LINES = (
     "*Above Retail is inclusive of GST",
 )
 ACTIVE_MARKERS = (b"/JavaScript", b"/JS", b"/EmbeddedFile", b"/Launch", b"/OpenAction", b"/Encrypt", b"/AA")
+
+
+def _normalize_line(line: str) -> str:
+    return re.sub(r"\s+", " ", (line or "").strip())
+
+
+def _parse_title(line: str):
+    match = TITLE_RE.match(_normalize_line(line))
+    if not match:
+        return None
+    return (
+        match.group("kind"),
+        match.group("season"),
+        int(match.group("year")),
+        match.group("revision") or "",
+    )
 
 
 def is_osm_brand(brand: Brand) -> bool:
@@ -146,8 +167,18 @@ def _append_shades(entry, extra):
         entry["shades_raw"] = f"{current},{extra}"
 
 
+def _apply_title(line, title, season, year, revision, kind):
+    parsed = _parse_title(line)
+    if not parsed:
+        return title, season, year, revision, kind, False
+    found_kind, found_season, found_year, found_revision = parsed
+    if title and (found_season != season or found_year != year or found_kind != kind):
+        raise ValidationError({"file": "The PDF title changes between pages."})
+    return _normalize_line(line), found_season, found_year, found_revision, found_kind, True
+
+
 def _parse_column_pdf(pages):
-    title = season = revision = unit_text = ""
+    title = season = revision = unit_text = kind = ""
     year = None
     valid_from = None
     tax_lines = []
@@ -165,12 +196,7 @@ def _parse_column_pdf(pages):
         page_no = page["number"]
         for raw_line in page["text"].splitlines():
             line = raw_line.strip()
-            title_match = TITLE_RE.match(line)
-            if title_match:
-                found_season, found_year, found_revision = title_match.group(1), int(title_match.group(2)), title_match.group(3) or ""
-                if title and (found_season != season or found_year != year or line != title):
-                    raise ValidationError({"file": "The PDF title changes between pages."})
-                title, season, year, revision = line, found_season, found_year, found_revision
+            title, season, year, revision, kind, _matched = _apply_title(line, title, season, year, revision, kind)
             wef_match = WEF_RE.match(line)
             if wef_match:
                 day, month, wef_year = (int(part) for part in wef_match.groups())
@@ -204,7 +230,7 @@ def _parse_column_pdf(pages):
 
         for line in _word_lines(page["words"]):
             text = line["text"].strip()
-            if not text or text.startswith("Regular Price") or text.startswith("w.e.f") or text.startswith("INR "):
+            if not text or _parse_title(text) or text.startswith("w.e.f") or text.startswith("INR "):
                 continue
             if text.startswith("Page ") or "Ex-Mill" in text or text.startswith("Serial") or text.startswith("Quality No"):
                 continue
@@ -315,7 +341,7 @@ def parse_osm_pdf(file_bytes: bytes) -> dict:
         parsed = _parse_column_pdf(pages)
         return _finish_pdf(pages, parsed)
 
-    title = season = revision = unit_text = ""
+    title = season = revision = unit_text = kind = ""
     year = None
     valid_from = None
     tax_lines = []
@@ -333,12 +359,8 @@ def parse_osm_pdf(file_bytes: bytes) -> dict:
             line = raw_line.strip()
             if not line:
                 continue
-            title_match = TITLE_RE.match(line)
-            if title_match:
-                found_season, found_year, found_revision = title_match.group(1), int(title_match.group(2)), title_match.group(3) or ""
-                if title and (found_season != season or found_year != year or line != title):
-                    raise ValidationError({"file": "The PDF title changes between pages."})
-                title, season, year, revision = line, found_season, found_year, found_revision
+            title, season, year, revision, kind, matched_title = _apply_title(line, title, season, year, revision, kind)
+            if matched_title:
                 continue
             wef_match = WEF_RE.match(line)
             if wef_match:

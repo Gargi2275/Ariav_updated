@@ -1,5 +1,6 @@
 """Break-glass admin PIN reset. Requires server shell access; the PIN is only ever read from a prompt."""
 
+import sys
 from getpass import getpass
 
 from django.contrib.auth.hashers import make_password
@@ -10,6 +11,21 @@ from accounts import throttle
 from accounts.models import AuditLog, AuthUser, AuthUserMstLogin, UserToken
 
 PIN_LENGTH = 6
+
+
+def _prompt_pin(prompt: str) -> str:
+    """Windows/Cursor terminals often return an empty string from getpass."""
+    try:
+        value = getpass(prompt).strip()
+    except Exception:
+        value = ""
+    if value:
+        return value
+    if sys.stdin.isatty():
+        sys.stderr.write("(PIN was hidden/empty in this terminal; type it again — it will be visible)\n")
+        sys.stderr.flush()
+        return input(prompt).strip()
+    return value
 
 
 class Command(BaseCommand):
@@ -24,10 +40,10 @@ class Command(BaseCommand):
         if user is None or not user.is_admin_role:
             raise CommandError(f"No admin account named {username!r}.")
 
-        new_pin = getpass(f"New {PIN_LENGTH}-digit PIN for {user.username}: ").strip()
+        new_pin = _prompt_pin(f"New {PIN_LENGTH}-digit PIN for {user.username}: ")
         if len(new_pin) != PIN_LENGTH or not new_pin.isdigit():
             raise CommandError(f"PIN must be exactly {PIN_LENGTH} digits. Nothing was changed.")
-        if getpass("Repeat the new PIN: ").strip() != new_pin:
+        if _prompt_pin("Repeat the new PIN: ") != new_pin:
             raise CommandError("PINs do not match. Nothing was changed.")
 
         with transaction.atomic():

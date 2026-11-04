@@ -9,7 +9,7 @@ from accounts.models import AuthUser
 from brands.models import Brand
 from entities.models import Entity
 from price_lists.models import BrandQualityPrice, PriceList
-from price_lists.osm_pdf_import import parse_osm_pdf
+from price_lists.osm_pdf_import import _parse_title, parse_osm_pdf
 from products.models import Product
 
 FIXTURES = Path(__file__).resolve().parent / "tests" / "fixtures"
@@ -19,6 +19,18 @@ WINTER_2026 = FIXTURES / "OSM_Winter_2026_Regular.pdf"
 
 
 class OsmPdfParseTests(TestCase):
+    def test_title_accepts_regular_and_value_for_money_headings(self):
+        cases = [
+            ("Regular Price List-Winter'2026", "Regular", "Winter", 2026, ""),
+            ("Regular Price List-Summer'2026 (Revised)", "Regular", "Summer", 2026, "Revised"),
+            ("Value For Money Price List-Winter'2026", "Value For Money", "Winter", 2026, ""),
+            ("Value For Money Price List-Winter 2026.", "Value For Money", "Winter", 2026, ""),
+            ("Value For Money Price List-Winter’2026.", "Value For Money", "Winter", 2026, ""),
+        ]
+        for line, kind, season, year, revision in cases:
+            self.assertEqual(_parse_title(line), (kind, season, year, revision), line)
+        self.assertIsNone(_parse_title("Some other booklet-Winter'2026"))
+
     def test_summer_rows_keep_printed_prices_and_blank_retail(self):
         parsed = parse_osm_pdf(SUMMER.read_bytes())
         self.assertEqual(parsed["season"], "Summer")
