@@ -157,6 +157,13 @@ def _join_price(words):
     return Decimal(digits)
 
 
+def _header_x(words, label, default):
+    matches = [word for word in words if word["text"] == label]
+    if not matches:
+        return default
+    return min(matches, key=lambda word: word["top"])["x0"]
+
+
 def _append_shades(entry, extra):
     current = entry["shades_raw"]
     if not current:
@@ -219,12 +226,11 @@ def _parse_column_pdf(pages):
                 declared_total = total
                 seen_pages.append(current)
 
-        headers = {word["text"]: word["x0"] for word in page["words"] if word["top"] < 120}
-        shades_x = headers.get("Shades", 168)
-        delivery_x = headers.get("Delivery", 428)
-        exmill_x = headers.get("Ex-Mill", 472)
-        wholesale_x = headers.get("W/S", 510)
-        retail_x = headers.get("Retail", 542)
+        shades_x = _header_x(page["words"], "Shades", 168)
+        delivery_x = _header_x(page["words"], "Delivery", 428)
+        exmill_x = _header_x(page["words"], "Ex-Mill", 472)
+        wholesale_x = _header_x(page["words"], "W/S", 510)
+        retail_x = _header_x(page["words"], "Retail", 542)
         exmill_cut = (exmill_x + wholesale_x) / 2
         wholesale_cut = (wholesale_x + retail_x) / 2
 
@@ -466,8 +472,9 @@ def _finish_pdf(pages, parsed):
     codes = [item["quality_code"] for item in entries]
     if len(codes) != len(set(codes)):
         raise ValidationError({"file": "The PDF repeats a quality code."})
-    if any(item["ex_mill"] is None for item in entries):
-        raise ValidationError({"file": "A row has no Ex-Mill price."})
+    missing = [item["quality_code"] for item in entries if item["ex_mill"] is None]
+    if missing:
+        raise ValidationError({"file": f"A row has no Ex-Mill price ({missing[0]})."})
     if GST_LINES[0] not in parsed["tax_lines"] or GST_LINES[1] not in parsed["tax_lines"]:
         raise ValidationError({"file": "The GST notes at the end of the PDF were not found."})
     return {

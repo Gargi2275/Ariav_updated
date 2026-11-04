@@ -16,6 +16,7 @@ FIXTURES = Path(__file__).resolve().parent / "tests" / "fixtures"
 SUMMER = FIXTURES / "OSM_Summer_2026_Regular_Revised.pdf"
 WINTER = FIXTURES / "OSM_Winter_2025_Revised.pdf"
 WINTER_2026 = FIXTURES / "OSM_Winter_2026_Regular.pdf"
+VALUE_FOR_MONEY_2026 = FIXTURES / "OSM_Winter_2026_Value_For_Money.pdf"
 
 
 class OsmPdfParseTests(TestCase):
@@ -106,6 +107,22 @@ class OsmPdfParseTests(TestCase):
         self.assertEqual(car["collection_code"], "CAR")
         speciality = next(item for item in parsed["entries"] if item["collection_name"] == "Speciality")
         self.assertEqual(speciality["collection_code"], "")
+
+    def test_value_for_money_uses_its_own_price_columns(self):
+        parsed = parse_osm_pdf(VALUE_FOR_MONEY_2026.read_bytes())
+        self.assertEqual(parsed["title"], "Value For Money Price List-Winter'2026")
+        self.assertEqual(parsed["season"], "Winter")
+        self.assertEqual(parsed["year"], 2026)
+        self.assertEqual(parsed["valid_from"], "2026-06-03")
+        self.assertTrue(parsed["entries"])
+        first = parsed["entries"][0]
+        self.assertEqual(first["collection_name"], "Thunder Black")
+        self.assertEqual(first["collection_code"], "VBD")
+        self.assertEqual(first["quality_code"], "VBD-1-1-201-0073901")
+        self.assertEqual(first["ex_mill"], Decimal("925"))
+        self.assertEqual(first["wholesale"], Decimal("1341"))
+        self.assertEqual(first["retail"], Decimal("1846"))
+        self.assertTrue(all(item["ex_mill"] is not None for item in parsed["entries"]))
 
 
 class OsmPdfImportApiTests(TestCase):
