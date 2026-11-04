@@ -357,6 +357,7 @@ def parse_osm_pdf(file_bytes: bytes) -> dict:
     declared_total = None
     current_discount = None
     current_note = ""
+    footnote_open = False
 
     for page in pages:
         page_no = page["number"]
@@ -406,6 +407,12 @@ def parse_osm_pdf(file_bytes: bytes) -> dict:
             if line in GST_LINES:
                 if line not in tax_lines:
                     tax_lines.append(line)
+                footnote_open = False
+                continue
+            if line.startswith("*") or footnote_open:
+                if line not in packing_lines:
+                    packing_lines.append(line)
+                footnote_open = not line.endswith(".")
                 continue
             row_match = ROW_RE.match(line)
             code_match = CODE_RE.match(row_match.group(2)) if row_match else None
